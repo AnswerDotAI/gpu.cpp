@@ -20,7 +20,6 @@ libgpu:
 	mkdir -p build && cd build && cmake .. $(RELEASE_FLAGS) && make -j$(NUM_JOBS) gpu
 
 build-debug:
-	# TODO(avh): add support for debug symbol builds in CMakelists.txt
 	mkdir -p build && cd build && cmake .. $(DEBUG_FLAGS) && make -j$(NUM_JOBS)
 
 build:

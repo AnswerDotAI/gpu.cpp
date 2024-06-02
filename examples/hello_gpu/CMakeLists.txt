@@ -29,11 +29,12 @@ FetchContent_Declare(spdlog
 FetchContent_MakeAvailable(spdlog)
 
 FetchContent_Declare(
-  webgpu-backend-wgpu
+  webgpu-backend-dawn
   GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-  GIT_TAG wgpu-v0.19.4.1
+  GIT_TAG        dawn-6376
+  GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(webgpu-backend-wgpu)
+FetchContent_MakeAvailable(webgpu-backend-dawn)
 
 set(FILES run.cpp)
 add_executable(hello_gpu ${FILES})

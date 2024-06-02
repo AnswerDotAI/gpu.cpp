@@ -75,10 +75,9 @@ struct GPUContext {
       spdlog::warn("Queue is null");
     }
     if (device) {
-      /*
+      // note this only pertains to the dawn backend
       wgpuDeviceSetDeviceLostCallback(
           device, nullptr, nullptr); // disable error for intentional release
-                                     */
       wgpuDeviceRelease(device);
     } else {
       spdlog::warn("Device is null");
@@ -295,19 +294,7 @@ GPUContext CreateGPUContext(bool quietLogging = true,
           spdlog::error("Device uncaptured error: {}", message);
         },
         nullptr);
-    // For validation layers, use with DAWN_DEBUG=1 and/or DAWN_VALIDATION=1 in
-    // the shell
-    if constexpr (kDebug) {
-      /*
-      wgpuDeviceSetLoggingCallback(
-          context.device,
-          [](WGPULoggingType level, const char *message, void *userdata) {
-            spdlog::info("WebGPU Validation: {}", message);
-          },
-          NULL);
 
-          */
-          }
   }
   // Queue
   context.queue = wgpuDeviceGetQueue(context.device);
@@ -382,6 +369,13 @@ void PrepareCommandBuffer(GPUContext &ctx, const ShaderCode &shader,
   }
 }
 
+void Wait(GPUContext &ctx, std::future<void> &future) {
+  while (future.wait_for(std::chrono::seconds(0)) !=
+         std::future_status::ready) {
+    wgpuInstanceProcessEvents(ctx.instance);
+  }
+}
+
 /* Copy from GPU to CPU.
 
   Combines subset of PrepareCommandBuffer, but there is no compute pipeline +
@@ -445,10 +439,7 @@ void ToCPU(GPUContext &ctx, WGPUTensor &tensor, float *data,
             callbackData);
       },
       &callbackData);
-  while (op.future.wait_for(std::chrono::seconds(0)) !=
-         std::future_status::ready) {
-    wgpuInstanceProcessEvents(ctx.instance);
-  }
+  Wait(ctx, op.future);
 }
 
 template <size_t N>
@@ -640,17 +631,9 @@ void LaunchKernel(GPUContext &ctx, Op &op) {
         check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
               __FILE__, __LINE__);
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
-        // Not needed since output is already written to
         data->promise->set_value();
       },
       &op.callbackData);
-}
-
-void Wait(GPUContext &ctx, std::future<void> &future) {
-  while (future.wait_for(std::chrono::seconds(0)) !=
-         std::future_status::ready) {
-    wgpuInstanceProcessEvents(ctx.instance);
-  }
 }
 
 } // namespace gpu

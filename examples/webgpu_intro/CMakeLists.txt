@@ -6,7 +6,7 @@ include(FetchContent)
 FetchContent_Declare(
   webgpu-backend-dawn
   GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-  GIT_TAG        dawn-6376 # works locally but not on lambda
+  GIT_TAG        dawn-6376
   GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(webgpu-backend-dawn)
