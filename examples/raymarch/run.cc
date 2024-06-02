@@ -10,6 +10,23 @@
 #include "ftxui/screen/screen.hpp"
 #include "ftxui/screen/string.hpp"
 
+#include "gpu.h"
+
+
+// test function - multiply by constant
+const char *kShaderCMul = R"(
+@group(0) @binding(1) var<storage, read_write> output : array<f32>;
+@compute @workgroup_size(64)
+fn main(
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let x = GlobalInvocationID.x;
+    let y = GlobalInvocationID.y;
+    if (idx < arrayLength(&input)) {
+      output[idx] = x * y;
+    }
+  }
+)";
+
 std::string getCurrentTime() {
   auto now = std::chrono::system_clock::now();
   auto in_time_t = std::chrono::system_clock::to_time_t(now);

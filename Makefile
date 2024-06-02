@@ -5,10 +5,12 @@ TARGET_TESTS=run_tests
 
 .PHONY: demo tests libgpu build-debug build check-entr watch-demo watch-tests clean
 
- FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX)
+FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX)
 FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON 
 RELEASE_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=OFF
 DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
+# EMSCRIPTEN_FLAGS = -DIMPLEMENTATION=emscripten -DCMAKE_TOOLCHAIN_FILE=../cmake/emscripten.cmake -DCMAKE_CXX_COMPILER=em++
+EMSCRIPTEN_FLAGS = -DIMPLEMENTATION=emscripten -DCMAKE_CXX_COMPILER=em++
 
 demo:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)
@@ -33,6 +35,9 @@ watch-demo: check-entr
 
 watch-tests:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
+
+emscripten:
+	mkdir -p build && cd build && cmake .. $(EMSCRIPTEN_FLAGS) -DIMPLEMENTATION=emscripten && make -j$(NUM_JOBS)
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*

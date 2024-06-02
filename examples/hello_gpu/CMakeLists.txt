@@ -31,7 +31,7 @@ FetchContent_MakeAvailable(spdlog)
 FetchContent_Declare(
   webgpu-backend-dawn
   GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-  GIT_TAG        dawn-6376
+  GIT_TAG        dawn
   GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(webgpu-backend-dawn)

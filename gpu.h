@@ -75,7 +75,7 @@ struct GPUContext {
       spdlog::warn("Queue is null");
     }
     if (device) {
-      // note this only pertains to the dawn backend
+      // TODO(avh): Update to use wgpuDeviceSetDeviceLostCallbackInfo
       wgpuDeviceSetDeviceLostCallback(
           device, nullptr, nullptr); // disable error for intentional release
       wgpuDeviceRelease(device);
@@ -280,6 +280,8 @@ GPUContext CreateGPUContext(bool quietLogging = true,
       devData.device = device;
       devData.requestEnded = true;
     };
+
+    // TODO(avh): Update to use wgpuDeviceSetDeviceLostCallbackInfo
     devDescriptor.deviceLostCallback = [](WGPUDeviceLostReason reason,
                                           char const *message, void *userdata) {
       spdlog::error("Device lost:\n{}", message);

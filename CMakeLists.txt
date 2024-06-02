@@ -12,20 +12,42 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
-FetchContent_Declare(
-  webgpu-backend-dawn
-  GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-  GIT_TAG        dawn-6376
-  GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(webgpu-backend-dawn)
+option(IMPLEMENTATION "WebGPU implementation to use" "dawn")
+IF(NOT IMPLEMENTATION)
+  set(IMPLEMENTATION "dawn")
+ENDIF()
 
-#FetchContent_Declare(
-#  webgpu-backend-wgpu
-#  GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-#  GIT_TAG wgpu-v0.19.4.1
-#)
-#FetchContent_MakeAvailable(webgpu-backend-wgpu)
+IF(IMPLEMENTATION STREQUAL "dawn")
+
+  message(STATUS "Using Dawn as WebGPU implementation")
+  FetchContent_Declare(
+    webgpu-backend-dawn
+    GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
+    # GIT_TAG        dawn-6376
+    GIT_TAG        dawn
+    GIT_SHALLOW    TRUE
+  )
+  FetchContent_MakeAvailable(webgpu-backend-dawn)
+
+ELSEIF(IMPLEMENTATION STREQUAL "wgpu")
+  message(STATUS "Using WGPU as WebGPU implementation")
+  FetchContent_Declare(
+    webgpu-backend-wgpu
+    GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
+    GIT_TAG       wgpu
+    GIT_SHALLOW   TRUE
+  )
+  FetchContent_MakeAvailable(webgpu-backend-wgpu)
+ELSEIF(IMPLEMENTATION STREQUAL "emscripten")
+  message(STATUS "Using Emscripten as WebGPU implementation")
+  FetchContent_Declare(
+    webgpu-backend-emscripten
+    GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
+    GIT_TAG       emscripten
+    GIT_SHALLOW   TRUE
+  )
+  FetchContent_MakeAvailable(webgpu-backend-emscripten)
+ENDIF()
 
 FetchContent_Declare(spdlog
   GIT_REPOSITORY https://github.com/gabime/spdlog.git 
