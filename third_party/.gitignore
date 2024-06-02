@@ -1,0 +1,4 @@
+# This directory caches dependencies retrieved by cmake's FetchContent
+# operations.
+*build
+*-src

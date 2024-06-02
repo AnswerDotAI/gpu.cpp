@@ -1,0 +1,3 @@
+build/*
+examples/hello_gpu/build/*
+examples/raymarch/build/*
