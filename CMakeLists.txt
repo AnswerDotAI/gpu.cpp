@@ -51,7 +51,8 @@ ENDIF()
 
 FetchContent_Declare(spdlog
   GIT_REPOSITORY https://github.com/gabime/spdlog.git 
-  GIT_TAG 27cb4c76708608465c413f6d0e6b8d99a4d84302
+  # GIT_TAG 27cb4c76708608465c413f6d0e6b8d99a4d84302
+  GIT_TAG c3aed4b68373955e1cc94307683d44dca1515d2b
 )
 FetchContent_MakeAvailable(spdlog)
 
@@ -80,7 +81,11 @@ endif()
 
 set(SRC_DEMO run.cpp gpu.h kernels.h utils/array_utils.h)
 add_executable(run_demo ${SRC_DEMO})
-target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu spdlog)
+# target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu spdlog)
+target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu spdlog::spdlog)
+
+# message(STATUS "SPDLOG_HEADERS_DIR: ${SPDLOG_HEADERS_DIR}")
+#target_include_directories(run_demo PRIVATE ${SPDLOG_HEADERS_DIR})
 
 # Test of basic kernels
 

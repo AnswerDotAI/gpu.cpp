@@ -59,10 +59,14 @@ size_t size(const Shape &shape) {
   return numels;
 }
 
-struct GPUTensor {
+struct GPUArray {
   WGPUBuffer buffer;
   WGPUBufferUsageFlags usage;
   size_t size;
+};
+
+struct GPUTensor {
+  GPUArray data;
   Shape shape;
 };
 
@@ -83,15 +87,11 @@ struct GPUContext {
     spdlog::info("Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
-      wgpuDeviceRelease(device);
       wgpuInstanceProcessEvents(instance);
     } else {
       spdlog::warn("Queue is null");
     }
     if (device) {
-      // TODO(avh): Update to use wgpuDeviceSetDeviceLostCallbackInfo
-      // wgpuDeviceSetDeviceLostCallback(
-        //  device, nullptr, nullptr); // disable error for intentional release
       wgpuDeviceRelease(device);
       wgpuInstanceProcessEvents(instance);
     } else {
@@ -132,9 +132,7 @@ GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
   };
   WGPUBuffer buffer = wgpuDeviceCreateBuffer(pool.ctx->device, &bufferDesc);
   pool.data[buffer] = GPUTensor{
-      .buffer = buffer,
-      .usage = usage,
-      .size = size,
+      .data = GPUArray{.buffer = buffer, .usage = usage, .size = size},
       .shape = shape,
   };
   wgpuDeviceCreateBuffer(pool.ctx->device, &bufferDesc);
@@ -144,8 +142,8 @@ GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
 /* Syntactic sugar - take in ctx instead of pool*/
 GPUTensor Tensor(GPUContext &ctx, const Shape &shape, NumType dtype) {
   return Tensor(ctx.pool, shape, dtype,
-                            WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                                WGPUBufferUsage_CopySrc);
+                WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                    WGPUBufferUsage_CopySrc);
 }
 
 /* With Value Initialization (pointer) */
@@ -154,13 +152,14 @@ GPUTensor Tensor(GPUContext &ctx, const Shape &shape, NumType dtype,
   GPUTensor tensor = Tensor(ctx.pool, shape, dtype,
                             WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
                                 WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.buffer, 0, data, tensor.size);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
   return tensor;
 }
 
 void FreeTensor(TensorPool &pool, GPUTensor tensor) {
-  wgpuBufferRelease(tensor.buffer);
-  pool.data.erase(tensor.buffer);
+  wgpuBufferRelease(tensor.data.buffer);
+  pool.data.erase(tensor.data.buffer);
 }
 
 TensorPool::~TensorPool() {
@@ -284,16 +283,19 @@ GPUContext CreateGPUContext(bool quietLogging = true,
       devData.requestEnded = true;
     };
 
-    // TODO(avh): Update to use wgpuDeviceSetDeviceLostCallbackInfo
-    devDescriptor.deviceLostCallback = [](WGPUDeviceLostReason reason,
-                                          char const *message, void *userdata) {
-
-      if (reason != WGPUDeviceLostReason_Destroyed) {
-        spdlog::error("Device lost (code {}):\n{}", static_cast<int>(reason), message);
-      } else {
-        spdlog::info("Device destroyed: {}", message);
-      }
+    devDescriptor.deviceLostCallbackInfo = {
+        .callback =
+            [](WGPUDevice const *device, WGPUDeviceLostReason reason,
+               char const *message, void *userdata) {
+              if (reason != WGPUDeviceLostReason_Destroyed) {
+                spdlog::error("Device lost (code {}):\n{}",
+                              static_cast<int>(reason), message);
+              } else {
+                spdlog::info("Device destroyed: {}", message);
+              }
+            },
     };
+
     wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
                              onDeviceRequestEnded, (void *)&devData);
     assert(devData.requestEnded);
@@ -415,7 +417,7 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
     WGPUCommandEncoder commandEncoder;
     WGPUComputePassEncoder computePassEncoder;
     commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
-    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.buffer, 0,
+    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
                                          op.readbackBuffer, 0, bufferSize);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
@@ -496,7 +498,7 @@ Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
         .buffer =
             WGPUBufferBindingLayout{
                 .type = WGPUBufferBindingType_Storage,
-                .minBindingSize = inputs[i].size,
+                .minBindingSize = inputs[i].data.size,
             },
     };
   }
@@ -507,7 +509,7 @@ Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
       .buffer =
           WGPUBufferBindingLayout{
               .type = WGPUBufferBindingType_Storage,
-              .minBindingSize = output.size,
+              .minBindingSize = output.data.size,
           },
   };
   if constexpr (!IsNoParam<ParamsType>) {
@@ -533,14 +535,14 @@ Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
 
   spdlog::info("Create input and output buffers");
   for (size_t i = 0; i < numInputs; ++i) {
-    op.buffers[i] = inputs[i].buffer;
-    op.bufferSizes[i] = inputs[i].size;
+    op.buffers[i] = inputs[i].data.buffer;
+    op.bufferSizes[i] = inputs[i].data.size;
   }
   // Set up the output buffer
-  op.buffers[outputIndex] = output.buffer;
+  op.buffers[outputIndex] = output.data.buffer;
   op.outputBuffer = op.buffers[outputIndex];
-  op.outputSize = output.size;
-  op.bufferSizes[outputIndex] = output.size;
+  op.outputSize = output.data.size;
+  op.bufferSizes[outputIndex] = output.data.size;
   // Create a buffer for the Params struct
   if constexpr (!IsNoParam<ParamsType>) {
     WGPUBufferDescriptor paramsBufferDesc = {
