@@ -8,6 +8,7 @@ int main(int argc, char **argv) {
   GPUContext ctx = CreateGPUContext();
   fprintf(stdout, "\nHello, gpu.cpp\n\n");
   static constexpr size_t N = 3072;
+
   std::array<float, N> inputArr;
   std::array<float, N> outputArr;
   for (int i = 0; i < N; ++i) {
@@ -16,8 +17,8 @@ int main(int argc, char **argv) {
   GPUTensor input = Tensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
 
-  Op op =
-      PrepareKernel(ctx, GeluKernel(256, "f32"), std::array{input}, output);
+  Kernel op =
+      PrepareKernel(ctx, GeluShader(256, "f32"), std::array{input}, output);
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));

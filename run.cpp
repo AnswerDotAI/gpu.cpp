@@ -24,8 +24,7 @@ void wait() {
 void section(const char *content) {
   fprintf(stdout, "\033[2J\033[1;1H"); // clear screen
   fprintf(stdout, "%s\n", kAsciiBanner);
-  fprintf(stdout, "────────────────────────────────────────────────────────────"
-                  "───────────────────\n");
+  fprintf(stdout, "================================================================================\n");
   fprintf(stdout, "%s\n", content);
   wait();
   // fprintf(stdout, "\033[4A\033[0J"); // clear lines

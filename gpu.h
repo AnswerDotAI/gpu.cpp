@@ -113,8 +113,6 @@ struct GPUContext {
 
 enum NumType { kf32 };
 
-// TODO - enforce type level constraint for consistency with value type
-
 /* Tensor factory function */
 GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
                  WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
@@ -175,13 +173,6 @@ TensorPool::~TensorPool() {
   }
 }
 
-// TODO(avh): consolidate with CallbackDataDyn, only keep the dynamic version
-template <size_t N> struct CallbackData {
-  WGPUBuffer buffer;
-  std::array<float, N> *output;
-  std::promise<void> *promise;
-};
-
 struct CallbackDataDyn {
   WGPUBuffer buffer;
   size_t bufferSize;
@@ -189,7 +180,7 @@ struct CallbackDataDyn {
   std::promise<void> *promise;
 };
 
-struct Op {
+struct Kernel {
   std::unique_ptr<WGPUBuffer[]> buffers;
   std::unique_ptr<size_t[]> bufferSizes;
   WGPUBuffer outputBuffer;
@@ -313,13 +304,12 @@ GPUContext CreateGPUContext(bool quietLogging = true,
 }
 
 /* Populates Op with the readbackBuffer as well as the commandBuffer */
-template <typename OP>
 void PrepareCommandBuffer(GPUContext &ctx, const ShaderCode &shader,
                           WGPUBindGroup &bindGroup,
                           WGPUBindGroupLayout &bgLayout,
                           uint32_t bufferSize, // readback buffer size
                           size_t N,            // readback buffer # elements
-                          OP &op) {
+                          Kernel &op) {
   WGPUDevice device = ctx.device;
   spdlog::info("Create the readback buffer");
   {
@@ -464,13 +454,13 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
 
 // TODO(avh): add a version that takes multiple kernels
 template <typename ParamsType = NoParam>
-Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                  const GPUTensor *inputs, size_t numInputs,
                  const GPUTensor &output,
                  const ParamsType &params = ParamsType{}) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
-  Op op;
+  Kernel op;
   // Calculate the total number of buffers
   size_t numBuffers = numInputs + 1; // numInputs + 1 output
   size_t outputIndex = numInputs;    // index of the output buffer within
@@ -602,7 +592,7 @@ Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   spdlog::info("Preparing command buffer");
   size_t outN = size(output.shape);
 
-  PrepareCommandBuffer<Op>(ctx, shader, bindGroup, bgLayout,
+  PrepareCommandBuffer(ctx, shader, bindGroup, bgLayout,
                            op.bufferSizes[outputIndex], outN, op);
 
   // Write the params data to the params buffer
@@ -620,14 +610,14 @@ Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
  * PrepareKernel with array of inputs (convienence function)
  */
 template <typename ParamsType = NoParam, size_t numInputs>
-Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                  const std::array<GPUTensor, numInputs> &inputs,
                  const GPUTensor &output,
                  const ParamsType &params = ParamsType{}) {
   return PrepareKernel(ctx, shader, inputs.data(), numInputs, output, params);
 }
 
-void LaunchKernel(GPUContext &ctx, Op &op) {
+void LaunchKernel(GPUContext &ctx, Kernel &op) {
 
   // Total size of the output buffer in bytes
   uint32_t bufferSizeOut = static_cast<uint32_t>(op.outputSize);

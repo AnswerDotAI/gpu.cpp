@@ -3,10 +3,10 @@
 #include <random>
 
 #include "array_utils.h"
-#include "reference_impls.h"
-#include "spdlog/spdlog.h"
 #include "gpu.h"
 #include "kernels.h"
+#include "reference_impls.h"
+#include "spdlog/spdlog.h"
 
 using namespace gpu;
 
@@ -39,8 +39,8 @@ void TestResidual(GPUContext &ctx) {
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
   shaderCode = ResidualShader(workgroupSize, "f32");
   spdlog::info("Shader Code :\n{}", shaderCode.code);
-  Op op = PrepareKernel(ctx, ResidualShader(workgroupSize, "f32"),
-                         std::array{input1, input2}, output);
+  Kernel op = PrepareKernel(ctx, ResidualShader(workgroupSize, "f32"),
+                            std::array{input1, input2}, output);
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -61,8 +61,8 @@ void TestHadamard(GPUContext &ctx) {
   GPUTensor input2 = Tensor(ctx, {N}, kf32, input2Arr.data());
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
   spdlog::info("Shader Code :\n{}", shaderCode.code);
-  Op op = PrepareKernel(ctx, HadamardShader(workgroupSize, "f32"),
-                         std::array{input1, input2}, output, {});
+  Kernel op = PrepareKernel(ctx, HadamardShader(workgroupSize, "f32"),
+                            std::array{input1, input2}, output, {});
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   spdlog::info("{}", show<float, N, 1>(outputArr, "Output"));
@@ -81,8 +81,9 @@ void TestMatmul(GPUContext &ctx) {
   GPUTensor input1 = Tensor(ctx, {M, K}, kf32, input1Arr.data());
   GPUTensor input2 = Tensor(ctx, {K, N}, kf32, input2Arr.data());
   GPUTensor output = Tensor(ctx, {M, N}, kf32, outputArr.data());
-  Op op = PrepareKernel(ctx, MatmulShader(256, kShaderMatMul1, "f32", M, K, N),
-                       std::array{input1, input2}, output);
+  Kernel op =
+      PrepareKernel(ctx, MatmulShader(256, kShaderMatMul1, "f32", M, K, N),
+                    std::array{input1, input2}, output);
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -108,8 +109,7 @@ void TestTensorPool(GPUContext &ctx) {
   // Test using the tensor pool to prepare tensor buffers for kernel invocation
   TensorPool pool(&ctx);
   std::array<float, 6> inputArr = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  GPUTensor input =
-      Tensor(ctx, {2, 3}, kf32, inputArr.data());
+  GPUTensor input = Tensor(ctx, {2, 3}, kf32, inputArr.data());
   GPUTensor output = Tensor(ctx, {2, 3}, kf32);
   // TODO(avh): LaunchKernel with buffers and/or tensors
   // Test using the tenor pool to create tensors
@@ -119,8 +119,7 @@ void TestTensorPool(GPUContext &ctx) {
   // initializing a gpu buffer w/ value and then copy it back to CPU
   std::array<float, 6> initValue = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   spdlog::info("making tensors withi init");
-  GPUTensor tInit =
-      Tensor(ctx, {2, 3}, kf32, initValue.data());
+  GPUTensor tInit = Tensor(ctx, {2, 3}, kf32, initValue.data());
   spdlog::info("made tensors with init");
   spdlog::info("Done with Tensor Pool Test");
   std::array<float, 6> targetValue;
@@ -138,7 +137,7 @@ void TestGelu(GPUContext &ctx) {
   GPUTensor geluIn = Tensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor geluOut = Tensor(ctx, {N}, kf32, outputArr.data());
   spdlog::info("Creating GELU Shader");
-  Op op =
+  Kernel op =
       PrepareKernel(ctx, GeluShader(256, "f32"), std::array{geluIn}, geluOut);
   spdlog::info("Launching GELU Shader");
   LaunchKernel(ctx, op);
@@ -175,9 +174,9 @@ void TestLayerNorm(GPUContext &ctx) {
   GPUTensor weight = Tensor(ctx, {C}, kf32, weightArr.data());
   GPUTensor bias = Tensor(ctx, {C}, kf32, biasArr.data());
   GPUTensor output = Tensor(ctx, {N, C}, kf32, outputArr.data());
-  Op op =
-      PrepareKernel<LNParam, 3>(ctx, LayerNormShader(256, "f32"),
-                           std::array{input, weight, bias}, output, params);
+  Kernel op = PrepareKernel<LNParam, 3>(ctx, LayerNormShader(256, "f32"),
+                                        std::array{input, weight, bias}, output,
+                                        params);
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -212,8 +211,8 @@ void TestSoftmax(GPUContext &ctx) {
   randint(inputArr, gen, 0, 3);
   GPUTensor input = Tensor(ctx, {B, T, C}, kf32, inputArr.data());
   GPUTensor output = Tensor(ctx, {B, T, C}, kf32, outputArr.data());
-  Op op = PrepareKernel<SoftmaxParam, 1>(ctx, SoftmaxShader(256, "f32"),
-                                         {input}, output, {B * T, C});
+  Kernel op = PrepareKernel<SoftmaxParam, 1>(ctx, SoftmaxShader(256, "f32"),
+                                             {input}, output, {B * T, C});
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -244,10 +243,9 @@ void TestAttention(GPUContext &ctx) {
   // TODO: finish
 }
 
-
 int main(int argc, char **argv) {
   LoggingConfig();
-  GPUContext ctx = CreateGPUContext(/* verbose logging */false);
+  GPUContext ctx = CreateGPUContext(/* verbose logging */ false);
 
   TestTensorPool(ctx);
   TestResidual(ctx);
