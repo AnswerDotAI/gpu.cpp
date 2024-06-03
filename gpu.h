@@ -303,73 +303,6 @@ GPUContext CreateGPUContext(bool quietLogging = true,
   return context;
 }
 
-/* Populates Op with the readbackBuffer as well as the commandBuffer */
-void PrepareCommandBuffer(GPUContext &ctx, const ShaderCode &shader,
-                          WGPUBindGroup &bindGroup,
-                          WGPUBindGroupLayout &bgLayout,
-                          uint32_t bufferSize, // readback buffer size
-                          size_t N,            // readback buffer # elements
-                          Kernel &op) {
-  WGPUDevice device = ctx.device;
-  spdlog::info("Create the readback buffer");
-  {
-    WGPUBufferDescriptor readbackBufferDescriptor = {
-        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
-        .size = bufferSize,
-    };
-    op.readbackBuffer =
-        wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
-  }
-  spdlog::info("Create the compute pipeline");
-  WGPUComputePipeline computePipeline;
-  {
-    WGPUPipelineLayout pipelineLayout;
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
-        .bindGroupLayoutCount = 1,
-        .bindGroupLayouts = &bgLayout,
-    };
-    pipelineLayout =
-        wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
-    WGPUShaderModuleWGSLDescriptor wgslDesc = {
-        .code = shader.code.c_str(),
-    };
-    wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
-    WGPUShaderModuleDescriptor shaderModuleDesc = {};
-    shaderModuleDesc.nextInChain = &wgslDesc.chain;
-    shaderModuleDesc.label = "shader";
-    WGPUComputePipelineDescriptor computePipelineDesc = {};
-    computePipelineDesc.layout = pipelineLayout;
-    computePipelineDesc.compute.module =
-        wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
-    computePipelineDesc.compute.entryPoint = "main";
-    computePipeline =
-        wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-    check(computePipeline, "Create compute pipeline", __FILE__, __LINE__);
-  }
-  spdlog::info("Create the command encoder");
-  {
-    // After beginning the compute pass, use
-    // wgpuComputePassEncoderInsertDebugMarker instead of
-    // wgpuCommandEncoderInsertDebugMarker o/w the command encoder will be
-    // locked after wgpuComputePassEncoderEnd.
-    WGPUCommandEncoder commandEncoder;
-    WGPUComputePassEncoder computePassEncoder;
-    commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
-    computePassEncoder =
-        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
-    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
-                                       nullptr);
-    wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder, (N + (shader.wgSize - 1)) / shader.wgSize, 1, 1);
-    wgpuComputePassEncoderEnd(computePassEncoder);
-    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, op.outputBuffer, 0,
-                                         op.readbackBuffer, 0, bufferSize);
-    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
-  }
-}
-
 void Wait(GPUContext &ctx, std::future<void> &future) {
   while (future.wait_for(std::chrono::seconds(0)) !=
          std::future_status::ready) {
@@ -379,10 +312,9 @@ void Wait(GPUContext &ctx, std::future<void> &future) {
 
 /* Copy from GPU to CPU.
 
-  Combines subset of PrepareCommandBuffer, but there is no compute pipeline +
-  execution of LaunchKernel. A more performant version of
-  this would prepare the command buffer once and reuse it for multiple
-  readbacks. This version is for one-offs in non-hot paths.
+  A more performant version of this would prepare the command buffer once and
+  reuse it for multiple readbacks. This version is for one-offs in testing and non-hot
+  paths.
 */
 void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;
@@ -455,9 +387,9 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
 // TODO(avh): add a version that takes multiple kernels
 template <typename ParamsType = NoParam>
 Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
-                 const GPUTensor *inputs, size_t numInputs,
-                 const GPUTensor &output,
-                 const ParamsType &params = ParamsType{}) {
+                     const GPUTensor *inputs, size_t numInputs,
+                     const GPUTensor &output,
+                     const ParamsType &params = ParamsType{}) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op;
@@ -592,8 +524,66 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   spdlog::info("Preparing command buffer");
   size_t outN = size(output.shape);
 
-  PrepareCommandBuffer(ctx, shader, bindGroup, bgLayout,
-                           op.bufferSizes[outputIndex], outN, op);
+  spdlog::info("Create the readback buffer");
+  {
+    WGPUBufferDescriptor readbackBufferDescriptor = {
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
+        .size = op.bufferSizes[outputIndex],
+    };
+    op.readbackBuffer =
+        wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
+  }
+
+  spdlog::info("Create the compute pipeline");
+  WGPUComputePipeline computePipeline;
+  {
+    WGPUPipelineLayout pipelineLayout;
+    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
+        .bindGroupLayoutCount = 1,
+        .bindGroupLayouts = &bgLayout,
+    };
+    pipelineLayout =
+        wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
+    WGPUShaderModuleWGSLDescriptor wgslDesc = {
+        .code = shader.code.c_str(),
+    };
+    wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+    WGPUShaderModuleDescriptor shaderModuleDesc = {};
+    shaderModuleDesc.nextInChain = &wgslDesc.chain;
+    shaderModuleDesc.label = "shader";
+    WGPUComputePipelineDescriptor computePipelineDesc = {};
+    computePipelineDesc.layout = pipelineLayout;
+    computePipelineDesc.compute.module =
+        wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
+    computePipelineDesc.compute.entryPoint = "main";
+    computePipeline =
+        wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
+    check(computePipeline, "Create compute pipeline", __FILE__, __LINE__);
+  }
+
+  spdlog::info("Create the command encoder");
+  {
+    // After beginning the compute pass, use
+    // wgpuComputePassEncoderInsertDebugMarker instead of
+    // wgpuCommandEncoderInsertDebugMarker o/w the command encoder will be
+    // locked after wgpuComputePassEncoderEnd.
+    WGPUCommandEncoder commandEncoder;
+    WGPUComputePassEncoder computePassEncoder;
+    commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
+    computePassEncoder =
+        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
+    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
+                                       nullptr);
+    wgpuComputePassEncoderDispatchWorkgroups(
+        computePassEncoder, (outN + (shader.wgSize - 1)) / shader.wgSize, 1, 1);
+    wgpuComputePassEncoderEnd(computePassEncoder);
+    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, op.outputBuffer, 0,
+                                         op.readbackBuffer, 0,
+                                         op.bufferSizes[outputIndex]);
+    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
+  }
 
   // Write the params data to the params buffer
   if (!IsNoParam<ParamsType>) {
@@ -611,9 +601,9 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
  */
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
-                 const std::array<GPUTensor, numInputs> &inputs,
-                 const GPUTensor &output,
-                 const ParamsType &params = ParamsType{}) {
+                     const std::array<GPUTensor, numInputs> &inputs,
+                     const GPUTensor &output,
+                     const ParamsType &params = ParamsType{}) {
   return PrepareKernel(ctx, shader, inputs.data(), numInputs, output, params);
 }
 
