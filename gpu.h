@@ -19,19 +19,36 @@ static constexpr bool kDebug = false;
 static constexpr bool kDebug = true;
 #endif
 
+static constexpr size_t kMaxRank = 8;
+
 struct GPUContext;
 
+struct ShaderCode {
+  std::string code;
+  size_t wgSize; // workgroup size
+};
+
 struct Shape {
-  Shape() : data(nullptr), rank(0) {}
-  Shape(const size_t *data, size_t rank) : data(new size_t[rank]), rank(rank) {
-    std::memcpy(this->data, data, rank * sizeof(size_t));
+  std::array<size_t, kMaxRank> data = {0};
+  size_t rank = 0;
+
+  Shape() = default;
+
+  Shape(std::initializer_list<size_t> dims) {
+    assert(dims.size() <= kMaxRank);
+    std::copy(dims.begin(), dims.end(), data.begin());
+    rank = dims.size();
   }
-  template <size_t N>
-  Shape(const std::array<size_t, N> &shape) : data(new size_t[N]), rank(N) {
-    std::memcpy(data, shape.data(), N * sizeof(size_t));
+
+  size_t &operator[](size_t index) {
+    assert(index < rank);
+    return data[index];
   }
-  size_t *data;
-  size_t rank;
+
+  const size_t &operator[](size_t index) const {
+    assert(index < rank);
+    return data[index];
+  }
 };
 
 size_t size(const Shape &shape) {
@@ -42,7 +59,7 @@ size_t size(const Shape &shape) {
   return numels;
 }
 
-struct WGPUTensor {
+struct GPUTensor {
   WGPUBuffer buffer;
   WGPUBufferUsageFlags usage;
   size_t size;
@@ -52,13 +69,8 @@ struct WGPUTensor {
 struct TensorPool {
   TensorPool(GPUContext *ctx) : ctx(ctx), data(){};
   GPUContext *ctx;
-  std::unordered_map<WGPUBuffer, WGPUTensor> data;
+  std::unordered_map<WGPUBuffer, GPUTensor> data;
   ~TensorPool();
-};
-
-struct ShaderCode {
-  std::string code;
-  size_t wgSize; // workgroup size
 };
 
 struct GPUContext {
@@ -71,19 +83,23 @@ struct GPUContext {
     spdlog::info("Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
+      wgpuDeviceRelease(device);
+      wgpuInstanceProcessEvents(instance);
     } else {
       spdlog::warn("Queue is null");
     }
     if (device) {
       // TODO(avh): Update to use wgpuDeviceSetDeviceLostCallbackInfo
-      wgpuDeviceSetDeviceLostCallback(
-          device, nullptr, nullptr); // disable error for intentional release
+      // wgpuDeviceSetDeviceLostCallback(
+        //  device, nullptr, nullptr); // disable error for intentional release
       wgpuDeviceRelease(device);
+      wgpuInstanceProcessEvents(instance);
     } else {
       spdlog::warn("Device is null");
     }
     if (adapter) {
       wgpuAdapterRelease(adapter);
+      wgpuInstanceProcessEvents(instance);
     } else {
       spdlog::warn("Adapter is null");
     }
@@ -99,11 +115,11 @@ enum NumType { kf32 };
 
 // TODO - enforce type level constraint for consistency with value type
 
-/* Tensor factory */
-WGPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
-                  WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
-                                               WGPUBufferUsage_CopyDst |
-                                               WGPUBufferUsage_CopySrc) {
+/* Tensor factory function */
+GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
+                 WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
+                                              WGPUBufferUsage_CopyDst |
+                                              WGPUBufferUsage_CopySrc) {
   spdlog::trace("Creating tensor");
   size_t numElements = 1;
   for (size_t dim = 0; dim < shape.rank; dim++) {
@@ -115,7 +131,7 @@ WGPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
       .size = size,
   };
   WGPUBuffer buffer = wgpuDeviceCreateBuffer(pool.ctx->device, &bufferDesc);
-  pool.data[buffer] = WGPUTensor{
+  pool.data[buffer] = GPUTensor{
       .buffer = buffer,
       .usage = usage,
       .size = size,
@@ -125,37 +141,24 @@ WGPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
   return pool.data[buffer];
 }
 
-/* With Value Initialization (Pointer) */
-WGPUTensor Tensor(GPUContext &ctx, const Shape &shape, NumType dtype,
-                  float *data) {
-  WGPUTensor tensor = Tensor(ctx.pool, shape, dtype,
-                             WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                                 WGPUBufferUsage_CopySrc);
+/* Syntactic sugar - take in ctx instead of pool*/
+GPUTensor Tensor(GPUContext &ctx, const Shape &shape, NumType dtype) {
+  return Tensor(ctx.pool, shape, dtype,
+                            WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                                WGPUBufferUsage_CopySrc);
+}
+
+/* With Value Initialization (pointer) */
+GPUTensor Tensor(GPUContext &ctx, const Shape &shape, NumType dtype,
+                 float *data) {
+  GPUTensor tensor = Tensor(ctx.pool, shape, dtype,
+                            WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                                WGPUBufferUsage_CopySrc);
   wgpuQueueWriteBuffer(ctx.queue, tensor.buffer, 0, data, tensor.size);
   return tensor;
 }
 
-/* With Value Initialization (arrays) */
-template <size_t N>
-WGPUTensor Tensor(GPUContext &ctx, const std::array<size_t, N> &shape,
-                  NumType dtype, float *data) {
-  WGPUTensor tensor = Tensor(ctx.pool, Shape{shape.data(), N}, dtype,
-                             WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                                 WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.buffer, 0, data, tensor.size);
-  return tensor;
-}
-
-/* Comptime shape version of Tensor */
-template <size_t NDIM>
-WGPUTensor Tensor(GPUContext &ctx, std::array<size_t, NDIM> shape,
-                  NumType dtype) {
-  return Tensor(ctx.pool, {shape.data(), NDIM}, dtype,
-                WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                    WGPUBufferUsage_CopySrc);
-}
-
-void FreeTensor(TensorPool &pool, WGPUTensor tensor) {
+void FreeTensor(TensorPool &pool, GPUTensor tensor) {
   wgpuBufferRelease(tensor.buffer);
   pool.data.erase(tensor.buffer);
 }
@@ -229,9 +232,9 @@ void showDeviceInfo(WGPUAdapter &adapter) {
 }
 
 GPUContext CreateGPUContext(bool quietLogging = true,
-                       const WGPUInstanceDescriptor &desc = {},
-                       const WGPURequestAdapterOptions &adapterOpts = {},
-                       WGPUDeviceDescriptor devDescriptor = {}) {
+                            const WGPUInstanceDescriptor &desc = {},
+                            const WGPURequestAdapterOptions &adapterOpts = {},
+                            WGPUDeviceDescriptor devDescriptor = {}) {
   if (quietLogging) {
     // TODO(avh): don't step on global logger
     auto logger = spdlog::default_logger();
@@ -284,7 +287,12 @@ GPUContext CreateGPUContext(bool quietLogging = true,
     // TODO(avh): Update to use wgpuDeviceSetDeviceLostCallbackInfo
     devDescriptor.deviceLostCallback = [](WGPUDeviceLostReason reason,
                                           char const *message, void *userdata) {
-      spdlog::error("Device lost:\n{}", message);
+
+      if (reason != WGPUDeviceLostReason_Destroyed) {
+        spdlog::error("Device lost (code {}):\n{}", static_cast<int>(reason), message);
+      } else {
+        spdlog::info("Device destroyed: {}", message);
+      }
     };
     wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
                              onDeviceRequestEnded, (void *)&devData);
@@ -296,7 +304,6 @@ GPUContext CreateGPUContext(bool quietLogging = true,
           spdlog::error("Device uncaptured error: {}", message);
         },
         nullptr);
-
   }
   // Queue
   context.queue = wgpuDeviceGetQueue(context.device);
@@ -385,8 +392,7 @@ void Wait(GPUContext &ctx, std::future<void> &future) {
   this would prepare the command buffer once and reuse it for multiple
   readbacks. This version is for one-offs in non-hot paths.
 */
-void ToCPU(GPUContext &ctx, WGPUTensor &tensor, float *data,
-           size_t bufferSize) {
+void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;
   struct CopyOp {
     WGPUCommandBuffer commandBuffer;
@@ -445,15 +451,16 @@ void ToCPU(GPUContext &ctx, WGPUTensor &tensor, float *data,
 }
 
 template <size_t N>
-void ToCPU(GPUContext &ctx, WGPUTensor &tensor, std::array<float, N> data) {
+void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));
 }
 
 // TODO(avh): add a version that takes multiple kernels
 template <typename ParamsType = NoParam>
-Op CreateOp(GPUContext &ctx, const ShaderCode &shader,
-            const WGPUTensor *inputs, size_t numInputs,
-            const WGPUTensor &output, const ParamsType &params = ParamsType{}) {
+Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+                 const GPUTensor *inputs, size_t numInputs,
+                 const GPUTensor &output,
+                 const ParamsType &params = ParamsType{}) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Op op;
@@ -598,19 +605,19 @@ Op CreateOp(GPUContext &ctx, const ShaderCode &shader,
                          sizeof(ParamsType));
   }
 
-  spdlog::info("Op created");
-  spdlog::info("Exiting CreateOp");
+  spdlog::info("Exiting PrepareKernel");
   return op;
 }
 
 /*
- * CreateOp with array of inputs (convienence function)
+ * PrepareKernel with array of inputs (convienence function)
  */
 template <typename ParamsType = NoParam, size_t numInputs>
-Op CreateOp(GPUContext &ctx, const ShaderCode &shader,
-            const std::array<WGPUTensor, numInputs> &inputs,
-            const WGPUTensor &output, const ParamsType &params = ParamsType{}) {
-  return CreateOp(ctx, shader, inputs.data(), numInputs, output, params);
+Op PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+                 const std::array<GPUTensor, numInputs> &inputs,
+                 const GPUTensor &output,
+                 const ParamsType &params = ParamsType{}) {
+  return PrepareKernel(ctx, shader, inputs.data(), numInputs, output, params);
 }
 
 void LaunchKernel(GPUContext &ctx, Op &op) {

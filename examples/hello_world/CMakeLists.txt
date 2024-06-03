@@ -22,21 +22,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(gpu)
 
-FetchContent_Declare(spdlog
-  GIT_REPOSITORY https://github.com/gabime/spdlog.git 
-  GIT_TAG 27cb4c76708608465c413f6d0e6b8d99a4d84302
-)
-FetchContent_MakeAvailable(spdlog)
-
-FetchContent_Declare(
-  webgpu-backend-dawn
-  GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-  GIT_TAG        dawn
-  GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(webgpu-backend-dawn)
-
 set(FILES run.cpp)
 add_executable(hello_gpu ${FILES})
-target_link_libraries(hello_gpu gpu webgpu spdlog)
+target_link_libraries(hello_gpu gpu)
 target_include_directories(hello_gpu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
