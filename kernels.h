@@ -48,7 +48,7 @@ fn main(
 )";
 
 // TODO(avh): 3D workgroup specs
-ShaderCode GeluKernel(size_t workgroupSize = 32 * 32,
+ShaderCode GeluShader(size_t workgroupSize = 32 * 32,
                       const char *precision = "f32") {
   // make a copy of kShaderGELU but with workgroupSize substituted for
   // {{workgroupSize}}
@@ -73,7 +73,7 @@ fn main(
 }
 )";
 
-ShaderCode HadamardKernel(size_t workgroupSize = 32 * 32,
+ShaderCode HadamardShader(size_t workgroupSize = 32 * 32,
                           const char *precision = "f32") {
   std::string shader = kShaderHadamard;
   shader =
@@ -96,7 +96,7 @@ fn main(
 }
 )";
 
-ShaderCode ResidualKernel(size_t workgroupSize = 32 * 32,
+ShaderCode ResidualShader(size_t workgroupSize = 32 * 32,
                           const char *precision = "f32") {
   std::string shader = kShaderResidual;
   shader =
@@ -157,7 +157,7 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>,
 }
 )";
 
-ShaderCode LayerNormKernel(size_t workgroupSize = 256,
+ShaderCode LayerNormShader(size_t workgroupSize = 256,
                            const char *precision = "f32") {
 
   std::string shader = kShaderLayerNorm1;
@@ -239,7 +239,7 @@ fn matmul(
 
 /* Generates ShaderCode instance for all matmul kernels - pass in
  * the template code via `shaderRaw` */
-ShaderCode MatmulKernel(size_t workgroupSize, const char *shaderRaw,
+ShaderCode MatmulShader(size_t workgroupSize, const char *shaderRaw,
                         const char *precision, size_t M, size_t K, size_t N) {
   std::string shader(shaderRaw);
   shader =
@@ -298,7 +298,7 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 }
 )";
 
-ShaderCode SoftmaxKernel(size_t workgroupSize = 32,
+ShaderCode SoftmaxShader(size_t workgroupSize = 32,
                          const char *precision = "f32") {
   std::string shader = kShaderSoftmax1;
   shader =

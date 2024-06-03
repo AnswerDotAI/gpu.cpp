@@ -452,6 +452,11 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   Wait(ctx, op.future);
 }
 
+void ToGPU(GPUContext &ctx, GPUTensor &tensor, const float *data) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
 template <size_t N>
 void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));

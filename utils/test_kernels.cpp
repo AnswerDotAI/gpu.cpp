@@ -37,9 +37,9 @@ void TestResidual(GPUContext &ctx) {
   GPUTensor input1 = Tensor(ctx, {N}, kf32, input1Arr.data());
   GPUTensor input2 = Tensor(ctx, {N}, kf32, input2Arr.data());
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
-  shaderCode = ResidualKernel(workgroupSize, "f32");
+  shaderCode = ResidualShader(workgroupSize, "f32");
   spdlog::info("Shader Code :\n{}", shaderCode.code);
-  Op op = PrepareKernel(ctx, ResidualKernel(workgroupSize, "f32"),
+  Op op = PrepareKernel(ctx, ResidualShader(workgroupSize, "f32"),
                          std::array{input1, input2}, output);
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
@@ -61,7 +61,7 @@ void TestHadamard(GPUContext &ctx) {
   GPUTensor input2 = Tensor(ctx, {N}, kf32, input2Arr.data());
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
   spdlog::info("Shader Code :\n{}", shaderCode.code);
-  Op op = PrepareKernel(ctx, HadamardKernel(workgroupSize, "f32"),
+  Op op = PrepareKernel(ctx, HadamardShader(workgroupSize, "f32"),
                          std::array{input1, input2}, output, {});
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
@@ -81,7 +81,7 @@ void TestMatmul(GPUContext &ctx) {
   GPUTensor input1 = Tensor(ctx, {M, K}, kf32, input1Arr.data());
   GPUTensor input2 = Tensor(ctx, {K, N}, kf32, input2Arr.data());
   GPUTensor output = Tensor(ctx, {M, N}, kf32, outputArr.data());
-  Op op = PrepareKernel(ctx, MatmulKernel(256, kShaderMatMul1, "f32", M, K, N),
+  Op op = PrepareKernel(ctx, MatmulShader(256, kShaderMatMul1, "f32", M, K, N),
                        std::array{input1, input2}, output);
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
@@ -137,10 +137,10 @@ void TestGelu(GPUContext &ctx) {
   std::array<float, N> outputArr;
   GPUTensor geluIn = Tensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor geluOut = Tensor(ctx, {N}, kf32, outputArr.data());
-  spdlog::info("Creating GELU Kernel");
+  spdlog::info("Creating GELU Shader");
   Op op =
-      PrepareKernel(ctx, GeluKernel(256, "f32"), std::array{geluIn}, geluOut);
-  spdlog::info("Launching GELU Kernel");
+      PrepareKernel(ctx, GeluShader(256, "f32"), std::array{geluIn}, geluOut);
+  spdlog::info("Launching GELU Shader");
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, geluOut, outputArr.data(), sizeof(outputArr));
@@ -176,7 +176,7 @@ void TestLayerNorm(GPUContext &ctx) {
   GPUTensor bias = Tensor(ctx, {C}, kf32, biasArr.data());
   GPUTensor output = Tensor(ctx, {N, C}, kf32, outputArr.data());
   Op op =
-      PrepareKernel<LNParam, 3>(ctx, LayerNormKernel(256, "f32"),
+      PrepareKernel<LNParam, 3>(ctx, LayerNormShader(256, "f32"),
                            std::array{input, weight, bias}, output, params);
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
@@ -212,7 +212,7 @@ void TestSoftmax(GPUContext &ctx) {
   randint(inputArr, gen, 0, 3);
   GPUTensor input = Tensor(ctx, {B, T, C}, kf32, inputArr.data());
   GPUTensor output = Tensor(ctx, {B, T, C}, kf32, outputArr.data());
-  Op op = PrepareKernel<SoftmaxParam, 1>(ctx, SoftmaxKernel(256, "f32"),
+  Op op = PrepareKernel<SoftmaxParam, 1>(ctx, SoftmaxShader(256, "f32"),
                                          {input}, output, {B * T, C});
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
