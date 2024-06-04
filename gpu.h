@@ -197,21 +197,31 @@ struct Kernel {
 
 struct KernelPipelineDesc {
   size_t numShaders;
-  const std::unique_ptr<ShaderCode> shader; // length = numShaders
-  const std::unique_ptr<GPUTensor> inputs; // length = sum of numInputs[]
-  const std::unique_ptr<size_t> numInputs;  // length = numShaders
-  const std::unique_ptr<GPUTensor> output;  // length = numShaders
+  const std::unique_ptr<ShaderCode[]> shader; // length = numShaders
+  const std::unique_ptr<GPUTensor[]> inputs; // length = sum of numInputs[]
+  const std::unique_ptr<size_t[]> numInputs;  // length = numShaders
+  const std::unique_ptr<GPUTensor[]> output;  // length = numShaders
   const std::unique_ptr<void*> params;      // length = numShaders
                              // use void* so params can be different types for
                              // each shader
-  const std::unique_ptr<size_t> paramSizes; // length = numShaders
+  const std::unique_ptr<size_t[]> paramSizes; // length = numShaders
 };
 
 // TODO(avh): implement equivalent of CreateKernel for KernelPipeline with
 // KernelPipelineDesc as input argument
 struct KernelPipeline {
-  const std::unique_ptr<Kernel> kernels;
-  size_t numKernels;
+  size_t numShaders;
+  std::unique_ptr<WGPUBuffer[]> buffers; // length = sum of numBuffers[]
+  std::unique_ptr<size_t[]> bufferSizes; // length = sum of numBuffers[]
+  std::unique_ptr<WGPUBuffer[]> outputBuffers; // length = numShaders
+  std::unique_ptr<size_t []> outputSize; // length = numShaders
+  std::unique_ptr<size_t[]> numBuffers; // length = numShaders, value[i] = numInputs[i] + 1 (output) + 0 or 1 depending on whether paramSizes is > 0 or not. paramSizes = 0 means no params buffer
+  std::unique_ptr<size_t[]> numInputs; // length = numShaders
+  WGPUCommandBuffer commandBuffer; // All kernels in the pipeline
+  WGPUBuffer readbackBuffer; // Readback buffer for the final output buffer
+  CallbackDataDyn callbackData;
+  std::promise<void> promise;
+  std::future<void> future;
 };
 
 struct NoParam {};
@@ -394,14 +404,14 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   Wait(ctx, op.future);
 }
 
-void ToGPU(GPUContext &ctx, GPUTensor &tensor, const float *data) {
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-}
-
 template <size_t N>
 void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));
+}
+
+void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
 }
 
 
@@ -633,6 +643,81 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const GPUTensor &output,
                      const ParamsType &params = ParamsType{}) {
   return PrepareKernel<ParamsType>(ctx, shader, inputs.data(), numInputs, output, params);
+}
+
+KernelPipeline PrepareKernelPipeline(GPUContext &ctx, const KernelPipelineDesc& desc) {
+    WGPUDevice device = ctx.device;
+    WGPUQueue queue = ctx.queue;
+    KernelPipeline pipeline;
+
+    pipeline.numShaders = desc.numShaders;
+    size_t totalBuffers = 0;
+    pipeline.numBuffers = std::make_unique<size_t[]>(desc.numShaders);
+    pipeline.numInputs = std::make_unique<size_t[]>(desc.numShaders);
+    pipeline.outputBuffers = std::make_unique<WGPUBuffer[]>(desc.numShaders);
+    pipeline.outputSize = std::make_unique<size_t[]>(desc.numShaders);
+
+    // Calculate total number of buffers
+    for (size_t i = 0; i < desc.numShaders; ++i) {
+        pipeline.numInputs[i] = desc.numInputs[i];
+        pipeline.numBuffers[i] = desc.numInputs[i] + 1; // +1 for output buffer
+        if (desc.paramSizes[i] > 0) {
+            pipeline.numBuffers[i] += 1; // +1 for params buffer
+        }
+        totalBuffers += pipeline.numBuffers[i];
+    }
+
+    pipeline.buffers = std::make_unique<WGPUBuffer[]>(totalBuffers);
+    pipeline.bufferSizes = std::make_unique<size_t[]>(totalBuffers);
+
+    // Create command encoder for all kernels
+    WGPUCommandEncoder commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
+    size_t bufferIndex = 0;
+
+    for (size_t shaderIndex = 0; shaderIndex < desc.numShaders; ++shaderIndex) {
+        // Create buffers and bind group for each shader
+        size_t outputIndex = desc.numInputs[shaderIndex];
+        size_t paramIndex = desc.numInputs[shaderIndex] + 1;
+
+        // Set up buffers
+        for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIndex]; ++inputIndex) {
+            pipeline.buffers[bufferIndex] = desc.inputs[inputIndex].data.buffer;
+            pipeline.bufferSizes[bufferIndex] = desc.inputs[inputIndex].data.size;
+            bufferIndex++;
+        }
+
+        // Set up output buffer
+        pipeline.outputBuffers[shaderIndex] = desc.output[shaderIndex].data.buffer;
+        pipeline.outputSize[shaderIndex] = desc.output[shaderIndex].data.size;
+        pipeline.buffers[bufferIndex] = pipeline.outputBuffers[shaderIndex];
+        pipeline.bufferSizes[bufferIndex] = pipeline.outputSize[shaderIndex];
+        bufferIndex++;
+
+        // Set up params buffer if required
+        if (desc.paramSizes[shaderIndex] > 0) {
+            WGPUBufferDescriptor paramsBufferDesc = {
+                .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
+                .size = desc.paramSizes[shaderIndex],
+                .mappedAtCreation = false,
+            };
+            pipeline.buffers[bufferIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
+            pipeline.bufferSizes[bufferIndex] = desc.paramSizes[shaderIndex];
+            bufferIndex++;
+        }
+
+        // TODO(avh):
+        // Modify commandBuffer:
+        // bind group layouts, bind groups, commandBuffer, computePipeline, ..
+    }
+
+    // Finish command buffer setup
+    pipeline.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    
+    // Set up promise and future for asynchronous handling
+    pipeline.promise = std::promise<void>();
+    pipeline.future = pipeline.promise.get_future();
+
+    return pipeline;
 }
 
 void LaunchKernel(GPUContext &ctx, Kernel &op) {
