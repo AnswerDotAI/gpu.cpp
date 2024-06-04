@@ -33,14 +33,13 @@ void TestResidual(GPUContext &ctx) {
   range(input1Arr);
   range(input2Arr);
   std::array<float, N> outputArr;
-  ShaderCode shaderCode;
   GPUTensor input1 = Tensor(ctx, {N}, kf32, input1Arr.data());
   GPUTensor input2 = Tensor(ctx, {N}, kf32, input2Arr.data());
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
-  shaderCode = ResidualShader(workgroupSize, "f32");
+  ShaderCode shaderCode = ResidualShader(workgroupSize, "f32");
   spdlog::info("Shader Code :\n{}", shaderCode.code);
-  Kernel op = PrepareKernel(ctx, ResidualShader(workgroupSize, "f32"),
-                            std::array{input1, input2}, output);
+  Kernel op = PrepareKernel<NoParam, 2>(ctx, ResidualShader(workgroupSize, "f32"),
+                            std::array<GPUTensor, 2>{input1, input2}, output, {});
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -56,10 +55,10 @@ void TestHadamard(GPUContext &ctx) {
   range(input1Arr);
   range(input2Arr);
   std::array<float, N> outputArr;
-  ShaderCode shaderCode;
   GPUTensor input1 = Tensor(ctx, {N}, kf32, input1Arr.data());
   GPUTensor input2 = Tensor(ctx, {N}, kf32, input2Arr.data());
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
+  ShaderCode shaderCode = HadamardShader(workgroupSize, "f32");
   spdlog::info("Shader Code :\n{}", shaderCode.code);
   Kernel op = PrepareKernel(ctx, HadamardShader(workgroupSize, "f32"),
                             std::array{input1, input2}, output, {});

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <future>
 #include <memory>
+#include <tuple>
 #include <type_traits>
 
 #include "webgpu/webgpu.h"
@@ -194,6 +195,25 @@ struct Kernel {
   std::future<void> future;
 };
 
+struct KernelPipelineDesc {
+  size_t numShaders;
+  const std::unique_ptr<ShaderCode> shader; // length = numShaders
+  const std::unique_ptr<GPUTensor> inputs; // length = sum of numInputs[]
+  const std::unique_ptr<size_t> numInputs;  // length = numShaders
+  const std::unique_ptr<GPUTensor> output;  // length = numShaders
+  const std::unique_ptr<void*> params;      // length = numShaders
+                             // use void* so params can be different types for
+                             // each shader
+  const std::unique_ptr<size_t> paramSizes; // length = numShaders
+};
+
+// TODO(avh): implement equivalent of CreateKernel for KernelPipeline with
+// KernelPipelineDesc as input argument
+struct KernelPipeline {
+  const std::unique_ptr<Kernel> kernels;
+  size_t numKernels;
+};
+
 struct NoParam {};
 
 template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
@@ -313,8 +333,8 @@ void Wait(GPUContext &ctx, std::future<void> &future) {
 /* Copy from GPU to CPU.
 
   A more performant version of this would prepare the command buffer once and
-  reuse it for multiple readbacks. This version is for one-offs in testing and non-hot
-  paths.
+  reuse it for multiple readbacks. This version is for one-offs in testing and
+  non-hot paths.
 */
 void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;
@@ -384,12 +404,12 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));
 }
 
-// TODO(avh): add a version that takes multiple kernels
-template <typename ParamsType = NoParam>
+
 Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const GPUTensor *inputs, size_t numInputs,
                      const GPUTensor &output,
-                     const ParamsType &params = ParamsType{}) {
+                     const void* params,
+                     size_t paramsSize) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op;
@@ -403,7 +423,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   // paramIndex is undefined
   // unless ParamsType
   // is not NoParam
-  if constexpr (!IsNoParam<ParamsType>) {
+  if (paramsSize > 0) {
     numBuffers += 1;            // parameters buffer
     paramIndex = numInputs + 1; // == numBuffers - 1
     assert(outputIndex == numBuffers - 2);
@@ -414,7 +434,6 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   op.bufferSizes = std::make_unique<size_t[]>(numBuffers);
   op.numBuffers = numBuffers;
   op.numInputs = numInputs;
-  size_t paramsBufferSize = sizeof(ParamsType);
   spdlog::info("Create the bind group layout");
   std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBuffers);
   // Create layout entries for input buffers
@@ -439,7 +458,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
               .minBindingSize = output.data.size,
           },
   };
-  if constexpr (!IsNoParam<ParamsType>) {
+  if (paramsSize > 0) {
     spdlog::info("Create layout entry for the params buffer");
     // Create layout entry for the params buffer
     bgLayoutEntries[paramIndex] = WGPUBindGroupLayoutEntry{
@@ -448,7 +467,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
         .buffer =
             WGPUBufferBindingLayout{
                 .type = WGPUBufferBindingType_Uniform,
-                .minBindingSize = paramsBufferSize,
+                .minBindingSize = paramsSize,
             },
     };
   }
@@ -471,22 +490,22 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   op.outputSize = output.data.size;
   op.bufferSizes[outputIndex] = output.data.size;
   // Create a buffer for the Params struct
-  if constexpr (!IsNoParam<ParamsType>) {
+  if (paramsSize > 0) {
     WGPUBufferDescriptor paramsBufferDesc = {
         .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
-        .size = paramsBufferSize,
+        .size = paramsSize,
         .mappedAtCreation = false,
     };
     op.buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
-    op.bufferSizes[paramIndex] = paramsBufferSize;
+    op.bufferSizes[paramIndex] = paramsSize;
 
     spdlog::info("Create the params buffer");
     spdlog::info("param index {}", paramIndex);
     // spdlog::info("buffers {}", op.buffers[paramIndex]);
     // spdlog::info("params {}", params);
-    // spdlog::info("paramsBufferSize {}", paramsBufferSize);
-    wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, &params,
-                         paramsBufferSize);
+    // spdlog::info("paramsSize {}", paramsBufferSize);
+    wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params,
+                         paramsSize);
     spdlog::info("Params buffer written");
   } else {
     spdlog::info("No params buffer needed");
@@ -502,12 +521,12 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
         .size = op.bufferSizes[i],
     };
   }
-  if constexpr (!IsNoParam<ParamsType>) {
+  if (paramsSize > 0) {
     bindGroupEntries[paramIndex] = WGPUBindGroupEntry{
         .binding = static_cast<uint32_t>(numBuffers - 1),
         .buffer = op.buffers[paramIndex],
         .offset = 0,
-        .size = paramsBufferSize,
+        .size = paramsSize,
     };
   }
   WGPUBindGroupDescriptor bindGroupDesc = {
@@ -585,15 +604,24 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
 
-  // Write the params data to the params buffer
-  if (!IsNoParam<ParamsType>) {
-    // Write the params data to the params buffer
-    wgpuQueueWriteBuffer(ctx.queue, op.buffers[op.numInputs + 1], 0, &params,
-                         sizeof(ParamsType));
-  }
-
   spdlog::info("Exiting PrepareKernel");
   return op;
+}
+
+template <typename ParamsType = NoParam>
+Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+                     const GPUTensor *inputs, size_t numInputs,
+                     const GPUTensor &output,
+                     const ParamsType &params = ParamsType{}) {
+  if constexpr (!IsNoParam<ParamsType>) {
+    spdlog::info("Using params of size {} bytes", sizeof(ParamsType));
+    return PrepareKernel(ctx, shader, inputs, numInputs, output, reinterpret_cast<const void*>(&params),
+                         sizeof(ParamsType));
+  } else {
+    spdlog::info("No params");
+    return PrepareKernel(ctx, shader, inputs, numInputs, output, nullptr,
+                         0);
+  }
 }
 
 /*
@@ -604,7 +632,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const std::array<GPUTensor, numInputs> &inputs,
                      const GPUTensor &output,
                      const ParamsType &params = ParamsType{}) {
-  return PrepareKernel(ctx, shader, inputs.data(), numInputs, output, params);
+  return PrepareKernel<ParamsType>(ctx, shader, inputs.data(), numInputs, output, params);
 }
 
 void LaunchKernel(GPUContext &ctx, Kernel &op) {

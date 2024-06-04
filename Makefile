@@ -34,7 +34,7 @@ watch-demo: check-entr
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_DEMO) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)"
 
 watch-tests:
-	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
+	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 emscripten:
 	mkdir -p build && cd build && cmake .. $(EMSCRIPTEN_FLAGS) -DIMPLEMENTATION=emscripten && make -j$(NUM_JOBS)
