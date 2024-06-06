@@ -2,6 +2,7 @@ NUM_JOBS=$(shell nproc)
 CXX=clang++
 TARGET_DEMO=run_demo
 TARGET_TESTS=run_tests
+USE_LOCAL=-DUSE_LOCAL_LIBS=ON
 
 .PHONY: demo tests libgpu build-debug build check-entr watch-demo watch-tests clean
 
@@ -36,6 +37,10 @@ watch-demo: check-entr
 watch-tests:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
+# TODO(avh): fix
+watch-tests-local:
+	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) -DUSE_LOCAL_LIBS=ON && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
+
 emscripten:
 	mkdir -p build && cd build && cmake .. $(EMSCRIPTEN_FLAGS) -DIMPLEMENTATION=emscripten && make -j$(NUM_JOBS)
 
@@ -43,6 +48,6 @@ clean-build:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
 
 clean:
-	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/*
+	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/*
 
 

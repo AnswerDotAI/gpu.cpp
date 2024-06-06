@@ -3,56 +3,49 @@ project(gpu)
 
 include(FetchContent)
 message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
-set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/fetchcontent")
 
-option(BUILD_MODE "'local' or 'remote' git fetch for builds")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with LSP
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
-option(IMPLEMENTATION "WebGPU implementation to use" "dawn")
-IF(NOT IMPLEMENTATION)
-  set(IMPLEMENTATION "dawn")
+option(USE_LOCAL_LIBS "Use local libraries instead of fetching from the internet" OFF)
+
+# Define paths for local and remote repositories
+set(WEBGPU_DIST_LOCAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/local/WebGPU-distribution")
+set(SPDLOG_LOCAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/local/spdlog")
+
+# Conditional assignment based on USE_LOCAL_LIBS
+if(USE_LOCAL_LIBS)
+  set(WEBGPU_DIST_GIT_REPO ${WEBGPU_DIST_LOCAL_PATH})
+  set(SPDLOG_GIT_REPO ${SPDLOG_LOCAL_PATH})
+else()
+  set(WEBGPU_DIST_GIT_REPO "https://github.com/eliemichel/WebGPU-distribution")
+  set(SPDLOG_GIT_REPO "https://github.com/gabime/spdlog.git")
+endif()
+
+
+option(WEBGPU_TAG "WebGPU distribution tag to use")
+IF (NOT WEBGPU_TAG)
+  set(WEBGPU_TAG "dawn")
 ENDIF()
+message(STATUS "Using WebGPU distribution tag: ${WEBGPU_TAG}")
 
-IF(IMPLEMENTATION STREQUAL "dawn")
-
-  message(STATUS "Using Dawn as WebGPU implementation")
-  FetchContent_Declare(
-    webgpu-backend-dawn
-    GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-    # GIT_TAG        dawn-6376
-    GIT_TAG        dawn
-    GIT_SHALLOW    TRUE
-  )
-  FetchContent_MakeAvailable(webgpu-backend-dawn)
-
-ELSEIF(IMPLEMENTATION STREQUAL "wgpu")
-  message(STATUS "Using WGPU as WebGPU implementation")
-  FetchContent_Declare(
-    webgpu-backend-wgpu
-    GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-    GIT_TAG       wgpu
-    GIT_SHALLOW   TRUE
-  )
-  FetchContent_MakeAvailable(webgpu-backend-wgpu)
-ELSEIF(IMPLEMENTATION STREQUAL "emscripten")
-  message(STATUS "Using Emscripten as WebGPU implementation")
-  FetchContent_Declare(
-    webgpu-backend-emscripten
-    GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
-    GIT_TAG       emscripten
-    GIT_SHALLOW   TRUE
-  )
-  FetchContent_MakeAvailable(webgpu-backend-emscripten)
-ENDIF()
+FetchContent_Declare(
+  webgpu-backend-dawn
+  GIT_REPOSITORY  ${WEBGPU_DIST_GIT_REPO}
+  GIT_TAG        ${WEBGPU_TAG}
+  GIT_SHALLOW    TRUE
+  SOURCE_DIR     "{WEBGPU_DIST_LOCAL_PATH}"
+)
+FetchContent_MakeAvailable(webgpu-backend-dawn)
 
 FetchContent_Declare(spdlog
-  GIT_REPOSITORY https://github.com/gabime/spdlog.git 
-  # GIT_TAG 27cb4c76708608465c413f6d0e6b8d99a4d84302
+  GIT_REPOSITORY ${SPDLOG_GIT_REPO}
   GIT_TAG c3aed4b68373955e1cc94307683d44dca1515d2b
+  GIT_SHALLOW TRUE
+  SOURCE_DIR "${SPDLOG_LOCAL_PATH}"
 )
 FetchContent_MakeAvailable(spdlog)
 

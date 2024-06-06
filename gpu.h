@@ -24,11 +24,6 @@ static constexpr size_t kMaxRank = 8;
 
 struct GPUContext;
 
-struct ShaderCode {
-  std::string code;
-  size_t wgSize; // workgroup size
-};
-
 struct Shape {
   std::array<size_t, kMaxRank> data = {0};
   size_t rank = 0;
@@ -181,6 +176,11 @@ struct CallbackDataDyn {
   std::promise<void> *promise;
 };
 
+struct ShaderCode {
+  std::string code;
+  size_t wgSize; // workgroup size
+};
+
 struct Kernel {
   std::unique_ptr<WGPUBuffer[]> buffers;
   std::unique_ptr<size_t[]> bufferSizes;
@@ -198,12 +198,12 @@ struct Kernel {
 struct KernelPipelineDesc {
   size_t numShaders;
   const std::unique_ptr<ShaderCode[]> shader; // length = numShaders
-  const std::unique_ptr<GPUTensor[]> inputs; // length = sum of numInputs[]
+  const std::unique_ptr<GPUTensor[]> inputs;  // length = sum of numInputs[]
   const std::unique_ptr<size_t[]> numInputs;  // length = numShaders
   const std::unique_ptr<GPUTensor[]> output;  // length = numShaders
-  const std::unique_ptr<void*> params;      // length = numShaders
-                             // use void* so params can be different types for
-                             // each shader
+  const std::unique_ptr<void *> params;       // length = numShaders
+                                        // use void* so params can be different
+                                        // types for each shader
   const std::unique_ptr<size_t[]> paramSizes; // length = numShaders
 };
 
@@ -211,13 +211,17 @@ struct KernelPipelineDesc {
 // KernelPipelineDesc as input argument
 struct KernelPipeline {
   size_t numShaders;
-  std::unique_ptr<WGPUBuffer[]> buffers; // length = sum of numBuffers[]
-  std::unique_ptr<size_t[]> bufferSizes; // length = sum of numBuffers[]
+  std::unique_ptr<WGPUBuffer[]> buffers;       // length = sum of numBuffers[]
+  std::unique_ptr<size_t[]> bufferSizes;       // length = sum of numBuffers[]
   std::unique_ptr<WGPUBuffer[]> outputBuffers; // length = numShaders
-  std::unique_ptr<size_t []> outputSize; // length = numShaders
-  std::unique_ptr<size_t[]> numBuffers; // length = numShaders, value[i] = numInputs[i] + 1 (output) + 0 or 1 depending on whether paramSizes is > 0 or not. paramSizes = 0 means no params buffer
+  std::unique_ptr<size_t[]> outputSize;        // length = numShaders
+  std::unique_ptr<size_t[]>
+      numBuffers; // length = numShaders,
+                  // value[i] = numInputs[i] + 1 (output) + 0 or 1
+                  //    depending on whether paramSizes is > 0 or not.
+                  //    paramSizes = 0 means no params buffer
   std::unique_ptr<size_t[]> numInputs; // length = numShaders
-  WGPUCommandBuffer commandBuffer; // All kernels in the pipeline
+  WGPUCommandBuffer commandBuffer;     // All kernels in the pipeline
   WGPUBuffer readbackBuffer; // Readback buffer for the final output buffer
   CallbackDataDyn callbackData;
   std::promise<void> promise;
@@ -404,6 +408,7 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   Wait(ctx, op.future);
 }
 
+// Convenience wrapper for array outputs
 template <size_t N>
 void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));
@@ -414,11 +419,9 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
                        tensor.data.size);
 }
 
-
 Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const GPUTensor *inputs, size_t numInputs,
-                     const GPUTensor &output,
-                     const void* params,
+                     const GPUTensor &output, const void *params,
                      size_t paramsSize) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
@@ -514,8 +517,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     // spdlog::info("buffers {}", op.buffers[paramIndex]);
     // spdlog::info("params {}", params);
     // spdlog::info("paramsSize {}", paramsBufferSize);
-    wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params,
-                         paramsSize);
+    wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params, paramsSize);
     spdlog::info("Params buffer written");
   } else {
     spdlog::info("No params buffer needed");
@@ -607,9 +609,11 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder, (outN + (shader.wgSize - 1)) / shader.wgSize, 1, 1);
     wgpuComputePassEncoderEnd(computePassEncoder);
+    /*
     wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, op.outputBuffer, 0,
                                          op.readbackBuffer, 0,
                                          op.bufferSizes[outputIndex]);
+                                         */
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
@@ -625,12 +629,12 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     spdlog::info("Using params of size {} bytes", sizeof(ParamsType));
-    return PrepareKernel(ctx, shader, inputs, numInputs, output, reinterpret_cast<const void*>(&params),
+    return PrepareKernel(ctx, shader, inputs, numInputs, output,
+                         reinterpret_cast<const void *>(&params),
                          sizeof(ParamsType));
   } else {
     spdlog::info("No params");
-    return PrepareKernel(ctx, shader, inputs, numInputs, output, nullptr,
-                         0);
+    return PrepareKernel(ctx, shader, inputs, numInputs, output, nullptr, 0);
   }
 }
 
@@ -642,89 +646,182 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const std::array<GPUTensor, numInputs> &inputs,
                      const GPUTensor &output,
                      const ParamsType &params = ParamsType{}) {
-  return PrepareKernel<ParamsType>(ctx, shader, inputs.data(), numInputs, output, params);
+  return PrepareKernel<ParamsType>(ctx, shader, inputs.data(), numInputs,
+                                   output, params);
 }
 
-KernelPipeline PrepareKernelPipeline(GPUContext &ctx, const KernelPipelineDesc& desc) {
-    WGPUDevice device = ctx.device;
-    WGPUQueue queue = ctx.queue;
-    KernelPipeline pipeline;
+KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
+                                     const KernelPipelineDesc &desc) {
+  WGPUDevice device = ctx.device;
+  WGPUQueue queue = ctx.queue;
+  KernelPipeline pipeline;
 
-    pipeline.numShaders = desc.numShaders;
-    size_t totalBuffers = 0;
-    pipeline.numBuffers = std::make_unique<size_t[]>(desc.numShaders);
-    pipeline.numInputs = std::make_unique<size_t[]>(desc.numShaders);
-    pipeline.outputBuffers = std::make_unique<WGPUBuffer[]>(desc.numShaders);
-    pipeline.outputSize = std::make_unique<size_t[]>(desc.numShaders);
+  pipeline.numShaders = desc.numShaders;
+  size_t totalBuffers = 0;
+  pipeline.numBuffers = std::make_unique<size_t[]>(desc.numShaders);
+  pipeline.numInputs = std::make_unique<size_t[]>(desc.numShaders);
+  pipeline.outputBuffers = std::make_unique<WGPUBuffer[]>(desc.numShaders);
+  pipeline.outputSize = std::make_unique<size_t[]>(desc.numShaders);
 
-    // Calculate total number of buffers
-    for (size_t i = 0; i < desc.numShaders; ++i) {
-        pipeline.numInputs[i] = desc.numInputs[i];
-        pipeline.numBuffers[i] = desc.numInputs[i] + 1; // +1 for output buffer
-        if (desc.paramSizes[i] > 0) {
-            pipeline.numBuffers[i] += 1; // +1 for params buffer
-        }
-        totalBuffers += pipeline.numBuffers[i];
+  // Calculate total number of buffers
+  for (size_t i = 0; i < desc.numShaders; ++i) {
+    pipeline.numInputs[i] = desc.numInputs[i];
+    pipeline.numBuffers[i] = desc.numInputs[i] + 1; // +1 for output buffer
+    if (desc.paramSizes[i] > 0) {
+      // == 0 => shader does not have a parameter input
+      pipeline.numBuffers[i] += 1; // +1 for params buffer
+    }
+    totalBuffers += pipeline.numBuffers[i];
+  }
+
+  pipeline.buffers = std::make_unique<WGPUBuffer[]>(totalBuffers);
+  pipeline.bufferSizes = std::make_unique<size_t[]>(totalBuffers);
+
+  // Create command encoder for all kernels
+  WGPUCommandEncoder commandEncoder =
+      wgpuDeviceCreateCommandEncoder(device, nullptr);
+  size_t bufferIndex = 0;
+  commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
+
+  // Iterate over all shaders in the pipeline
+  for (size_t shaderIndex = 0; shaderIndex < desc.numShaders; ++shaderIndex) {
+    // Create buffers and bind group for each shader
+    size_t outputIndex = desc.numInputs[shaderIndex];
+    size_t paramIndex = desc.numInputs[shaderIndex] + 1;
+
+    // Create layout entries for input buffers
+    spdlog::info("Create the bind group layout");
+    std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(
+        pipeline.numBuffers[shaderIndex]);
+    for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
+      bgLayoutEntries[i] = WGPUBindGroupLayoutEntry{
+          .binding = static_cast<uint32_t>(i),
+          .visibility = WGPUShaderStage_Compute,
+          .buffer = WGPUBufferBindingLayout{
+              .type = (i == paramIndex) ? WGPUBufferBindingType_Storage
+                                        : WGPUBufferBindingType_Uniform,
+              .minBindingSize = i < outputIndex ? desc.inputs[i].data.size
+                                : i == outputIndex
+                                    ? desc.output[shaderIndex].data.size
+                                    : desc.paramSizes[shaderIndex],
+          }};
     }
 
-    pipeline.buffers = std::make_unique<WGPUBuffer[]>(totalBuffers);
-    pipeline.bufferSizes = std::make_unique<size_t[]>(totalBuffers);
+    WGPUBindGroupLayoutDescriptor bgLayoutDesc = {
+        .entryCount = static_cast<uint32_t>(bgLayoutEntries.size()),
+        .entries = bgLayoutEntries.data()};
+    WGPUBindGroupLayout bgLayout =
+        wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
 
-    // Create command encoder for all kernels
-    WGPUCommandEncoder commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
-    size_t bufferIndex = 0;
-
-    for (size_t shaderIndex = 0; shaderIndex < desc.numShaders; ++shaderIndex) {
-        // Create buffers and bind group for each shader
-        size_t outputIndex = desc.numInputs[shaderIndex];
-        size_t paramIndex = desc.numInputs[shaderIndex] + 1;
-
-        // Set up buffers
-        for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIndex]; ++inputIndex) {
-            pipeline.buffers[bufferIndex] = desc.inputs[inputIndex].data.buffer;
-            pipeline.bufferSizes[bufferIndex] = desc.inputs[inputIndex].data.size;
-            bufferIndex++;
-        }
-
-        // Set up output buffer
-        pipeline.outputBuffers[shaderIndex] = desc.output[shaderIndex].data.buffer;
-        pipeline.outputSize[shaderIndex] = desc.output[shaderIndex].data.size;
-        pipeline.buffers[bufferIndex] = pipeline.outputBuffers[shaderIndex];
-        pipeline.bufferSizes[bufferIndex] = pipeline.outputSize[shaderIndex];
-        bufferIndex++;
-
-        // Set up params buffer if required
-        if (desc.paramSizes[shaderIndex] > 0) {
-            WGPUBufferDescriptor paramsBufferDesc = {
-                .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
-                .size = desc.paramSizes[shaderIndex],
-                .mappedAtCreation = false,
-            };
-            pipeline.buffers[bufferIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
-            pipeline.bufferSizes[bufferIndex] = desc.paramSizes[shaderIndex];
-            bufferIndex++;
-        }
-
-        // TODO(avh):
-        // Modify commandBuffer:
-        // bind group layouts, bind groups, commandBuffer, computePipeline, ..
+    spdlog::info("Create input and output buffers");
+    for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIndex];
+         ++inputIndex) {
+      pipeline.buffers[bufferIndex] = desc.inputs[inputIndex].data.buffer;
+      pipeline.bufferSizes[bufferIndex] = desc.inputs[inputIndex].data.size;
+      bufferIndex++;
+    }
+    // Set up output buffer
+    pipeline.outputBuffers[shaderIndex] = desc.output[shaderIndex].data.buffer;
+    pipeline.outputSize[shaderIndex] = desc.output[shaderIndex].data.size;
+    pipeline.buffers[bufferIndex] = pipeline.outputBuffers[shaderIndex];
+    pipeline.bufferSizes[bufferIndex] = pipeline.outputSize[shaderIndex];
+    bufferIndex++;
+    // Set up params buffer if required
+    if (desc.paramSizes[shaderIndex] > 0) {
+      WGPUBufferDescriptor paramsBufferDesc = {
+          .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
+          .size = desc.paramSizes[shaderIndex],
+          .mappedAtCreation = false,
+      };
+      pipeline.buffers[bufferIndex] =
+          wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
+      pipeline.bufferSizes[bufferIndex] = desc.paramSizes[shaderIndex];
+      bufferIndex++;
+      spdlog::info("Params buffer written");
+    } else {
+      spdlog::info("No params buffer needed");
     }
 
-    // Finish command buffer setup
-    pipeline.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-    
-    // Set up promise and future for asynchronous handling
-    pipeline.promise = std::promise<void>();
-    pipeline.future = pipeline.promise.get_future();
+    spdlog::info("Create a bind group");
+    WGPUBindGroup bindGroup;
+    {
+      std::vector<WGPUBindGroupEntry> bindGroupEntries(
+          pipeline.numBuffers[shaderIndex]);
+      for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
+        bindGroupEntries[i] = WGPUBindGroupEntry{
+            .binding = static_cast<uint32_t>(bufferIndex),
+            .buffer = pipeline.buffers[i + bufferIndex -
+                                       pipeline.numBuffers[shaderIndex]],
+            .offset = 0,
+            .size = pipeline.bufferSizes[i + bufferIndex -
+                                         pipeline.numBuffers[shaderIndex]]};
+      }
 
-    return pipeline;
+      WGPUBindGroupDescriptor bindGroupDesc = {
+          .layout = bgLayout,
+          .entryCount = static_cast<uint32_t>(bindGroupEntries.size()),
+          .entries = bindGroupEntries.data()};
+      bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
+    }
+
+    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
+        .bindGroupLayoutCount = 1, .bindGroupLayouts = &bgLayout};
+    WGPUPipelineLayout pipelineLayout =
+        wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
+
+    // Create shader module
+    WGPUShaderModuleWGSLDescriptor wgslDesc = {
+        .code = desc.shader[shaderIndex].code.c_str(),
+    };
+    wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+    WGPUShaderModuleDescriptor shaderModuleDesc = {
+        .nextInChain = &wgslDesc.chain, .label = "shader"};
+    WGPUShaderModule shaderModule =
+        wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
+
+    // ComputePipeline
+    WGPUComputePipelineDescriptor computePipelineDesc = {
+        .layout = pipelineLayout,
+        .compute = {.module = shaderModule, .entryPoint = "main"}};
+    WGPUComputePipeline computePipeline =
+        wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
+
+    WGPUComputePassEncoder computePassEncoder;
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
+    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
+                                       nullptr);
+    wgpuComputePassEncoderDispatchWorkgroups(
+        computePassEncoder,
+        (pipeline.outputSize[shaderIndex] +
+         (desc.shader[shaderIndex].wgSize - 1)) /
+            desc.shader[shaderIndex].wgSize,
+        1, 1);
+  }
+
+  pipeline.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+  check(pipeline.commandBuffer, "Create command buffer", __FILE__, __LINE__);
+
+  // Finish command buffer setup
+  pipeline.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+
+  spdlog::info("Create the readback buffer");
+  {
+    WGPUBufferDescriptor readbackBufferDescriptor = {
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
+        .size = pipeline.outputSize[pipeline.numShaders - 1],
+    };
+    pipeline.readbackBuffer =
+        wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
+  }
+
+  // Set up promise and future for asynchronous handling
+  pipeline.promise = std::promise<void>();
+  pipeline.future = pipeline.promise.get_future();
+
+  return pipeline;
 }
 
 void LaunchKernel(GPUContext &ctx, Kernel &op) {
-
-  // Total size of the output buffer in bytes
-  uint32_t bufferSizeOut = static_cast<uint32_t>(op.outputSize);
-
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
 
@@ -743,6 +840,28 @@ void LaunchKernel(GPUContext &ctx, Kernel &op) {
         data->promise->set_value();
       },
       &op.callbackData);
+}
+
+void LaunchKernelPipeline(GPUContext &ctx, KernelPipeline &pipeline) {
+  // Submit the command buffer
+  wgpuQueueSubmit(ctx.queue, 1, &pipeline.commandBuffer);
+
+  pipeline.callbackData = CallbackDataDyn{
+      pipeline.readbackBuffer, pipeline.outputSize[pipeline.numShaders - 1],
+      nullptr, &pipeline.promise};
+
+  // Set up the callback for when the work is done
+  wgpuQueueOnSubmittedWorkDone(
+      ctx.queue,
+      [](WGPUQueueWorkDoneStatus status, void *callbackData) {
+        spdlog::info("QueueOnSubmittedWorkDone status: {}",
+                     WGPUQueueWorkDoneStatus_Success == status);
+        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+              __FILE__, __LINE__);
+        const auto *data = static_cast<CallbackDataDyn *>(callbackData);
+        data->promise->set_value();
+      },
+      &pipeline.callbackData);
 }
 
 } // namespace gpu
