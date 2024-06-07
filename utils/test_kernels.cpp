@@ -33,8 +33,9 @@ void TestResidual(GPUContext &ctx) {
   GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
   ShaderCode shaderCode = ResidualShader(workgroupSize, "f32");
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.code.c_str());
-  Kernel op = PrepareKernel<NoParam, 2>(ctx, ResidualShader(workgroupSize, "f32"),
-                            std::array<GPUTensor, 2>{input1, input2}, output, {});
+  Kernel op = PrepareKernel<NoParam, 2>(
+      ctx, ResidualShader(workgroupSize, "f32"),
+      std::array<GPUTensor, 2>{input1, input2}, output, {});
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -117,8 +118,10 @@ void TestTensorPool(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with Tensor Pool Test");
   std::array<float, 6> targetValue;
   ToCPU(ctx, tInit, targetValue.data(), sizeof(initValue));
-  log(kDefLog, kInfo, "%s",show<float, 2, 3>(initValue, "initialized GPU value").c_str());
-  log(kDefLog, kInfo, "%s", show<float, 2, 3>(targetValue, "To CPU from GPU").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, 2, 3>(initValue, "initialized GPU value").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, 2, 3>(targetValue, "To CPU from GPU").c_str());
   log(kDefLog, kInfo, "Done with Tensor Pool Test");
 }
 
@@ -137,7 +140,8 @@ void TestGelu(GPUContext &ctx) {
   Wait(ctx, op.future);
   ToCPU(ctx, geluOut, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s", show<float, N, 1>(inputArr, "GELU Input").c_str());
-  log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "GELU Output").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, N, 1>(outputArr, "GELU Output").c_str());
   std::array<float, N> refOutputArr;
   gelu_forward_cpu(refOutputArr.data(), inputArr.data(), N);
   bool passed = isclose(outputArr.data(), refOutputArr.data(), N);
@@ -173,14 +177,21 @@ void TestLayerNorm(GPUContext &ctx) {
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s", show<float, N, C>(inputArr, "LayerNorm Input").c_str());
-  log(kDefLog, kInfo, "%s", show<float, 1, C>(weightArr, "LayerNorm Weight").c_str());
-  log(kDefLog, kInfo, "%s", show<float, 1, C>(biasArr, "LayerNorm Bias").c_str());
-  log(kDefLog, kInfo, "%s", show<float, N, C>(outputArr, "LayerNorm Output").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, N, C>(inputArr, "LayerNorm Input").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, 1, C>(weightArr, "LayerNorm Weight").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, 1, C>(biasArr, "LayerNorm Bias").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, N, C>(outputArr, "LayerNorm Output").c_str());
   std::array<float, N * C> refOutputArr;
   layernorm_forward_cpu(refOutputArr.data(), inputArr.data(), weightArr.data(),
                         biasArr.data(), N, 1, C);
-  log(kDefLog, kInfo, "%s", show<float, N, C>(refOutputArr, "LayerNorm Reference Implementation Output").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, N, C>(refOutputArr,
+                        "LayerNorm Reference Implementation Output")
+          .c_str());
   bool passed = isclose(outputArr.data(), refOutputArr.data(), N * C);
   assert(passed);
   log(kDefLog, kInfo, "LayerNorm passed? %d", passed);
@@ -208,16 +219,18 @@ void TestSoftmax(GPUContext &ctx) {
   LaunchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s", show<float, B * T, C>(inputArr, "Softmax Input").c_str());
-  log(kDefLog, kInfo, "%s", show<float, B * T, C>(outputArr, "Softmax Output").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(inputArr, "Softmax Input").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(outputArr, "Softmax Output").c_str());
   std::array<float, B * T * C> refOutputArr;
   softmax_forward_cpu(refOutputArr.data(), inputArr.data(), B * T, C);
-  log(kDefLog, kInfo, "%s", show<float, B * T, C>(refOutputArr, "Softmax reference Output").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(refOutputArr, "Softmax reference Output").c_str());
   bool passed = isclose(outputArr.data(), refOutputArr.data(), B * T * C);
   assert(passed);
   log(kDefLog, kInfo, "Softmax passed? %d", passed);
   log(kDefLog, kInfo, "Done with Softmax Test");
-
 }
 
 void TestAttention(GPUContext &ctx) {
@@ -239,9 +252,8 @@ void TestMultiKernel(GPUContext &ctx) {
     uint32_t N;
     uint32_t C;
   };
-  static constexpr size_t B = 6; // batch size
-  static constexpr size_t T = 8; // token index // TODO(avh): show can segfault
-                                 // if dimensions are too large
+  static constexpr size_t B = 6;    // batch size
+  static constexpr size_t T = 8;    // token index
   static constexpr size_t C = 3072; // input channels
   std::array<float, B * T * C> inputArr;
   std::array<float, B * T * C> outputArr;
@@ -255,20 +267,22 @@ void TestMultiKernel(GPUContext &ctx) {
   std::array<size_t, 1> numInputs = {1};
   // First test with the degenerate case of a 1-shader multi kernel
   MultiKernelDesc desc{
-    .numShaders = 1,
-    .shader = &shader,
-    .inputs = &input,
-    .numInputs = numInputs.data(),
-    .output = &output,
-    .params = &param,
-    .paramSizes = &size,
+      .numShaders = 1,
+      .shader = &shader,
+      .inputs = &input,
+      .numInputs = numInputs.data(),
+      .output = &output,
+      .params = &param,
+      .paramSizes = &size,
   };
   MultiKernel pipeline = PrepareMultiKernel(ctx, desc);
   LaunchMultiKernel(ctx, pipeline);
   Wait(ctx, pipeline.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s", show<float, B * T, C>(inputArr, "Softmax Input").c_str());
-  log(kDefLog, kInfo, "%s", show<float, B * T, C>(outputArr, "Softmax Output").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(inputArr, "Softmax Input").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(outputArr, "Softmax Output").c_str());
   log(kDefLog, kInfo, "Done with MultiKernel Test");
 
   // TODO(avh): multi kernel with multiple shaders

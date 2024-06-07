@@ -6,9 +6,9 @@
 #include <cstring>
 #include <future>
 #include <memory>
-#include <unordered_map>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 #include <vector>
 
 #include "webgpu/webgpu.h"
@@ -30,20 +30,16 @@ struct GPUContext;
 struct Shape {
   std::array<size_t, kMaxRank> data = {0};
   size_t rank = 0;
-
   Shape() = default;
-
   Shape(std::initializer_list<size_t> dims) {
     assert(dims.size() <= kMaxRank);
     std::copy(dims.begin(), dims.end(), data.begin());
     rank = dims.size();
   }
-
   size_t &operator[](size_t index) {
     assert(index < rank);
     return data[index];
   }
-
   const size_t &operator[](size_t index) const {
     assert(index < rank);
     return data[index];
@@ -200,14 +196,14 @@ struct Kernel {
 
 struct MultiKernelDesc {
   size_t numShaders;
-  const ShaderCode* shader; // pointer to (dynamic) array of length = numShaders
-  const GPUTensor* inputs;  // length = sum of numInputs[]
-  const size_t* numInputs;  // length = numShaders
-  const GPUTensor* output;  // length = numShaders
-  const void*  params;       // length = numShaders
-                                        // use void* so params can be different
-                                        // types for each shader
-  const size_t* paramSizes; // length = numShaders
+  const ShaderCode *shader; // pointer to (dynamic) array of length = numShaders
+  const GPUTensor *inputs;  // length = sum of numInputs[]
+  const size_t *numInputs;  // length = numShaders
+  const GPUTensor *output;  // length = numShaders
+  const void *params;       // length = numShaders
+                            // use void* so params can be different
+                            // types for each shader
+  const size_t *paramSizes; // length = numShaders
 };
 
 // TODO(avh): implement equivalent of CreateKernel for MultiKernel with
@@ -306,7 +302,8 @@ GPUContext CreateGPUContext(bool quietLogging = true,
       DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
       check(status == WGPURequestDeviceStatus_Success,
             "Could not get WebGPU device.", __FILE__, __LINE__);
-      log(kDefLog, kInfo, "Device Request succeeded %s", static_cast<void *>(device));
+      log(kDefLog, kInfo, "Device Request succeeded %s",
+          static_cast<void *>(device));
       devData.device = device;
       devData.requestEnded = true;
     };
@@ -437,8 +434,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
 
   size_t paramIndex;
   // paramIndex is undefined
-  // unless ParamsType
-  // is not NoParam
+  // unless ParamsType != NoParam
   if (paramsSize > 0) {
     numBuffers += 1;            // parameters buffer
     paramIndex = numInputs + 1; // == numBuffers - 1
@@ -607,11 +603,6 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder, (outN + (shader.wgSize - 1)) / shader.wgSize, 1, 1);
     wgpuComputePassEncoderEnd(computePassEncoder);
-    /*
-    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, op.outputBuffer, 0,
-                                         op.readbackBuffer, 0,
-                                         op.bufferSizes[outputIndex]);
-                                         */
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
@@ -648,8 +639,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                                    output, params);
 }
 
-MultiKernel PrepareMultiKernel(GPUContext &ctx,
-                                     const MultiKernelDesc &desc) {
+MultiKernel PrepareMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   MultiKernel pipeline;
@@ -685,7 +675,8 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx,
   for (size_t shaderIndex = 0; shaderIndex < desc.numShaders; ++shaderIndex) {
     // Create buffers and bind group for each shader
     size_t outputIndex = desc.numInputs[shaderIndex];
-    size_t paramIndex = desc.paramSizes[shaderIndex] > 0 ? desc.numInputs[shaderIndex] + 1 : -1;
+    size_t paramIndex =
+        desc.paramSizes[shaderIndex] > 0 ? desc.numInputs[shaderIndex] + 1 : -1;
 
     // Create layout entries for input buffers
     log(kDefLog, kInfo, "Create the bind group layout");
@@ -693,7 +684,8 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx,
         pipeline.numBuffers[shaderIndex]);
     for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
       log(kDefLog, kInfo, "Create layout entry for buffer %d", i);
-      log(kDefLog, kInfo, "i %d outputIndex %d i == paramIndex ? %d", i, outputIndex, i == paramIndex);
+      log(kDefLog, kInfo, "i %d outputIndex %d i == paramIndex ? %d", i,
+          outputIndex, i == paramIndex);
       bgLayoutEntries[i] = WGPUBindGroupLayoutEntry{
           .binding = static_cast<uint32_t>(i),
           .visibility = WGPUShaderStage_Compute,
@@ -734,7 +726,8 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx,
           .size = desc.paramSizes[shaderIndex],
           .mappedAtCreation = false,
       };
-      log(kDefLog, kInfo, "Create the params buffer at bufferIndex %d", bufferIndex);
+      log(kDefLog, kInfo, "Create the params buffer at bufferIndex %d",
+          bufferIndex);
       pipeline.buffers[bufferIndex] =
           wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
       pipeline.bufferSizes[bufferIndex] = desc.paramSizes[shaderIndex];
@@ -744,13 +737,13 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx,
       log(kDefLog, kInfo, "No params buffer needed");
     }
 
-
     log(kDefLog, kInfo, "Create bind group");
     WGPUBindGroup bindGroup;
     {
       std::vector<WGPUBindGroupEntry> bindGroupEntries(
           pipeline.numBuffers[shaderIndex]);
-      log(kDefLog, kInfo, "Number of buffers: %d", pipeline.numBuffers[shaderIndex]);
+      log(kDefLog, kInfo, "Number of buffers: %d",
+          pipeline.numBuffers[shaderIndex]);
       for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
         bindGroupEntries[i] = WGPUBindGroupEntry{
             .binding = static_cast<uint32_t>(i),
@@ -794,7 +787,7 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx,
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
 
     WGPUComputePassEncoder computePassEncoder =
-      wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
     log(kDefLog, kInfo, "Set pipeline");
     wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
     log(kDefLog, kInfo, "Set bind group");
@@ -810,6 +803,7 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx,
         1, 1);
     wgpuComputePassEncoderEnd(computePassEncoder);
 
+    // TODO(avh): add capability for synchronization between shaders
     log(kDefLog, kInfo, "End of shader %d", shaderIndex);
   }
 
@@ -845,7 +839,8 @@ void LaunchKernel(GPUContext &ctx, Kernel &op) {
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status success ? %d", WGPUQueueWorkDoneStatus_Success == status);
+        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status success ? %d",
+            WGPUQueueWorkDoneStatus_Success == status);
         check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
               __FILE__, __LINE__);
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
@@ -855,7 +850,6 @@ void LaunchKernel(GPUContext &ctx, Kernel &op) {
 }
 
 void LaunchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
-  // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &pipeline.commandBuffer);
 
   pipeline.callbackData = CallbackDataDyn{
@@ -868,8 +862,8 @@ void LaunchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
         log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status: %d",
             WGPUQueueWorkDoneStatus_Success == status);
-        check(status == WGPUQueueWorkDoneStatus_Success, "Check queue work success",
-              __FILE__, __LINE__);
+        check(status == WGPUQueueWorkDoneStatus_Success,
+              "Check queue work success", __FILE__, __LINE__);
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
         data->promise->set_value();
       },
