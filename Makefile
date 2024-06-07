@@ -2,9 +2,11 @@ NUM_JOBS=$(shell nproc)
 CXX=clang++
 TARGET_DEMO=run_demo
 TARGET_TESTS=run_tests
+TARGET_LIB=gpu
+TARGET_ALL=$(TARGET_DEMO) $(TARGET_TESTS) $(TARGET_LIB)
 USE_LOCAL=-DUSE_LOCAL_LIBS=ON
 
-.PHONY: demo tests libgpu build-debug build check-entr watch-demo watch-tests clean
+.PHONY: demo tests libgpu debug build check-entr watch-demo watch-tests clean
 
 FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX)
 FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON 
@@ -22,11 +24,14 @@ tests:
 libgpu:
 	mkdir -p build && cd build && cmake .. $(RELEASE_FLAGS) && make -j$(NUM_JOBS) gpu
 
-build-debug:
-	mkdir -p build && cd build && cmake .. $(DEBUG_FLAGS) && make -j$(NUM_JOBS)
+debug:
+	mkdir -p build && cd build && cmake .. $(DEBUG_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
 build:
-	mkdir -p build && cd build && cmake .. $(RELEASE_FLAGS) && make -j$(NUM_JOBS)
+	mkdir -p build && cd build && cmake .. $(RELEASE_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
+
+emscripten:
+	mkdir -p build && cd build && cmake .. $(EMSCRIPTEN_FLAGS) -DIMPLEMENTATION=emscripten && make -j$(NUM_JOBS) $(TARGET_ALL)
 
 check-entr:
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
@@ -41,13 +46,8 @@ watch-tests:
 watch-tests-local:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) -DUSE_LOCAL_LIBS=ON && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
-emscripten:
-	mkdir -p build && cd build && cmake .. $(EMSCRIPTEN_FLAGS) -DIMPLEMENTATION=emscripten && make -j$(NUM_JOBS)
-
 clean-build:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
 
 clean:
 	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/*
-
-

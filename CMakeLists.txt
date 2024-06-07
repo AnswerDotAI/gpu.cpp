@@ -37,17 +37,9 @@ FetchContent_Declare(
   GIT_REPOSITORY  ${WEBGPU_DIST_GIT_REPO}
   GIT_TAG        ${WEBGPU_TAG}
   GIT_SHALLOW    TRUE
-  SOURCE_DIR     "{WEBGPU_DIST_LOCAL_PATH}"
+  SOURCE_DIR     ${WEBGPU_DIST_LOCAL_PATH}
 )
 FetchContent_MakeAvailable(webgpu-backend-dawn)
-
-FetchContent_Declare(spdlog
-  GIT_REPOSITORY ${SPDLOG_GIT_REPO}
-  GIT_TAG c3aed4b68373955e1cc94307683d44dca1515d2b
-  GIT_SHALLOW TRUE
-  SOURCE_DIR "${SPDLOG_LOCAL_PATH}"
-)
-FetchContent_MakeAvailable(spdlog)
 
 option(FASTBUILD "Option to enable fast builds" OFF)
 if(FASTBUILD)
@@ -72,25 +64,21 @@ endif()
 
 # Hello world demo
 
-set(SRC_DEMO run.cpp gpu.h kernels.h utils/array_utils.h)
+set(SRC_DEMO run.cpp gpu.h kernels.h utils/array_utils.h utils/logging.h)
 add_executable(run_demo ${SRC_DEMO})
-# target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu spdlog)
-target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu spdlog::spdlog)
-
-# message(STATUS "SPDLOG_HEADERS_DIR: ${SPDLOG_HEADERS_DIR}")
-#target_include_directories(run_demo PRIVATE ${SPDLOG_HEADERS_DIR})
+target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu)
 
 # Test of basic kernels
 
-set(SRC_TESTS utils/test_kernels.cpp gpu.h kernels.h utils/array_utils.h)
+set(SRC_TESTS utils/test_kernels.cpp gpu.h kernels.h utils/array_utils.h utils/logging.h)
 add_executable(run_tests ${SRC_TESTS})
-target_link_libraries(run_tests PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu spdlog)
+target_link_libraries(run_tests PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu)
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 
 # Build the library target (libgpu)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(SRC_LIB gpu.h kernels.h utils/array_utils.h)
+set(SRC_LIB gpu.h kernels.h utils/array_utils.h utils/logging.h)
 add_library(gpu SHARED ${SRC_LIB})
-target_link_libraries(gpu PUBLIC ${LIBDL} ${CMAKE_DL_LIBS} webgpu spdlog)
+set_target_properties(gpu PROPERTIES LINKER_LANGUAGE CXX)

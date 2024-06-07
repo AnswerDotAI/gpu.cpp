@@ -1,16 +1,19 @@
 #ifndef GPU_H
 #define GPU_H
 
-#include "spdlog/spdlog.h"
 #include <array>
 #include <cassert>
 #include <cstring>
 #include <future>
 #include <memory>
+#include <unordered_map>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 #include "webgpu/webgpu.h"
+
+#include "utils/logging.h"
 
 namespace gpu {
 
@@ -80,29 +83,29 @@ struct GPUContext {
   WGPUQueue queue;
   TensorPool pool = TensorPool(this);
   ~GPUContext() {
-    spdlog::info("Destroying context");
+    log(kDefLog, kInfo, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
       wgpuInstanceProcessEvents(instance);
     } else {
-      spdlog::warn("Queue is null");
+      log(kDefLog, kWarn, "Queue is null");
     }
     if (device) {
       wgpuDeviceRelease(device);
       wgpuInstanceProcessEvents(instance);
     } else {
-      spdlog::warn("Device is null");
+      log(kDefLog, kWarn, "Device is null");
     }
     if (adapter) {
       wgpuAdapterRelease(adapter);
       wgpuInstanceProcessEvents(instance);
     } else {
-      spdlog::warn("Adapter is null");
+      log(kDefLog, kWarn, "Adapter is null");
     }
     if (instance) {
       wgpuInstanceRelease(instance);
     } else {
-      spdlog::warn("Instance is null");
+      log(kDefLog, kWarn, "Instance is null");
     }
   }
 };
@@ -114,7 +117,7 @@ GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
                  WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
                                               WGPUBufferUsage_CopyDst |
                                               WGPUBufferUsage_CopySrc) {
-  spdlog::trace("Creating tensor");
+  log(kDefLog, kInfo, "Creating tensor");
   size_t numElements = 1;
   for (size_t dim = 0; dim < shape.rank; dim++) {
     numElements *= shape.data[dim];
@@ -165,7 +168,7 @@ TensorPool::~TensorPool() {
   }
   for (auto &key : keys) {
     FreeTensor(*this, data[key]);
-    spdlog::trace("Freed tensor");
+    log(kDefLog, kTrace, "Freed tensor");
   }
 }
 
@@ -195,21 +198,21 @@ struct Kernel {
   std::future<void> future;
 };
 
-struct KernelPipelineDesc {
+struct MultiKernelDesc {
   size_t numShaders;
-  const std::unique_ptr<ShaderCode[]> shader; // length = numShaders
-  const std::unique_ptr<GPUTensor[]> inputs;  // length = sum of numInputs[]
-  const std::unique_ptr<size_t[]> numInputs;  // length = numShaders
-  const std::unique_ptr<GPUTensor[]> output;  // length = numShaders
-  const std::unique_ptr<void *> params;       // length = numShaders
+  const ShaderCode* shader; // pointer to (dynamic) array of length = numShaders
+  const GPUTensor* inputs;  // length = sum of numInputs[]
+  const size_t* numInputs;  // length = numShaders
+  const GPUTensor* output;  // length = numShaders
+  const void*  params;       // length = numShaders
                                         // use void* so params can be different
                                         // types for each shader
-  const std::unique_ptr<size_t[]> paramSizes; // length = numShaders
+  const size_t* paramSizes; // length = numShaders
 };
 
-// TODO(avh): implement equivalent of CreateKernel for KernelPipeline with
-// KernelPipelineDesc as input argument
-struct KernelPipeline {
+// TODO(avh): implement equivalent of CreateKernel for MultiKernel with
+// MultiKernelDesc as input argument
+struct MultiKernel {
   size_t numShaders;
   std::unique_ptr<WGPUBuffer[]> buffers;       // length = sum of numBuffers[]
   std::unique_ptr<size_t[]> bufferSizes;       // length = sum of numBuffers[]
@@ -236,10 +239,12 @@ inline void check(bool condition, const char *message,
                   const char *file = "unkown", int line = -1) {
   if constexpr (kDebug) {
     if (!condition) {
-      spdlog::error("Error in file {} line {}:\n{}", file, line, message);
+      log(kDefLog, kError, "Error in file %s line %d:\n%s", file, line,
+          message);
       exit(1);
     } else {
-      spdlog::trace("Success in file {} line {}:\n{}", file, line, message);
+      log(kDefLog, kTrace, "Success in file %s line %d:\n%s", file, line,
+          message);
     }
   }
 }
@@ -260,16 +265,14 @@ GPUContext CreateGPUContext(bool quietLogging = true,
                             const WGPURequestAdapterOptions &adapterOpts = {},
                             WGPUDeviceDescriptor devDescriptor = {}) {
   if (quietLogging) {
-    // TODO(avh): don't step on global logger
-    auto logger = spdlog::default_logger();
-    logger->set_level(spdlog::level::err);
+    kDefLog.level = kError;
   }
   GPUContext context;
   {
     context.instance = wgpuCreateInstance(&desc);
     check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
   }
-  spdlog::info("Requesting adapter");
+  log(kDefLog, kInfo, "Requesting adapter");
   {
     struct AdapterData {
       WGPUAdapter adapter = nullptr;
@@ -290,7 +293,7 @@ GPUContext CreateGPUContext(bool quietLogging = true,
     assert(adapterData.requestEnded);
     context.adapter = adapterData.adapter;
   }
-  spdlog::info("Requesting device");
+  log(kDefLog, kInfo, "Requesting device");
   {
     struct DeviceData {
       WGPUDevice device = nullptr;
@@ -303,7 +306,7 @@ GPUContext CreateGPUContext(bool quietLogging = true,
       DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
       check(status == WGPURequestDeviceStatus_Success,
             "Could not get WebGPU device.", __FILE__, __LINE__);
-      spdlog::info("Device Request succeeded {}", static_cast<void *>(device));
+      log(kDefLog, kInfo, "Device Request succeeded %s", static_cast<void *>(device));
       devData.device = device;
       devData.requestEnded = true;
     };
@@ -313,10 +316,10 @@ GPUContext CreateGPUContext(bool quietLogging = true,
             [](WGPUDevice const *device, WGPUDeviceLostReason reason,
                char const *message, void *userdata) {
               if (reason != WGPUDeviceLostReason_Destroyed) {
-                spdlog::error("Device lost (code {}):\n{}",
-                              static_cast<int>(reason), message);
+                log(kDefLog, kError, "Device lost (code %d):\n%s", reason,
+                    message);
               } else {
-                spdlog::info("Device destroyed: {}", message);
+                log(kDefLog, kInfo, "Device destroyed: %s", message);
               }
             },
     };
@@ -328,7 +331,7 @@ GPUContext CreateGPUContext(bool quietLogging = true,
     wgpuDeviceSetUncapturedErrorCallback(
         context.device,
         [](WGPUErrorType type, char const *message, void *devData) {
-          spdlog::error("Device uncaptured error: {}", message);
+          log(kDefLog, kError, "Device uncaptured error: %s", message);
         },
         nullptr);
   }
@@ -384,8 +387,8 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        spdlog::info("QueueOnSubmittedWorkDone status: {}",
-                     WGPUQueueWorkDoneStatus_Success == status);
+        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status == success ? %d",
+            WGPUQueueWorkDoneStatus_Success == status);
         check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
               __FILE__, __LINE__);
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
@@ -447,7 +450,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   op.bufferSizes = std::make_unique<size_t[]>(numBuffers);
   op.numBuffers = numBuffers;
   op.numInputs = numInputs;
-  spdlog::info("Create the bind group layout");
+  log(kDefLog, kInfo, "Create the bind group layout");
   std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBuffers);
   // Create layout entries for input buffers
   for (size_t i = 0; i < numInputs; ++i) {
@@ -472,7 +475,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
           },
   };
   if (paramsSize > 0) {
-    spdlog::info("Create layout entry for the params buffer");
+    log(kDefLog, kInfo, "Create layout entry for the params buffer");
     // Create layout entry for the params buffer
     bgLayoutEntries[paramIndex] = WGPUBindGroupLayoutEntry{
         .binding = static_cast<uint32_t>(paramIndex),
@@ -492,7 +495,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   WGPUBindGroupLayout bgLayout =
       wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
 
-  spdlog::info("Create input and output buffers");
+  log(kDefLog, kInfo, "Create input and output buffers");
   for (size_t i = 0; i < numInputs; ++i) {
     op.buffers[i] = inputs[i].data.buffer;
     op.bufferSizes[i] = inputs[i].data.size;
@@ -512,18 +515,13 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     op.buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
     op.bufferSizes[paramIndex] = paramsSize;
 
-    spdlog::info("Create the params buffer");
-    spdlog::info("param index {}", paramIndex);
-    // spdlog::info("buffers {}", op.buffers[paramIndex]);
-    // spdlog::info("params {}", params);
-    // spdlog::info("paramsSize {}", paramsBufferSize);
     wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params, paramsSize);
-    spdlog::info("Params buffer written");
+    log(kDefLog, kInfo, "Params buffer written");
   } else {
-    spdlog::info("No params buffer needed");
+    log(kDefLog, kInfo, "No params buffer needed");
   }
 
-  spdlog::info("Create the bind group");
+  log(kDefLog, kInfo, "Create the bind group");
   std::vector<WGPUBindGroupEntry> bindGroupEntries(numBuffers);
   for (size_t i = 0; i <= numInputs; ++i) { // <= for output buffer
     bindGroupEntries[i] = WGPUBindGroupEntry{
@@ -548,14 +546,14 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
   };
   WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
 
-  spdlog::info("Initializing promise and future");
+  log(kDefLog, kInfo, "Initializing promise and future");
   op.promise = std::promise<void>();
   op.future = op.promise.get_future();
 
-  spdlog::info("Preparing command buffer");
+  log(kDefLog, kInfo, "Preparing command bufer");
   size_t outN = size(output.shape);
 
-  spdlog::info("Create the readback buffer");
+  log(kDefLog, kInfo, "Create the readback buffer");
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
@@ -565,7 +563,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
         wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
   }
 
-  spdlog::info("Create the compute pipeline");
+  log(kDefLog, kInfo, "Create the compute pipeline");
   WGPUComputePipeline computePipeline;
   {
     WGPUPipelineLayout pipelineLayout;
@@ -592,7 +590,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     check(computePipeline, "Create compute pipeline", __FILE__, __LINE__);
   }
 
-  spdlog::info("Create the command encoder");
+  log(kDefLog, kInfo, "Create the command encoder");
   {
     // After beginning the compute pass, use
     // wgpuComputePassEncoderInsertDebugMarker instead of
@@ -618,7 +616,7 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
 
-  spdlog::info("Exiting PrepareKernel");
+  log(kDefLog, kInfo, "Exiting PrepareKernel");
   return op;
 }
 
@@ -628,12 +626,12 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const GPUTensor &output,
                      const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
-    spdlog::info("Using params of size {} bytes", sizeof(ParamsType));
+    log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
     return PrepareKernel(ctx, shader, inputs, numInputs, output,
                          reinterpret_cast<const void *>(&params),
                          sizeof(ParamsType));
   } else {
-    spdlog::info("No params");
+    log(kDefLog, kInfo, "No params");
     return PrepareKernel(ctx, shader, inputs, numInputs, output, nullptr, 0);
   }
 }
@@ -650,11 +648,11 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                                    output, params);
 }
 
-KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
-                                     const KernelPipelineDesc &desc) {
+MultiKernel PrepareMultiKernel(GPUContext &ctx,
+                                     const MultiKernelDesc &desc) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
-  KernelPipeline pipeline;
+  MultiKernel pipeline;
 
   pipeline.numShaders = desc.numShaders;
   size_t totalBuffers = 0;
@@ -687,18 +685,20 @@ KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
   for (size_t shaderIndex = 0; shaderIndex < desc.numShaders; ++shaderIndex) {
     // Create buffers and bind group for each shader
     size_t outputIndex = desc.numInputs[shaderIndex];
-    size_t paramIndex = desc.numInputs[shaderIndex] + 1;
+    size_t paramIndex = desc.paramSizes[shaderIndex] > 0 ? desc.numInputs[shaderIndex] + 1 : -1;
 
     // Create layout entries for input buffers
-    spdlog::info("Create the bind group layout");
+    log(kDefLog, kInfo, "Create the bind group layout");
     std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(
         pipeline.numBuffers[shaderIndex]);
     for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
+      log(kDefLog, kInfo, "Create layout entry for buffer %d", i);
+      log(kDefLog, kInfo, "i %d outputIndex %d i == paramIndex ? %d", i, outputIndex, i == paramIndex);
       bgLayoutEntries[i] = WGPUBindGroupLayoutEntry{
           .binding = static_cast<uint32_t>(i),
           .visibility = WGPUShaderStage_Compute,
           .buffer = WGPUBufferBindingLayout{
-              .type = (i == paramIndex) ? WGPUBufferBindingType_Storage
+              .type = (i != paramIndex) ? WGPUBufferBindingType_Storage
                                         : WGPUBufferBindingType_Uniform,
               .minBindingSize = i < outputIndex ? desc.inputs[i].data.size
                                 : i == outputIndex
@@ -713,7 +713,7 @@ KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
     WGPUBindGroupLayout bgLayout =
         wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
 
-    spdlog::info("Create input and output buffers");
+    log(kDefLog, kInfo, "Create input and output buffers");
     for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIndex];
          ++inputIndex) {
       pipeline.buffers[bufferIndex] = desc.inputs[inputIndex].data.buffer;
@@ -726,6 +726,7 @@ KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
     pipeline.buffers[bufferIndex] = pipeline.outputBuffers[shaderIndex];
     pipeline.bufferSizes[bufferIndex] = pipeline.outputSize[shaderIndex];
     bufferIndex++;
+
     // Set up params buffer if required
     if (desc.paramSizes[shaderIndex] > 0) {
       WGPUBufferDescriptor paramsBufferDesc = {
@@ -733,23 +734,26 @@ KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
           .size = desc.paramSizes[shaderIndex],
           .mappedAtCreation = false,
       };
+      log(kDefLog, kInfo, "Create the params buffer at bufferIndex %d", bufferIndex);
       pipeline.buffers[bufferIndex] =
           wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
       pipeline.bufferSizes[bufferIndex] = desc.paramSizes[shaderIndex];
       bufferIndex++;
-      spdlog::info("Params buffer written");
+      log(kDefLog, kInfo, "Params buffer written");
     } else {
-      spdlog::info("No params buffer needed");
+      log(kDefLog, kInfo, "No params buffer needed");
     }
 
-    spdlog::info("Create a bind group");
+
+    log(kDefLog, kInfo, "Create bind group");
     WGPUBindGroup bindGroup;
     {
       std::vector<WGPUBindGroupEntry> bindGroupEntries(
           pipeline.numBuffers[shaderIndex]);
+      log(kDefLog, kInfo, "Number of buffers: %d", pipeline.numBuffers[shaderIndex]);
       for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
         bindGroupEntries[i] = WGPUBindGroupEntry{
-            .binding = static_cast<uint32_t>(bufferIndex),
+            .binding = static_cast<uint32_t>(i),
             .buffer = pipeline.buffers[i + bufferIndex -
                                        pipeline.numBuffers[shaderIndex]],
             .offset = 0,
@@ -764,12 +768,14 @@ KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
       bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
     }
 
+    log(kDefLog, kInfo, "Create pipeline layout desc");
     WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
         .bindGroupLayoutCount = 1, .bindGroupLayouts = &bgLayout};
     WGPUPipelineLayout pipelineLayout =
         wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
 
     // Create shader module
+    log(kDefLog, kInfo, "Create shader module");
     WGPUShaderModuleWGSLDescriptor wgslDesc = {
         .code = desc.shader[shaderIndex].code.c_str(),
     };
@@ -780,31 +786,38 @@ KernelPipeline PrepareKernelPipeline(GPUContext &ctx,
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
 
     // ComputePipeline
+    log(kDefLog, kInfo, "Create compute pipeline desc");
     WGPUComputePipelineDescriptor computePipelineDesc = {
         .layout = pipelineLayout,
         .compute = {.module = shaderModule, .entryPoint = "main"}};
     WGPUComputePipeline computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
 
-    WGPUComputePassEncoder computePassEncoder;
+    WGPUComputePassEncoder computePassEncoder =
+      wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+    log(kDefLog, kInfo, "Set pipeline");
     wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
+    log(kDefLog, kInfo, "Set bind group");
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
                                        nullptr);
+
+    log(kDefLog, kInfo, "Dispatch workgroups");
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder,
         (pipeline.outputSize[shaderIndex] +
          (desc.shader[shaderIndex].wgSize - 1)) /
             desc.shader[shaderIndex].wgSize,
         1, 1);
+    wgpuComputePassEncoderEnd(computePassEncoder);
+
+    log(kDefLog, kInfo, "End of shader %d", shaderIndex);
   }
 
+  log(kDefLog, kInfo, "Finish command encoder");
   pipeline.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
   check(pipeline.commandBuffer, "Create command buffer", __FILE__, __LINE__);
 
-  // Finish command buffer setup
-  pipeline.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-
-  spdlog::info("Create the readback buffer");
+  log(kDefLog, kInfo, "Create the readback buffer");
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
@@ -832,8 +845,7 @@ void LaunchKernel(GPUContext &ctx, Kernel &op) {
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        spdlog::info("QueueOnSubmittedWorkDone status: {}",
-                     WGPUQueueWorkDoneStatus_Success == status);
+        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status success ? %d", WGPUQueueWorkDoneStatus_Success == status);
         check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
               __FILE__, __LINE__);
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
@@ -842,7 +854,7 @@ void LaunchKernel(GPUContext &ctx, Kernel &op) {
       &op.callbackData);
 }
 
-void LaunchKernelPipeline(GPUContext &ctx, KernelPipeline &pipeline) {
+void LaunchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &pipeline.commandBuffer);
 
@@ -854,9 +866,9 @@ void LaunchKernelPipeline(GPUContext &ctx, KernelPipeline &pipeline) {
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        spdlog::info("QueueOnSubmittedWorkDone status: {}",
-                     WGPUQueueWorkDoneStatus_Success == status);
-        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status: %d",
+            WGPUQueueWorkDoneStatus_Success == status);
+        check(status == WGPUQueueWorkDoneStatus_Success, "Check queue work success",
               __FILE__, __LINE__);
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
         data->promise->set_value();
