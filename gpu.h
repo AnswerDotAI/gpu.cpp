@@ -432,8 +432,8 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
 
 Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
                      const GPUTensor *inputs, size_t numInputs,
-                     const GPUTensor &output, const void *params,
-                     size_t paramsSize) {
+                     const GPUTensor &output, const void *params = nullptr,
+                     size_t paramsSize = 0) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op;

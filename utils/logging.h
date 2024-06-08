@@ -2,6 +2,7 @@
 #define LOGGING_H
 
 #include <cstdio>
+#include <cstdarg>
 
 namespace gpu {
 

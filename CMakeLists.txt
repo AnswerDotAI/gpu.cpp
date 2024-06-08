@@ -31,12 +31,12 @@ ENDIF()
 message(STATUS "Using WebGPU distribution tag: ${WEBGPU_TAG}")
 
 FetchContent_Declare(
-  webgpu-backend-dawn
+  webgpu
   GIT_REPOSITORY  ${WEBGPU_DIST_GIT_REPO}
   GIT_TAG        ${WEBGPU_TAG}
   GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(webgpu-backend-dawn)
+FetchContent_MakeAvailable(webgpu)
 
 option(FASTBUILD "Option to enable fast builds" OFF)
 if(FASTBUILD)
