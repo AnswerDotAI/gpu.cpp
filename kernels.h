@@ -15,12 +15,13 @@ std::string ReplaceAll(std::string str, const std::string &from,
   return str;
 }
 
-std::string PrepareShader(const char *shaderRaw, const char *precision,
+std::string PrepareShader(const char *shaderRaw, NumType precision,
                           size_t workgroupSize) {
   std::string shader(shaderRaw);
+  const char *precisionStr = ToString(precision);
   shader =
       ReplaceAll(shader, "{{workgroupSize}}", std::to_string(workgroupSize));
-  shader = ReplaceAll(shader, "{{precision}}", precision);
+  shader = ReplaceAll(shader, "{{precision}}", precisionStr);
   return shader;
 }
 
@@ -58,14 +59,9 @@ fn main(
 
 // TODO(avh): 3D workgroup specs
 ShaderCode GeluShader(size_t workgroupSize = 32 * 32,
-                      const char *precision = "f32") {
-  // make a copy of kShaderGELU but with workgroupSize substituted for
-  // {{workgroupSize}}
-  std::string shader = kShaderGELU;
-  shader =
-      ReplaceAll(shader, "{{workgroupSize}}", std::to_string(workgroupSize));
-  shader = ReplaceAll(shader, "{{precision}}", precision);
-  return ShaderCode{shader, workgroupSize};
+                      const NumType precision = kf32) {
+  return ShaderCode{PrepareShader(kShaderGELU, precision, workgroupSize),
+                    workgroupSize};
 }
 
 const char *kShaderHadamard = R"(
@@ -83,7 +79,7 @@ fn main(
 )";
 
 ShaderCode HadamardShader(size_t workgroupSize = 32 * 32,
-                          const char *precision = "f32") {
+                          const NumType precision = kf32) {
   return ShaderCode{PrepareShader(kShaderHadamard, precision, workgroupSize),
                     workgroupSize};
 }
@@ -103,7 +99,7 @@ fn main(
 )";
 
 ShaderCode ResidualShader(size_t workgroupSize = 32 * 32,
-                          const char *precision = "f32") {
+                          const NumType precision = kf32) {
   return ShaderCode{PrepareShader(kShaderResidual, precision, workgroupSize),
                     workgroupSize};
 }
@@ -161,7 +157,7 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>,
 )";
 
 ShaderCode LayerNormShader(size_t workgroupSize = 256,
-                           const char *precision = "f32") {
+                           const NumType precision = kf32) {
   return ShaderCode{PrepareShader(kShaderLayerNorm1, precision, workgroupSize),
                     workgroupSize};
 }
@@ -239,8 +235,7 @@ fn matmul(
 /* Generates ShaderCode instance for all matmul kernels - pass in
  * the template code via `shaderRaw` */
 ShaderCode MatmulShader(size_t workgroupSize, const char *shaderRaw,
-                        const char *precision, size_t M, size_t K, size_t N) {
-
+                        NumType precision, size_t M, size_t K, size_t N) {
   std::string shader = PrepareShader(shaderRaw, precision, workgroupSize);
   shader = ReplaceAll(shader, "{{M}}", std::to_string(M));
   shader = ReplaceAll(shader, "{{K}}", std::to_string(K));
@@ -296,7 +291,7 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 )";
 
 ShaderCode SoftmaxShader(size_t workgroupSize = 32,
-                         const char *precision = "f32") {
+                         const NumType precision = kf32) {
   return ShaderCode{PrepareShader(kShaderSoftmax1, precision, workgroupSize),
                     workgroupSize};
 }
