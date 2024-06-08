@@ -14,15 +14,13 @@ option(USE_LOCAL_LIBS "Use local libraries instead of fetching from the internet
 
 # Define paths for local and remote repositories
 set(WEBGPU_DIST_LOCAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/local/WebGPU-distribution")
-set(SPDLOG_LOCAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/local/spdlog")
 
 # Conditional assignment based on USE_LOCAL_LIBS
 if(USE_LOCAL_LIBS)
   set(WEBGPU_DIST_GIT_REPO ${WEBGPU_DIST_LOCAL_PATH})
-  set(SPDLOG_GIT_REPO ${SPDLOG_LOCAL_PATH})
+  message(STATUS "Using local WebGPU distribution: ${WEBGPU_DIST_LOCAL_PATH}")
 else()
   set(WEBGPU_DIST_GIT_REPO "https://github.com/eliemichel/WebGPU-distribution")
-  set(SPDLOG_GIT_REPO "https://github.com/gabime/spdlog.git")
 endif()
 
 
@@ -37,7 +35,6 @@ FetchContent_Declare(
   GIT_REPOSITORY  ${WEBGPU_DIST_GIT_REPO}
   GIT_TAG        ${WEBGPU_TAG}
   GIT_SHALLOW    TRUE
-  SOURCE_DIR     ${WEBGPU_DIST_LOCAL_PATH}
 )
 FetchContent_MakeAvailable(webgpu-backend-dawn)
 

@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "webgpu/webgpu.h"
-
 #include "utils/logging.h"
 
 namespace gpu {
@@ -23,6 +22,8 @@ static constexpr bool kDebug = false;
 static constexpr bool kDebug = true;
 #endif
 
+// Maximum rank of a tensor so we don't have to dynamically allocate memory for
+// the shape of a tensor.
 static constexpr size_t kMaxRank = 8;
 
 struct GPUContext;
@@ -108,6 +109,15 @@ struct GPUContext {
 
 enum NumType { kf32 };
 
+const char *ToString(NumType type) {
+  switch (type) {
+  case kf32:
+    return "f32";
+  default:
+    return "unknown";
+  }
+}
+
 /* Tensor factory function */
 GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
                  WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
@@ -175,6 +185,7 @@ struct CallbackDataDyn {
   std::promise<void> *promise;
 };
 
+// TODO(avh): Get rid of workgroupSize here and consolidate that management elsewhere.
 struct ShaderCode {
   std::string code;
   size_t wgSize; // workgroup size

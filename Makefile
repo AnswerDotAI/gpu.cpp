@@ -14,6 +14,7 @@ RELEASE_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=OFF
 DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
 # EMSCRIPTEN_FLAGS = -DIMPLEMENTATION=emscripten -DCMAKE_TOOLCHAIN_FILE=../cmake/emscripten.cmake -DCMAKE_CXX_COMPILER=em++
 EMSCRIPTEN_FLAGS = -DIMPLEMENTATION=emscripten -DCMAKE_CXX_COMPILER=em++
+LOCAL_FLAGS = -DUSE_LOCAL_LIBS=ON 
 
 demo:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)
@@ -42,9 +43,12 @@ watch-demo: check-entr
 watch-tests:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
-# TODO(avh): fix
+
+watch-demo-local: check-entr
+	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) $(LOCAL_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_DEMO) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)"
+
 watch-tests-local:
-	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) -DUSE_LOCAL_LIBS=ON && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
+	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) $(LOCAL_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 clean-build:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
