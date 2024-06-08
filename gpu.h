@@ -319,6 +319,7 @@ GPUContext CreateGPUContext(bool quietLogging = true,
       devData.requestEnded = true;
     };
 
+#ifdef WEBGPU_BACKEND_DAWN
     devDescriptor.deviceLostCallbackInfo = {
         .callback =
             [](WGPUDevice const *device, WGPUDeviceLostReason reason,
@@ -331,6 +332,7 @@ GPUContext CreateGPUContext(bool quietLogging = true,
               }
             },
     };
+#endif
 
     wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
                              onDeviceRequestEnded, (void *)&devData);

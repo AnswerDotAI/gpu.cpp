@@ -38,6 +38,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(webgpu)
 
+if (WEBGPU_TAG STREQUAL "dawn")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBGPU_BACKEND_DAWN")
+  message(STATUS "Using Dawn backend")
+endif()
+
 option(FASTBUILD "Option to enable fast builds" OFF)
 if(FASTBUILD)
   set(CMAKE_BUILD_TYPE None)  # Avoid default flags of predefined build types
