@@ -5,7 +5,7 @@
 
 #include "array_utils.h"
 #include "gpu.h"
-#include "kernels.h"
+#include "nn/shaders.h"
 #include "reference_impls.h"
 #include "utils/logging.h"
 
@@ -102,12 +102,10 @@ void TestMatmul(GPUContext &ctx) {
 void TestTensorPool(GPUContext &ctx) {
   log(kDefLog, kInfo, "Starting Tensor Pool Test");
   // Test using the tensor pool to prepare tensor buffers for kernel invocation
-  TensorPool pool(&ctx);
+  TensorPool pool = ctx.pool;
   std::array<float, 6> inputArr = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   GPUTensor input = Tensor(ctx, {2, 3}, kf32, inputArr.data());
   GPUTensor output = Tensor(ctx, {2, 3}, kf32);
-  // TODO(avh): LaunchKernel with buffers and/or tensors
-  // Test using the tenor pool to create tensors
   for (int i = 0; i < 10; i++) {
     GPUTensor t = Tensor(ctx, {2, 3}, kf32);
   }
@@ -247,7 +245,8 @@ void TestAttention(GPUContext &ctx) {
   // TODO: finish
 }
 
-void TestMultiKernel(GPUContext &ctx) {
+void TestMultiKernel1(GPUContext &ctx) {
+
   struct SoftmaxParam {
     uint32_t N;
     uint32_t C;
@@ -283,9 +282,66 @@ void TestMultiKernel(GPUContext &ctx) {
       show<float, B * T, C>(inputArr, "Softmax Input").c_str());
   log(kDefLog, kInfo, "%s",
       show<float, B * T, C>(outputArr, "Softmax Output").c_str());
-  log(kDefLog, kInfo, "Done with MultiKernel Test");
+  log(kDefLog, kInfo, "Done with MultiKernel Test 1");
 
-  // TODO(avh): multi kernel with multiple shaders
+}
+
+void TestMultiKernel2(GPUContext &ctx) {
+
+  struct SoftmaxParam {
+    uint32_t N;
+    uint32_t C;
+  };
+  static constexpr size_t B = 6;    // batch size
+  static constexpr size_t T = 8;    // token index
+  static constexpr size_t C = 3072; // input channels
+  std::array<float, B * T * C> inputArr;
+  std::array<float, B * T * C> outputArr;
+  std::mt19937 gen(31415);
+  randint(inputArr, gen, 0, 3);
+
+  std::array<ShaderCode, 2> shaders;
+  std::array<GPUTensor, 2> inputs;
+  std::array<GPUTensor, 2> outputs;
+  std::array<SoftmaxParam, 2> params;
+
+  inputs[0] = Tensor(ctx, {B, T, C}, kf32, inputArr.data());
+  outputs[0] = Tensor(ctx, {B, T, C}, kf32, outputArr.data());
+  shaders[0] = SoftmaxShader(256, kf32);
+  params[0] = SoftmaxParam{B * T, C};
+
+  inputs[1] = Tensor(ctx, {B, T, C}, kf32, inputArr.data());
+  outputs[1] = Tensor(ctx, {B, T, C}, kf32, outputArr.data());
+  shaders[1] = SoftmaxShader(256, kf32);
+  params[1] = SoftmaxParam{B * T, C};
+
+  std::array<size_t, 2> numInputs = {1, 1};
+  std::array<size_t, 2> paramSizes = {sizeof(SoftmaxParam), sizeof(SoftmaxParam)};
+
+  // First test with the degenerate case of a 1-shader multi kernel
+  MultiKernelDesc desc{
+      .numShaders = 2,
+      .shader = shaders.data(),
+      .inputs = inputs.data(),
+      .numInputs = numInputs.data(),
+      .output = outputs.data(),
+      .params = params.data(),
+      .paramSizes = paramSizes.data(),
+  };
+  MultiKernel pipeline = PrepareMultiKernel(ctx, desc);
+  LaunchMultiKernel(ctx, pipeline);
+  Wait(ctx, pipeline.future);
+
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(inputArr, "Softmax Input").c_str());
+  ToCPU(ctx, outputs[0], outputArr.data(), sizeof(outputArr));
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(outputArr, "Softmax Output 0").c_str());
+  ToCPU(ctx, outputs[1], outputArr.data(), sizeof(outputArr));
+  log(kDefLog, kInfo, "%s",
+      show<float, B * T, C>(outputArr, "Softmax Output 1").c_str());
+
+  log(kDefLog, kInfo, "Done with MultiKernel Test 2");
 }
 
 int main(int argc, char **argv) {
@@ -298,7 +354,8 @@ int main(int argc, char **argv) {
   TestGelu(ctx);
   TestLayerNorm(ctx);
   TestSoftmax(ctx);
-  TestMultiKernel(ctx);
+  TestMultiKernel1(ctx);
+  TestMultiKernel2(ctx);
 
   log(kDefLog, kInfo, "Done with all tests");
 }

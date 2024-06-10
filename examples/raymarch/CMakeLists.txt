@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # FetchContent cache directory. Alternatively, don't set FETCHCONTENT_BASE_DIR
 # and the repos will be downloaded to the build directory.
 
-#set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party")
+set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party")
 
 FetchContent_Declare(
   gpu
@@ -17,6 +17,8 @@ FetchContent_Declare(
   # GIT_REPOSITORY https://github.com/AnswerDotAI/gpu.cpp
   GIT_REPOSITORY file://${CMAKE_CURRENT_SOURCE_DIR}/../../
   GIT_TAG main
+  GIT_SHALLOW    TRUE
+  USE_LOCAL_LIBS ON
 )
 FetchContent_MakeAvailable(gpu)
 

@@ -71,8 +71,8 @@ void transpose(float* input, float* output, size_t M, size_t N) {
 }
 
 
-template <size_t N> void range(std::array<float, N> &input) {
-  for (size_t i = 0; i < N; i++) {
+template <size_t N> void range(std::array<float, N> &input, int start = 0) {
+  for (size_t i = start; i < N; i++) {
     input[i] = static_cast<float>(i);
   }
 }

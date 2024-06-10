@@ -114,6 +114,7 @@ const char *ToString(NumType type) {
   case kf32:
     return "f32";
   default:
+    log(kDefLog, kError, "Invalid NumType in string conversion.");
     return "unknown";
   }
 }
@@ -185,7 +186,6 @@ struct CallbackDataDyn {
   std::promise<void> *promise;
 };
 
-// TODO(avh): Get rid of workgroupSize here and consolidate that management elsewhere.
 struct ShaderCode {
   std::string code;
   size_t wgSize; // workgroup size
@@ -358,10 +358,9 @@ void Wait(GPUContext &ctx, std::future<void> &future) {
 }
 
 /* Copy from GPU to CPU.
-
   A more performant version of this would prepare the command buffer once and
-  reuse it for multiple readbacks. This version is for one-offs in testing and
-  non-hot paths.
+  reuse it for multiple readbacks. This version is a convenience implementation
+  for non-hot paths.
 */
 void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;

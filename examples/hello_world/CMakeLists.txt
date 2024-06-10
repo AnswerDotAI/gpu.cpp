@@ -19,6 +19,7 @@ FetchContent_Declare(
   # GIT_REPOSITORY https://github.com/AnswerDotAI/gpu.cpp
   GIT_REPOSITORY file://${CMAKE_CURRENT_SOURCE_DIR}/../../
   GIT_TAG main
+  GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(gpu)
 

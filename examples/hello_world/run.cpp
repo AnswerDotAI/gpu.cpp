@@ -1,7 +1,7 @@
 #include <array>
 #include <cstdio>
 #include "gpu.h"
-#include "kernels.h"
+#include "nn/shaders.h"
 
 using namespace gpu;
 
