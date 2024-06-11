@@ -5,6 +5,7 @@
 #include <sstream>
 
 #include "gpu.h"
+#include "utils/array_utils.h"
 
 using namespace gpu;
 
@@ -47,13 +48,14 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let dir: vec3<f32> = vec3<f32>(p.x / len, p.y / len, p.z / len);
 
     let maxIter: u32 = 5;
-    let dist: f32 = 0;
+    let dist: f32 = 0.0;
     for (var i: u32 = 0; i < maxIter; i++) {
       let step: f32 = sdf(p, c, params.sphereRadius);
       if (step < .001) {
         return;
       }
-      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] += step;
+      // out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] += step;
+      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] +=  1.0; // debugging
     }
 
 }
@@ -65,9 +67,18 @@ constexpr size_t NCOLS = 80;
 int main(int argc, char **argv) {
   std::array<float, NROWS * NCOLS> screen;
 
+  struct Params {
+    uint32_t screenWidth;
+    uint32_t screenHeight;
+    float sphereRadius;
+    float sphereCenterX;
+    float sphereCenterY;
+    float sphereCenterZ;
+  } params = {NCOLS, NROWS, 0.5, 0.0, 0.0, 0.0};
+
   GPUContext ctx = CreateGPUContext();
-  GPUTensor devScreen = Tensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
-  Kernel render = PrepareKernel(ctx, ShaderCode{kSDF, 64}, {}, 0, devScreen);
+  GPUTensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
+  Kernel render = PrepareKernel(ctx, ShaderCode{kSDF, 64}, {}, 0, devScreen, params);
   LaunchKernel(ctx, render);
   Wait(ctx, render.future);
   ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
@@ -77,6 +88,7 @@ int main(int argc, char **argv) {
                                   "z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]"
                                   "2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
 
+  fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen).c_str());
   std::array<char, NROWS *(NCOLS + 1)> raster;
   for (size_t row = 0; row < NROWS; ++row) {
     for (size_t col = 0; col < NCOLS; ++col) {

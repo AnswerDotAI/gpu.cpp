@@ -120,7 +120,7 @@ const char *ToString(NumType type) {
 }
 
 /* Tensor factory function */
-GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
+GPUTensor CreateTensor(TensorPool &pool, const Shape &shape, NumType dtype,
                  WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
                                               WGPUBufferUsage_CopyDst |
                                               WGPUBufferUsage_CopySrc) {
@@ -144,16 +144,16 @@ GPUTensor Tensor(TensorPool &pool, const Shape &shape, NumType dtype,
 }
 
 /* Syntactic sugar - take in ctx instead of pool*/
-GPUTensor Tensor(GPUContext &ctx, const Shape &shape, NumType dtype) {
-  return Tensor(ctx.pool, shape, dtype,
+GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype) {
+  return CreateTensor(ctx.pool, shape, dtype,
                 WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
                     WGPUBufferUsage_CopySrc);
 }
 
 /* With Value Initialization (pointer) */
-GPUTensor Tensor(GPUContext &ctx, const Shape &shape, NumType dtype,
+GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype,
                  float *data) {
-  GPUTensor tensor = Tensor(ctx.pool, shape, dtype,
+  GPUTensor tensor = CreateTensor(ctx.pool, shape, dtype,
                             WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
                                 WGPUBufferUsage_CopySrc);
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,

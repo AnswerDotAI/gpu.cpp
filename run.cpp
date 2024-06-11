@@ -124,8 +124,8 @@ chunks on the CPU (eg for model weights or input data), and then
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i); // dummy input data
   }
-  GPUTensor input = Tensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
+  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
 
 Let's try creating some data on the GPU now.
 
@@ -136,8 +136,8 @@ std::array<float, 3072> outputArr;
 for (int i = 0; i < 3072; ++i) {
   inputArr[i] = static_cast<float>(i); // dummy input data
 }
-GPUTensor input = Tensor(ctx, {3072}, kf32, inputArr.data());
-GPUTensor output = Tensor(ctx, {3072}, kf32, outputArr.data());
+GPUTensor input = CreateTensor(ctx, {3072}, kf32, inputArr.data());
+GPUTensor output = CreateTensor(ctx, {3072}, kf32, outputArr.data());
 
 fprintf(stdout, "\nSuccessfully created input and output tensors.\n\n");
 wait();

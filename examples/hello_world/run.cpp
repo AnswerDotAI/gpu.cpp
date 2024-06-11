@@ -14,8 +14,8 @@ int main(int argc, char **argv) {
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i); // dummy input data
   }
-  GPUTensor input = Tensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = Tensor(ctx, {N}, kf32, outputArr.data());
+  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
 
   Kernel op =
       PrepareKernel(ctx, GeluShader(256, kf32), std::array{input}, output);

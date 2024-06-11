@@ -14,7 +14,7 @@ static constexpr int kShowMaxRows = 14;
 static constexpr int kShowMaxCols = 8;
 
 template <typename numtype, size_t rows, size_t cols>
-std::string show(std::array<numtype, rows * cols> a, std::string name) {
+std::string show(const std::array<numtype, rows * cols>& a, const std::string& name = "") {
   std::string output = "\n";
   if (name != "") {
     output += name + " : \n";
