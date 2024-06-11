@@ -64,8 +64,8 @@ int main(int argc, char **argv) {
   GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   Kernel op =
-      PrepareKernel(ctx, kGELU, std::array{input}, output);
-  LaunchKernel(ctx, op);
+      CreateKernel(ctx, kGELU, std::array{input}, output);
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 10; ++i) {
@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
 ```
 
 For those curious about what happens under the hood with the raw WebGPU API,
-the equivalent functionality is implemented using the raw WebGPU C API in
+the equivalent functionality is implemented using the WebGPU C API in
 `examples/webgpu_intro/run.cpp`.
 
 ## Quick Start

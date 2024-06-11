@@ -440,7 +440,7 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
                        tensor.data.size);
 }
 
-Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                      const GPUTensor *inputs, size_t numInputs,
                      const GPUTensor &output, const void *params = nullptr,
                      size_t paramsSize = 0) {
@@ -628,39 +628,39 @@ Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
 
-  log(kDefLog, kInfo, "Exiting PrepareKernel");
+  log(kDefLog, kInfo, "Exiting CreateKernel");
   return op;
 }
 
 template <typename ParamsType = NoParam>
-Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                      const GPUTensor *inputs, size_t numInputs,
                      const GPUTensor &output,
                      const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
-    return PrepareKernel(ctx, shader, inputs, numInputs, output,
+    return CreateKernel(ctx, shader, inputs, numInputs, output,
                          reinterpret_cast<const void *>(&params),
                          sizeof(ParamsType));
   } else {
     log(kDefLog, kInfo, "No params");
-    return PrepareKernel(ctx, shader, inputs, numInputs, output, nullptr, 0);
+    return CreateKernel(ctx, shader, inputs, numInputs, output, nullptr, 0);
   }
 }
 
 /*
- * PrepareKernel with array of inputs (convienence function)
+ * CreateKernel with array of inputs (convienence function)
  */
 template <typename ParamsType = NoParam, size_t numInputs>
-Kernel PrepareKernel(GPUContext &ctx, const ShaderCode &shader,
+Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                      const std::array<GPUTensor, numInputs> &inputs,
                      const GPUTensor &output,
                      const ParamsType &params = ParamsType{}) {
-  return PrepareKernel<ParamsType>(ctx, shader, inputs.data(), numInputs,
+  return CreateKernel<ParamsType>(ctx, shader, inputs.data(), numInputs,
                                    output, params);
 }
 
-MultiKernel PrepareMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
+MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   MultiKernel pipeline;
@@ -849,7 +849,7 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   return pipeline;
 }
 
-void LaunchKernel(GPUContext &ctx, Kernel &op) {
+void DispatchKernel(GPUContext &ctx, Kernel &op) {
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
 
@@ -870,7 +870,7 @@ void LaunchKernel(GPUContext &ctx, Kernel &op) {
       &op.callbackData);
 }
 
-void LaunchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
+void DispatchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
   wgpuQueueSubmit(ctx.queue, 1, &pipeline.commandBuffer);
 
   pipeline.callbackData = CallbackDataDyn{

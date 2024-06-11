@@ -18,8 +18,8 @@ int main(int argc, char **argv) {
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
 
   Kernel op =
-      PrepareKernel(ctx, GeluShader(256, kf32), std::array{input}, output);
-  LaunchKernel(ctx, op);
+      CreateKernel(ctx, GeluShader(256, kf32), std::array{input}, output);
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 10; ++i) {

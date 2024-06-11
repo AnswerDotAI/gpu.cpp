@@ -78,8 +78,8 @@ int main(int argc, char **argv) {
 
   GPUContext ctx = CreateGPUContext();
   GPUTensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
-  Kernel render = PrepareKernel(ctx, ShaderCode{kSDF, 64}, {}, 0, devScreen, params);
-  LaunchKernel(ctx, render);
+  Kernel render = CreateKernel(ctx, ShaderCode{kSDF, 64}, {}, 0, devScreen, params);
+  DispatchKernel(ctx, render);
   Wait(ctx, render.future);
   ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
 

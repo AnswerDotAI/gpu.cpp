@@ -76,9 +76,9 @@ The core verbs (functions) of interest are:
 
 - *Requesting GPU Resources* - CreateGPUContext(), CreateArray() and
   CreateTensor() 
-- *Ahead-of-Time Preparation of a Computation* - PrepareKernel() which both binds
+- *Ahead-of-Time Preparation of a Computation* - CreateKernel() which both binds
   resources and compiles the kernel 
-- *Asynchronous Execution of Computation* - LaunchKernel(), Wait()
+- *Asynchronous Execution of Computation* - DispatchKernel(), Wait()
 - *Data Movement* - ToCPU(), ToGPU(), also CreateArray and CreateTensor have
   convenience overloads that take CPU data directly as part of instantiation.
 
@@ -186,7 +186,7 @@ workgroup size is the number of threads in a workgroup.
 )");
 
 section(R"(
-Preparing a kernel
+Creating a kernel
 ------------------
 
 TODO(avh)
@@ -194,7 +194,7 @@ TODO(avh)
 
 
 section(R"(
-Launching a kernel
+Dispatching a kernel
 ------------------
 
 TODO(avh)

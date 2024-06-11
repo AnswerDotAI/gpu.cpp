@@ -33,10 +33,10 @@ void TestResidual(GPUContext &ctx) {
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   ShaderCode shaderCode = ResidualShader(workgroupSize, kf32);
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.code.c_str());
-  Kernel op = PrepareKernel<NoParam, 2>(
+  Kernel op = CreateKernel<NoParam, 2>(
       ctx, ResidualShader(workgroupSize, kf32),
       std::array<GPUTensor, 2>{input1, input2}, output, {});
-  LaunchKernel(ctx, op);
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Output").c_str());
@@ -56,9 +56,9 @@ void TestHadamard(GPUContext &ctx) {
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   ShaderCode shaderCode = HadamardShader(workgroupSize, kf32);
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.code.c_str());
-  Kernel op = PrepareKernel(ctx, HadamardShader(workgroupSize, kf32),
+  Kernel op = CreateKernel(ctx, HadamardShader(workgroupSize, kf32),
                             std::array{input1, input2}, output, {});
-  LaunchKernel(ctx, op);
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Output").c_str());
 }
@@ -77,9 +77,9 @@ void TestMatmul(GPUContext &ctx) {
   GPUTensor input2 = CreateTensor(ctx, {K, N}, kf32, input2Arr.data());
   GPUTensor output = CreateTensor(ctx, {M, N}, kf32, outputArr.data());
   Kernel op =
-      PrepareKernel(ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
+      CreateKernel(ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
                     std::array{input1, input2}, output);
-  LaunchKernel(ctx, op);
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s", show<float, M, K>(input1Arr, "A").c_str());
@@ -132,9 +132,9 @@ void TestGelu(GPUContext &ctx) {
   GPUTensor geluOut = CreateTensor(ctx, {N}, kf32, outputArr.data());
   log(kDefLog, kInfo, "Creating GELU Shader");
   Kernel op =
-      PrepareKernel(ctx, GeluShader(256, kf32), std::array{geluIn}, geluOut);
-  log(kDefLog, kInfo, "Launching GELU Shader");
-  LaunchKernel(ctx, op);
+      CreateKernel(ctx, GeluShader(256, kf32), std::array{geluIn}, geluOut);
+  log(kDefLog, kInfo, "Dispatching GELU Shader");
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, geluOut, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s", show<float, N, 1>(inputArr, "GELU Input").c_str());
@@ -169,10 +169,10 @@ void TestLayerNorm(GPUContext &ctx) {
   GPUTensor weight = CreateTensor(ctx, {C}, kf32, weightArr.data());
   GPUTensor bias = CreateTensor(ctx, {C}, kf32, biasArr.data());
   GPUTensor output = CreateTensor(ctx, {N, C}, kf32, outputArr.data());
-  Kernel op = PrepareKernel<LNParam, 3>(ctx, LayerNormShader(256, kf32),
+  Kernel op = CreateKernel<LNParam, 3>(ctx, LayerNormShader(256, kf32),
                                         std::array{input, weight, bias}, output,
                                         params);
-  LaunchKernel(ctx, op);
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s",
@@ -212,9 +212,9 @@ void TestSoftmax(GPUContext &ctx) {
   randint(inputArr, gen, 0, 3);
   GPUTensor input = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
   GPUTensor output = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
-  Kernel op = PrepareKernel<SoftmaxParam, 1>(ctx, SoftmaxShader(256, kf32),
+  Kernel op = CreateKernel<SoftmaxParam, 1>(ctx, SoftmaxShader(256, kf32),
                                              {input}, output, {B * T, C});
-  LaunchKernel(ctx, op);
+  DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s",
@@ -274,8 +274,8 @@ void TestMultiKernel1(GPUContext &ctx) {
       .params = &param,
       .paramSizes = &size,
   };
-  MultiKernel pipeline = PrepareMultiKernel(ctx, desc);
-  LaunchMultiKernel(ctx, pipeline);
+  MultiKernel pipeline = CreateMultiKernel(ctx, desc);
+  DispatchMultiKernel(ctx, pipeline);
   Wait(ctx, pipeline.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s",
@@ -328,8 +328,8 @@ void TestMultiKernel2(GPUContext &ctx) {
       .params = params.data(),
       .paramSizes = paramSizes.data(),
   };
-  MultiKernel pipeline = PrepareMultiKernel(ctx, desc);
-  LaunchMultiKernel(ctx, pipeline);
+  MultiKernel pipeline = CreateMultiKernel(ctx, desc);
+  DispatchMultiKernel(ctx, pipeline);
   Wait(ctx, pipeline.future);
 
   log(kDefLog, kInfo, "%s",
