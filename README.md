@@ -9,21 +9,19 @@ current status.
 
 ## Who is gpu.cpp for?
 
-gpu.cpp is a lightweight library for R&D projects and products involving
-low-level control of GPU computation code and hardware portability.  
+gpu.cpp is a lightweight library for R&D projects and products prioritizing
+both low-level control of GPU computation and portability.  
 
-To enable both portability and low level control, the gpu.cpp leverages the
-WebGPU API spec to provide a portable host interface to the GPU and WebGPU
-Shading Language (WGSL) for on-device code. Note that, in spite of the name,
-WebGPU has both native (e.g. [Dawn](https://github.com/google/dawn/) and
+To this end, gpu.cpp leverages the WebGPU API spec to provide a portable
+interface to the GPU. In spite of the name, WebGPU has both native (e.g.
+[Dawn](https://github.com/google/dawn/) and
 [wgpu](https://github.com/gfx-rs/wgpu)) as well as [browser
 implementations](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status),
 it does not necessitate programs to be running on the web in a browser.
 
 The library provides a small set of composable functions and types that make
-WebGPU compute much easier to work with, while being transparent. WebGPU API
-resources are directly accessible never more than 1 layer of indirection from
-the library interface. 
+WebGPU compute much easier to work with, while keeping abstractions minimal and
+transparent.
 
 The goal of gpu.cpp is to make integrating portable, low-level GPU computations
 into projects simple and concise.
@@ -206,12 +204,13 @@ this form, for example:
 - Auxillary Computation - Q[X]oRA variants, Speculative Decoding, Constrained Decoding
 
 Performing custom computations over compute-intensive foundation models
-benefits from low-level control of the GPU and current tooling for low-level
-GPU computation is heavily focused on CUDA as a first class citizen.
+benefits from low-level control of the GPU. At this time, tooling for
+implementing low-level GPU computation is heavily focused on CUDA as a first
+class citizen.
 
-This leaves a gap in portability, making many R&D algorithms that work in the
-data center do not get operationalized to for everyday use to run on compute
-that's broadly accessible.
+This leaves a gap in portability, meaning R&D algorithms that work in the data
+center do not get operationalized to for everyday use to run on compute that's
+broadly accessible.
 
 We created gpu.cpp as a lightweight C++ library that allows us to easily and
 directly implement native low-level GPU algorithms as part of R&D and drop
@@ -222,17 +221,21 @@ tooling, or runtime support.
 
 ## What gpu.cpp is not
 
-gpu.cpp is a tool for building things for end users, rather than for end users.
-Although there is basic low level support for ND-arrays and kernels implementing
-neural network blocks, it is not a high-level machine learning framework or
-inference engine, although it can be useful building such things.
+gpu.cpp is a tool for building things for end users, it's not intended to be
+used by end users directly. Although there is basic low level support for
+ND-arrays and a small library implementing neural network blocks as shaders, it
+is not a high-level machine learning framework or inference engine (although it
+can be useful in implementing one).
 
 It is also not strictly for the web or deploying to the web - WebGPU is
-convenient API with both both native (e.g. Dawn) and browser implementations. It
-uses WebGPU as a portable GPU API first and foremost, with the possibility of
-running in the browser being support being a convenient bonus.
+convenient API with both both native (e.g. Dawn) and browser implementations.
+It uses WebGPU as a portable GPU API first and foremost, with the possibility
+of running in the browser being support being a convenient bonus.
 
-Finally, the focus of gpu.cpp is explicitly compute rather than rendering/graphics, although it might be useful for compute shaders in graphics projects - one of the examples is a small compute renderer, rendered to the terminal.
+Finally, the focus of gpu.cpp is explicitly compute rather than
+rendering/graphics, although it might be useful for compute shaders in graphics
+projects - one of the examples is a small compute renderer, rendered to the
+terminal.
 
 ## Contributing and Work-in-Progress
 
