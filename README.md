@@ -1,6 +1,6 @@
 # gpu.cpp
 
-gpu.cpp is a minimal library for portable low-level GPU computation using
+gpu.cpp is a lightweight library for portable low-level GPU computation using
 WebGPU. 
 
 *Work-in-Progress* See [release
@@ -19,17 +19,14 @@ interface to the GPU. In spite of the name, WebGPU has both native (e.g.
 implementations](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status),
 it does not necessitate programs to be running on the web in a browser.
 
-The library provides a small set of composable functions and types that make
-WebGPU compute much easier to work with, while keeping abstractions minimal and
-transparent.
-
-The goal of gpu.cpp is to make integrating portable, low-level GPU computations
-into projects simple and concise.
+gpu.cpp provides a minimal set of composable functions and types that make
+WebGPU compute simple and concise to work with for GPU compute R&D use cases,
+while keeping abstractions minimal and transparent.
 
 # Hello World: A GELU Kernel
 
 Here's an GELU kernel implemented (based on the CUDA implementation of
-[llm.c](https://github.com/karpathy/llm.c) as an on-device WGSL shader and
+[llm.c](https://github.com/karpathy/llm.c)) as an on-device WGSL shader and
 invoked from the host using this library.
 
 ```
@@ -79,11 +76,6 @@ int main(int argc, char **argv) {
 }
 ```
 
-In practice, an implementation of GELU (as well as some other common kernels is
-available in `nn/shaders.h`, but for the sake of completeness this example
-includes both the host WebGPU API code and GPU device WGSL shader
-implementation.
-
 For those curious about what happens under the hood with the raw WebGPU API,
 the equivalent functionality is implemented using the raw WebGPU C API in
 `examples/webgpu_intro/run.cpp`.
@@ -132,11 +124,11 @@ program that uses this library.
 └──────────────────────────────┘
 ```
 
-The first time you build and run this, it will download the WebGPU backend
-implementation (Dawn by default) and build it which may take a few minutes. The
-gpu.cpp library itself is small so after building the Dawn backend the first
-time, subsequent builds of the library should take seconds on most personal
-computing devices.
+The first time you build and run the project, it will download the WebGPU
+backend implementation (Dawn by default) and build it which may take a few
+minutes. The gpu.cpp library itself is small so after building the Dawn backend
+the first time, subsequent builds of the library should take seconds on most
+personal computing devices.
 
 You can build the library itself which builds a shared library that you can
 link against for your own projects. This builds a library that can be used in
@@ -188,54 +180,62 @@ make tests
 For more configurability and control of the build, see the `cmake`  invocations
 in the `Makefile`,  as well as the configuration in `Cmakelists.txt`.
 
+If you need to clean up the build artifacts, you can run:
+
+```
+make clean
+```
+
 ## Motivation and Goals
 
 Although gpu.cpp is intended for any form of general purpose GPU computation,
-the project is partly motivated by emerging needs in machine learning R&D. With
-large foundation models, a significant amount of R&D now occurs in the
-post-training computation.
+the project is partly motivated by emerging needs in machine learning R&D. 
 
-Large foundation models have become become computable objects over which custom
-algorithms are implemented. Many important foundation model advances today take
-this form, for example:
+Specifically, with large foundation models, a significant amount of R&D now
+occurs in the post-training computation. Large foundation models have become
+become computable objects over which custom algorithms are implemented.
+Performing custom computations over compute-intensive foundation models
+benefits from low-level control of the GPU. 
+
+Many important foundation model
+advances today take this form, for example:
 
 - Approximate Computation - quantization, sparsification, model compression, distillation
 - Conditional/Branching Computation - Mixture-of-experts, Hydranets, Fast feed-forward, Early Exit
 - Auxillary Computation - Q[X]oRA variants, Speculative Decoding, Constrained Decoding
 
-Performing custom computations over compute-intensive foundation models
-benefits from low-level control of the GPU. At this time, tooling for
-implementing low-level GPU computation is heavily focused on CUDA as a first
-class citizen.
 
-This leaves a gap in portability, meaning R&D algorithms that work in the data
-center do not get operationalized to for everyday use to run on compute that's
-broadly accessible.
+At this time, tooling for implementing low-level GPU computation is heavily
+focused on CUDA as a first class citizen.
+
+This leaves a gap in portability, meaning R&D algorithms that work in a
+research environment are difficult to operationalize for everyday use to run on
+personal computing hardware that's broadly accessible (personal workstations,
+laptops, mobile devices).
 
 We created gpu.cpp as a lightweight C++ library that allows us to easily and
 directly implement native low-level GPU algorithms as part of R&D and drop
 implementations into code running on personal computing devices either as
-native applications or in the browser without being blocked by hardware,
-tooling, or runtime support.
-
+native applications or in the browser without impediment by hardware, tooling,
+or runtime support.
 
 ## What gpu.cpp is not
 
-gpu.cpp is a tool for building things for end users, it's not intended to be
-used by end users directly. Although there is basic low level support for
-ND-arrays and a small library implementing neural network blocks as shaders, it
-is not a high-level machine learning framework or inference engine (although it
-can be useful in implementing one).
+gpu.cpp is meant for developers with basic familiarity with C++ and GPU
+programming and not intended to be used by end users directly. Although there
+is basic low level support for ND-arrays and a small library implementing
+neural network blocks as shaders, it is not a high-level machine learning
+framework or inference engine (although it can be useful in implementing one).
 
-It is also not strictly for the web or deploying to the web - WebGPU is
+gpu.cpp is also not strictly for the web or deploying to the web - WebGPU is
 convenient API with both both native (e.g. Dawn) and browser implementations.
 It uses WebGPU as a portable GPU API first and foremost, with the possibility
 of running in the browser being support being a convenient bonus.
 
-Finally, the focus of gpu.cpp is explicitly compute rather than
-rendering/graphics, although it might be useful for compute shaders in graphics
-projects - one of the examples is a small compute renderer, rendered to the
-terminal.
+Finally, the focus of gpu.cpp is general-purpose GPU computation rather than
+rendering/graphics on the GPU, although it might be useful for compute shaders
+in graphics projects - one of the examples is a small compute renderer,
+rendered to the terminal.
 
 ## Contributing and Work-in-Progress
 
