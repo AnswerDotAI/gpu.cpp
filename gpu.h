@@ -191,6 +191,15 @@ struct ShaderCode {
   size_t wgSize; // workgroup size
 };
 
+struct KernelDesc {
+  const ShaderCode shader;
+  const GPUTensor *inputs;
+  size_t numInputs;
+  const GPUTensor output;
+  const void* params;
+  const size_t paramSize;
+};
+
 struct Kernel {
   std::unique_ptr<WGPUBuffer[]> buffers;
   std::unique_ptr<size_t[]> bufferSizes;
@@ -668,7 +677,7 @@ MultiKernel PrepareMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     pipeline.numInputs[i] = desc.numInputs[i];
     pipeline.numBuffers[i] = desc.numInputs[i] + 1; // +1 for output buffer
     if (desc.paramSizes[i] > 0) {
-      // == 0 => shader does not have a parameter input
+      // == 0 means shader does not have a parameter input
       pipeline.numBuffers[i] += 1; // +1 for params buffer
     }
     totalBuffers += pipeline.numBuffers[i];

@@ -340,7 +340,6 @@ void TestMultiKernel2(GPUContext &ctx) {
   ToCPU(ctx, outputs[1], outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s",
       show<float, B * T, C>(outputArr, "Softmax Output 1").c_str());
-
   log(kDefLog, kInfo, "Done with MultiKernel Test 2");
 }
 

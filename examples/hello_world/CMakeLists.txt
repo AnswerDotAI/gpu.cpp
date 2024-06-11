@@ -23,7 +23,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(gpu)
 
-set(FILES run.cpp)
-add_executable(hello_gpu ${FILES})
+add_executable(hello_gpu run.cpp)
 target_link_libraries(hello_gpu gpu webgpu)
 target_include_directories(hello_gpu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../ )

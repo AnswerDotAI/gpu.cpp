@@ -18,7 +18,7 @@ FetchContent_Declare(
   GIT_REPOSITORY file://${CMAKE_CURRENT_SOURCE_DIR}/../../
   GIT_TAG main
   GIT_SHALLOW    TRUE
-  USE_LOCAL_LIBS ON
+  # USE_LOCAL_LIBS ON
 )
 FetchContent_MakeAvailable(gpu)
 

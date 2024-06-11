@@ -46,6 +46,9 @@ watch-demo: check-entr
 watch-tests:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
+# experimental
+watch-tests-wgpu:
+	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) $(USE_WGPU) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 watch-demo-local: check-entr
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) $(LOCAL_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_DEMO) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)"
