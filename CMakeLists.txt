@@ -9,35 +9,45 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
-option(USE_LOCAL_LIBS "Use local libraries instead of fetching from the internet" OFF)
-
-# Define paths for local and remote repositories
-set(WEBGPU_DIST_LOCAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/local/WebGPU-distribution")
-
-# Conditional assignment based on USE_LOCAL_LIBS
-if(USE_LOCAL_LIBS)
-  set(WEBGPU_DIST_GIT_REPO ${WEBGPU_DIST_LOCAL_PATH})
-  message(STATUS "Using local WebGPU distribution: ${WEBGPU_DIST_LOCAL_PATH}")
-else()
-  set(WEBGPU_DIST_GIT_REPO "https://github.com/eliemichel/WebGPU-distribution")
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(EXTRA_LIBS "-framework QuartzCore" "-framework Metal" "-framework IOSurface" "-framework CoreFoundation" "-framework Security" "-framework IOKit" "-framework AppKit" objc)
 endif()
 
+option(USE_DAWN_BINARY "Use prebuilt dawn" ON)
 
-option(WEBGPU_TAG "WebGPU distribution tag to use")
-IF (NOT WEBGPU_TAG)
-  set(WEBGPU_TAG "dawn")
-ENDIF()
-message(STATUS "Using WebGPU distribution tag: ${WEBGPU_TAG}")
-
-FetchContent_Declare(
-  webgpu
-  GIT_REPOSITORY  ${WEBGPU_DIST_GIT_REPO}
-  GIT_TAG        ${WEBGPU_TAG}
-  GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(webgpu)
-
+if(USE_DAWN_BINARY)
+include_directories(./third_party/libdawn/include)
+link_directories(./third_party/libdawn/lib)
+else()
+  option(USE_LOCAL_LIBS "Use local libraries instead of fetching from the internet" OFF)
+  
+  # Define paths for local and remote repositories
+  set(WEBGPU_DIST_LOCAL_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/local/WebGPU-distribution")
+  
+  # Conditional assignment based on USE_LOCAL_LIBS
+  if(USE_LOCAL_LIBS)
+    set(WEBGPU_DIST_GIT_REPO ${WEBGPU_DIST_LOCAL_PATH})
+    message(STATUS "Using local WebGPU distribution: ${WEBGPU_DIST_LOCAL_PATH}")
+  else()
+    set(WEBGPU_DIST_GIT_REPO "https://github.com/eliemichel/WebGPU-distribution")
+  endif()
+  
+  
+  option(WEBGPU_TAG "WebGPU distribution tag to use")
+  IF (NOT WEBGPU_TAG)
+    set(WEBGPU_TAG "dawn")
+  ENDIF()
+  message(STATUS "Using WebGPU distribution tag: ${WEBGPU_TAG}")
+  
+  FetchContent_Declare(
+    webgpu
+    GIT_REPOSITORY  ${WEBGPU_DIST_GIT_REPO}
+    GIT_TAG        ${WEBGPU_TAG}
+    GIT_SHALLOW    TRUE
+  )
+  FetchContent_MakeAvailable(webgpu)
+endif()
+  
 if (WEBGPU_TAG STREQUAL "dawn")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBGPU_BACKEND_DAWN")
   message(STATUS "Using Dawn backend")
@@ -68,13 +78,13 @@ endif()
 
 set(SRC_DEMO run.cpp gpu.h nn/shaders.h utils/array_utils.h utils/logging.h)
 add_executable(run_demo ${SRC_DEMO})
-target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu)
+target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu ${EXTRA_LIBS})
 
 # Test of basic kernels
 
 set(SRC_TESTS utils/test_kernels.cpp gpu.h nn/shaders.h utils/array_utils.h utils/logging.h)
 add_executable(run_tests ${SRC_TESTS})
-target_link_libraries(run_tests PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu)
+target_link_libraries(run_tests PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu ${EXTRA_LIBS})
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 
