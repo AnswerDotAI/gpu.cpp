@@ -66,6 +66,20 @@ struct GPUTensor {
   Shape shape;
 };
 
+template <std::size_t N> struct GPUTensors {
+  std::array<GPUTensor, N> data;
+  GPUTensors(std::initializer_list<GPUTensor> init) {
+    std::copy(init.begin(), init.end(), data.begin());
+  }
+  GPUTensor &operator[](std::size_t index) { return data[index]; }
+  const GPUTensor &operator[](std::size_t index) const { return data[index]; }
+};
+
+template <std::size_t N> GPUTensors(std::array<GPUTensor, N>) -> GPUTensors<N>;
+
+// Deduction guide for GPUTensors
+template <typename... Args> GPUTensors(Args...) -> GPUTensors<sizeof...(Args)>;
+
 struct TensorPool {
   TensorPool(GPUContext *ctx) : ctx(ctx), data() {};
   GPUContext *ctx;
@@ -676,6 +690,29 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const ParamsType &params = ParamsType{}) {
   return CreateKernel<ParamsType>(ctx, shader, inputs.data(), numInputs, output,
                                   params);
+}
+
+/*
+ * CreateKernel with GPUTensors of inputs (convienence function)
+ */
+template <typename ParamsType = NoParam, size_t numInputs>
+Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
+                    const GPUTensors<numInputs> &inputs,
+                    const GPUTensor &output,
+                    const ParamsType &params = ParamsType{}) {
+  // first .data gets the array, second .data() gets the pointer
+  return CreateKernel<ParamsType>(ctx, shader, inputs.data.data(), numInputs,
+                                  output, params);
+}
+
+/*
+ * CreateKernel with single input case (convienence function)
+ */
+template <typename ParamsType = NoParam>
+Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
+                    const GPUTensor &input, const GPUTensor &output,
+                    const ParamsType &params = ParamsType{}) {
+  return CreateKernel(ctx, shader, &input, 1, output, params);
 }
 
 MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
