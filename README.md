@@ -86,6 +86,11 @@ The only dependency of this library is a WebGPU implementation. Currently we
 recommend using the Dawn backend until further testing, but we plan to support
 emscripten (web) and wgpu (native) backends.
 
+You should have clang and cmake installed (we currently test on 3.25+). On mac,
+you can install cmake using [homebrew](https://brew.sh/) with: `brew install
+cmake`. On Ubuntu, you can install cmake using `apt-get` with: `sudo apt-get
+install cmake`.
+
 The build is handled by cmake. Some useful common cmake invocations are wrapped
 in the convenience Makefile. To start you can try building a terminal demo
 tutorial which also tests the functionality of the library, this builds the
@@ -186,6 +191,10 @@ If you need to clean up the build artifacts, you can run:
 make clean
 ```
 
+## Troubleshooting
+
+If you run into issues building the project, please open an issue.
+
 ## Motivation and Goals
 
 Although gpu.cpp is intended for any form of general purpose GPU computation,
@@ -236,6 +245,7 @@ Finally, the focus of gpu.cpp is general-purpose GPU computation rather than
 rendering/graphics on the GPU, although it might be useful for compute shaders
 in graphics projects - one of the examples is a small compute renderer,
 rendered to the terminal.
+
 
 ## Contributing and Work-in-Progress
 

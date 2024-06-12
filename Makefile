@@ -19,41 +19,46 @@ DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
 EMSCRIPTEN_FLAGS = -DIMPLEMENTATION=emscripten -DCMAKE_CXX_COMPILER=em++
 LOCAL_FLAGS = -DUSE_LOCAL_LIBS=ON 
 
-demo:
+demo: check-dependencies
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)
 
-tests:
+# check for the existence of clang++ and cmake
+check-dependencies:
+	@command -v clang++ >/dev/null 2>&1 || { echo >&2 "Please install clang++ with 'sudo apt-get install clang' or 'brew install llvm'"; exit 1; }
+	@command -v cmake >/dev/null 2>&1 || { echo >&2 "Please install cmake with 'sudo apt-get install cmake' or 'brew install cmake'"; exit 1; }
+
+tests: check-dependencies
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)
 
-libgpu:
+libgpu: check-dependencies
 	mkdir -p build && cd build && cmake .. $(RELEASE_FLAGS) && make -j$(NUM_JOBS) gpu
 
-debug:
+debug: check-dependencies
 	mkdir -p build && cd build && cmake .. $(DEBUG_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
-build:
+build: check-dependencies
 	mkdir -p build && cd build && cmake .. $(RELEASE_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
-emscripten:
+emscripten: check-dependencies
 	mkdir -p build && cd build && cmake .. $(EMSCRIPTEN_FLAGS) -DIMPLEMENTATION=emscripten && make -j$(NUM_JOBS) $(TARGET_ALL)
 
 check-entr:
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
 
-watch-demo: check-entr
+watch-demo: check-entr check-dependencies
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_DEMO) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)"
 
-watch-tests:
+watch-tests: check-entr check-dependencies
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 # experimental
-watch-tests-wgpu:
+watch-tests-wgpu: check-entr check-dependencies
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) $(USE_WGPU) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
-watch-demo-local: check-entr
+watch-demo-local: check-entr check-dependencies
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) $(LOCAL_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_DEMO) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)"
 
-watch-tests-local:
+watch-tests-local: check-entr check-dependencies
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) $(LOCAL_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 clean-build:

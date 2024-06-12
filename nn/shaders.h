@@ -5,26 +5,6 @@
 
 namespace gpu {
 
-std::string ReplaceAll(std::string str, const std::string &from,
-                       const std::string &to) {
-  size_t start_pos = 0;
-  while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
-    str.replace(start_pos, from.length(), to);
-    start_pos += to.length();
-  }
-  return str;
-}
-
-std::string PrepareShader(const char *shaderRaw, NumType precision,
-                          size_t workgroupSize) {
-  std::string shader(shaderRaw);
-  const char *precisionStr = ToString(precision);
-  shader =
-      ReplaceAll(shader, "{{workgroupSize}}", std::to_string(workgroupSize));
-  shader = ReplaceAll(shader, "{{precision}}", precisionStr);
-  return shader;
-}
-
 // test function - multiply by constant
 const char *kShaderCMul = R"(
 @group(0) @binding(0) var<storage, read_write> input: array<f32>;
@@ -57,13 +37,6 @@ fn main(
 }
 )";
 
-// TODO(avh): 3D workgroup specs
-ShaderCode GeluShader(size_t workgroupSize = 32 * 32,
-                      const NumType precision = kf32) {
-  return ShaderCode{PrepareShader(kShaderGELU, precision, workgroupSize),
-                    workgroupSize};
-}
-
 const char *kShaderHadamard = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
@@ -78,12 +51,6 @@ fn main(
 }
 )";
 
-ShaderCode HadamardShader(size_t workgroupSize = 32 * 32,
-                          const NumType precision = kf32) {
-  return ShaderCode{PrepareShader(kShaderHadamard, precision, workgroupSize),
-                    workgroupSize};
-}
-
 const char *kShaderResidual = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
@@ -97,12 +64,6 @@ fn main(
     }
 }
 )";
-
-ShaderCode ResidualShader(size_t workgroupSize = 32 * 32,
-                          const NumType precision = kf32) {
-  return ShaderCode{PrepareShader(kShaderResidual, precision, workgroupSize),
-                    workgroupSize};
-}
 
 /* LayerNorm
  * v1:
@@ -155,12 +116,6 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>,
     }
 }
 )";
-
-ShaderCode LayerNormShader(size_t workgroupSize = 256,
-                           const NumType precision = kf32) {
-  return ShaderCode{PrepareShader(kShaderLayerNorm1, precision, workgroupSize),
-                    workgroupSize};
-}
 
 // matrix multiplication (naive implementation)
 const char *kShaderMatMul1 = R"(
@@ -233,14 +188,17 @@ fn matmul(
 )";
 
 /* Generates ShaderCode instance for all matmul kernels - pass in
- * the template code via `shaderRaw` */
+ * the template code via `shaderRaw`.
+ *
+ * This is intended to be run ahead of time, so is not performance critical.
+ * */
 ShaderCode MatmulShader(size_t workgroupSize, const char *shaderRaw,
                         NumType precision, size_t M, size_t K, size_t N) {
-  std::string shader = PrepareShader(shaderRaw, precision, workgroupSize);
-  shader = ReplaceAll(shader, "{{M}}", std::to_string(M));
-  shader = ReplaceAll(shader, "{{K}}", std::to_string(K));
-  shader = ReplaceAll(shader, "{{N}}", std::to_string(N));
-  return ShaderCode{shader, workgroupSize};
+  ShaderCode shader = CreateShader(shaderRaw, workgroupSize, precision);
+  ReplaceAll(shader.data, "{{M}}", std::to_string(M));
+  ReplaceAll(shader.data, "{{K}}", std::to_string(K));
+  ReplaceAll(shader.data, "{{N}}", std::to_string(N));
+  return shader;
 }
 
 /* Softmax
@@ -289,12 +247,6 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
     }
 }
 )";
-
-ShaderCode SoftmaxShader(size_t workgroupSize = 32,
-                         const NumType precision = kf32) {
-  return ShaderCode{PrepareShader(kShaderSoftmax1, precision, workgroupSize),
-                    workgroupSize};
-}
 
 } // namespace gpu
 

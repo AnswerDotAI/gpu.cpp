@@ -30,6 +30,12 @@ IF (NOT WEBGPU_TAG)
 ENDIF()
 message(STATUS "Using WebGPU distribution tag: ${WEBGPU_TAG}")
 
+IF (WEBGPU_TAG STREQUAL "dawn")
+  # Pin the dawn backend to a specific commit
+  set(WEBGPU_TAG "1025b977e1927b6d0327e67352f90feb4bcf8274")
+  message(STATUS "Using Dawn backend")
+ENDIF()
+
 FetchContent_Declare(
   webgpu
   GIT_REPOSITORY  ${WEBGPU_DIST_GIT_REPO}
