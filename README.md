@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
     inputArr[i] = static_cast<float>(i); // dummy input data
   }
   GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  GPUTensor output = CreateTensor(ctx, {N}, kf32);
   Kernel op =
       CreateKernel(ctx, kGELU, std::array{input}, output);
   DispatchKernel(ctx, op);

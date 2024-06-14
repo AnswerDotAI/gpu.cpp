@@ -1,0 +1,4 @@
+[submodule "third_party/local/WebGPU-distribution"]
+	path = third_party/local/WebGPU-distribution
+	url = https://github.com/eliemichel/WebGPU-distribution.git
+	branch = dawn

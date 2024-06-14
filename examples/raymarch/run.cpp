@@ -64,6 +64,14 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
 constexpr size_t NROWS = 24;
 constexpr size_t NCOLS = 80;
 
+
+std::int64_t getCurrentTimeInMilliseconds() {
+    auto now = std::chrono::system_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+    return duration.count();
+}
+
+
 int main(int argc, char **argv) {
   std::array<float, NROWS * NCOLS> screen;
 
