@@ -24,13 +24,14 @@ void wait() {
 void section(const char *content) {
   fprintf(stdout, "\033[2J\033[1;1H"); // clear screen
   fprintf(stdout, "%s\n", kAsciiBanner);
-  fprintf(stdout, "================================================================================\n");
+  fprintf(stdout, "============================================================"
+                  "====================\n");
   fprintf(stdout, "%s\n", content);
   wait();
   // fprintf(stdout, "\033[4A\033[0J"); // clear lines
 }
 
-void runHelloGELU(GPUContext& ctx) {
+void runHelloGELU(GPUContext &ctx) {
   // Device code (runs on the GPU) using WGSL (WebGPU Shading Language)
   const char *kGELU = R"(
   const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -55,8 +56,7 @@ void runHelloGELU(GPUContext& ctx) {
   }
   GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
-  Kernel op =
-      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+  Kernel op = CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -152,7 +152,6 @@ Let's try running this.
   GPUContext ctx = CreateContext();
   runHelloGELU(ctx);
 
-
   section(R"(
 Design Objectives of gpu.cpp
 ----------------------------
@@ -196,11 +195,14 @@ when the GPU computation occurs:
 )");
 
   section(R"(
+Ahead-of-time GPU Resource Preparation
+--------------------------------------
 
+In the next sections, we'll look at the ahead-of-time GPU resource preparation
 
-*Ahead-of-time GPU Resource Preparation*
-
-
+These are functions that acquire resources and prepare state for GPU
+computation. These are assumed to be less performance critical and not on hot
+code paths.
 )");
 
   section(R"(
@@ -245,7 +247,6 @@ for allocating and deallocating tensors data on the GPU. In practice
 
 )");
 
-
   section(R"(
 `CreateContext()` creates a GPUContext
 --------------------------------------
@@ -288,19 +289,56 @@ Let's try creating some data on the GPU now.
 
 )");
 
-std::array<float, 3072> inputArr;
-std::array<float, 3072> outputArr;
-for (int i = 0; i < 3072; ++i) {
-  inputArr[i] = static_cast<float>(i); // dummy input data
-}
-GPUTensor input = CreateTensor(ctx, {3072}, kf32, inputArr.data());
-GPUTensor output = CreateTensor(ctx, {3072}, kf32, outputArr.data());
+  std::array<float, 3072> inputArr;
+  std::array<float, 3072> outputArr;
+  for (int i = 0; i < 3072; ++i) {
+    inputArr[i] = static_cast<float>(i); // dummy input data
+  }
+  GPUTensor input = CreateTensor(ctx, {3072}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {3072}, kf32, outputArr.data());
 
-fprintf(stdout, "\nSuccessfully created input and output tensors.\n\n");
-wait();
+  fprintf(stdout, "\nSuccessfully created input and output tensors.\n\n");
+  wait();
 
+  section(R"(
+Create a Kernel with `CreateKernel()`
+-------------------------------------
 
-section(R"(
+Reviewing our GELU example and after using `CreateTensor()` to allocate and
+bind buffers for input and output data, we can use `CreateKernel()` to create a
+kernel.
+
+```
+  // Previously: Create the input and output tensors
+  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+
+  // ...
+
+  Kernel op =
+      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+```
+
+Note this *does not run* the kernel, it just prepares the kernel as a resource
+to be dispatched later.
+
+There are four arguments to `CreateKernel()`:
+- `GPUContext` - the context for the GPU
+- `ShaderCode` - the shader code for the kernel
+- `GPUTensor` - the input tensor. Even though the kernel is not executed,
+GPUTensor provides a handle to the buffers on the GPU to be loaded when the
+kernel is run. If there's more than one input, `GPUTensors` can be used which
+is an ordered collection of `GPUTensor`.
+- `GPUTensor` - the output tensor. As with the input tensor, the values are not
+important at this point, the underlying reference to the GPU buffer is bound to
+the kernel so that when the kernel is dispatched, it will know where to write
+the output data.
+
+The kGELU string that goes into ShaderCode is the WGSL shader code for the
+kernel. We'll look at this next.
+)");
+
+  section(R"(
 WGSL Compute Kernels are Programs that run Computation on the GPU
 ------------------------------------------------------------------
 
@@ -337,44 +375,71 @@ that this is a compute kernel. The `@workgroup_size(256)` annotation specifies
 the workgroup size for the kernel.
 )");
 
-section(R"(
-`CreateKernel()` is used to create a Kernel
--------------------------------------------
+  section(R"(
+Performance critical dispatch of GPU computation
+------------------------------------------------
 
-Reviewing our GELU example and after using `CreateTensor()` to allocate and
-bind buffers for input and output data, we can use `CreateKernel()` to create a
-kernel.
+The past few sections have covered the ahead-of-time GPU resource preparation
+consisting of `Create*()` and supporting functions. 
 
-```
-  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
-  Kernel op =
-      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
-```
+None of these actually execute computation on the GPU yet.
 
-Note this *does not run* the kernel, it just prepares the kernel as a resource
-to be dispatched later.
-
-There are four arguments to `CreateKernel()`:
-- `GPUContext` - the context for the GPU
-- `ShaderCode` - the shader code for the kernel
-- `GPUTensor` - the input tensor. Even though the kernel is not executed,
-GPUTensor provides a handle to the buffers on the GPU to be loaded when the
-kernel is run. If there's more than one input, `GPUTensors` can be used which
-is an ordered collection of `GPUTensor`.
-- `GPUTensor` - the output tensor. As with the input tensor, the values are not
-important at this point, the underlying reference to the GPU buffer is bound to
-the kernel so that when the kernel is dispatched, it will know where to write
-the output data.
-
+Next we'll look at the dispatch functions which asynchronously dispatches the
+kernel for execution.
 )");
 
 
-section(R"(
-Dispatching a kernel
-------------------
+  section(R"(
+Dispatch a kernel for execution with `DispatchKernel()`
+------------------------------------------------------
 
-TODO(avh)
+After creating a kernel, you can dispatch it for execution on the GPU using
+`DispatchKernel()`.
+
+```
+  // Previously: Create the kernel 
+  Kernel op =
+      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+
+  // ...
+
+  DispatchKernel(ctx, op);
+  Wait(ctx, op.future);
+  ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+}
+```
+
+Note that the kernel is executed asynchronously on the GPU, in other words,
+execution will continue on the CPU while the GPU is running the kernel.
+
+To wait for the kernel to finish, you can use `Wait(ctx, op.future)`. This will
+block until the kernel has finished executing.
+
+Note the output of the kernel (if any) is written to the output tensor on the
+GPU. It is not copied back to CPU by default until you call `ToCPU()` to copy
+the data back to the CPU.
+
+This is intentional to allow for efficient pipelining of GPU computation and
+reusing GPU resources without copying data back and forth unless it's specified.
+)");
+
+section(R"(
+Dispatch multiple kernels for execution with `DispatchMultiKernel()`
+---------------------------------------------------------------------
+
+If you have multiple kernels to dispatch, you can use `CreateMultiKernel()` and
+`DispatchMultiKernel()`.
+
+These create and dispatch multiple kernels together and are similar to
+`CreateKernel()` and `DispatchKernel()`, but with multiple kernels and multiple
+inputs per kernel.
+
+With a more complex input signature, `CreateMultiKernel()` takes a structured
+input type `MultiKernelDesc` that specifies the kernels and their inputs. But
+otherwise usage is similar.
+
+Note that inputs can even be shared between kernels, allowing for building a
+complex computation graphs with shared inputs between them.
 )");
 
 
@@ -382,13 +447,21 @@ TODO(avh)
 gpu.cpp vs. the raw WebGPU API
 ------------------------------
 
-The main responsibility of the types and functions of the library is to make
-it trivial to represent these common building blocks of computation
+The main responsibility of the types and functions of the library is to make it
+simple to represent these common building blocks of computation.
 
-If you look at `examples/webgpu_intro/run.cpp` you can get a sense of what it's
-like to interact directly with the WebGPU.
+If you look at `examples/webgpu_intro/run.cpp` you can learn more about what
+it's like to interact directly with the WebGPU API.
 )");
 
-  fprintf(stdout, "Goodbye!\n");
+  section(R"(
+That's it for the introduction to gpu.cpp.
+
+Have fun and let us know if you have any questions or feedback!
+
+We're happy to collaborate with contributors or hear what you're building with
+gpu.cpp.
+)");
+
   return 0;
 }

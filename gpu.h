@@ -129,7 +129,7 @@ struct Kernel {
   size_t outputSize;
   size_t numBuffers;
   size_t numInputs;
-  WGPUCommandBuffer commandBuffer;
+  WGPUCommandBuffer commandBuffer; // managed automatically by wgpuQueueSubmit
   WGPUBuffer readbackBuffer;
   CallbackDataDyn callbackData;
   std::promise<void> promise;
@@ -174,43 +174,16 @@ bool operator<(const Kernel &lhs, const Kernel &rhs) {
   return lhs.commandBuffer < rhs.commandBuffer;
 }
 
-void FreeKernel(Kernel *op) {
-  log(kDefLog, kInfo, "Freeing kernel");
-  // TODO(avh): nullptr is insufficient check for freeable resources
-  if (op->commandBuffer != nullptr) {
-    wgpuCommandBufferRelease(op->commandBuffer);
-  }
-  if (op->readbackBuffer != nullptr) {
-    wgpuBufferRelease(op->readbackBuffer);
-  }
-  if (op->callbackData.buffer != nullptr) {
-    wgpuBufferRelease(op->callbackData.buffer);
-  }
-}
-
-void FreeMultiKernel(MultiKernel *pipeline) {
-  log(kDefLog, kInfo, "Freeing multi kernel");
-  if (pipeline->commandBuffer) {
-    // wgpuCommandBufferRelease(pipeline->commandBuffer);
-  }
-  if (pipeline->readbackBuffer) {
-    // wgpuBufferRelease(pipeline->readbackBuffer);
-  }
-}
-
 struct KernelPool {
   KernelPool(GPUContext *ctx) : ctx(ctx), data() {}
   GPUContext *ctx;
   std::set<Kernel *> data;
   std::set<MultiKernel *> multiData;
   ~KernelPool() {
-    for (auto kernelPtr : data) {
-      FreeKernel(kernelPtr);
-    }
+    // Note : commandBuffer is destroyed upon queue submission,
+    // explicitly destroying readback and callback buffers
+    // produces runtime errors.
     data.clear();
-    for (MultiKernel *multiKernelPtr : multiData) {
-      FreeMultiKernel(multiKernelPtr);
-    }
     multiData.clear();
   }
 };
