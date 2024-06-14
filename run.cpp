@@ -196,7 +196,11 @@ when the GPU computation occurs:
 )");
 
   section(R"(
+
+
 *Ahead-of-time GPU Resource Preparation*
+
+
 )");
 
   section(R"(
@@ -214,11 +218,12 @@ The main resources are:
   `ShaderCode` and a list of `GPUTensor` resources to bind for the dispatch
   computation.
 - `MultiKernel` - a collection of kernels that can be dispatched to the GPU.
+
 )");
 
   section(R"(
-Preparing GPU Resources II: Acquiring GPU Resources with `Create*` Functions
-----------------------------------------------------------------------------
+Preparing GPU Resources II: Acquiring GPU Resources with `Create*()` Functions
+------------------------------------------------------------------------------
 
 Resources are acquired using the `Create` functions. These are assumed to be
 ahead-of-time and not performance critical.
@@ -296,8 +301,8 @@ wait();
 
 
 section(R"(
-WGSL Compute Kernels Define GPU Computation Programs
-----------------------------------------------------
+WGSL Compute Kernels are Programs that run Computation on the GPU
+------------------------------------------------------------------
 
 Device code in WebGPU uses the WGSL shading language. In addition to mechanisms
 for invoking WGSL shaders as compute kernels as shown so far, you can write
@@ -330,18 +335,38 @@ The `@group(0)` and `@binding(0)` annotations are used to specify the binding
 points for the input and output buffers. The `@compute` annotation specifies
 that this is a compute kernel. The `@workgroup_size(256)` annotation specifies
 the workgroup size for the kernel.
-
-Workgroups are a concept in WebGPU that are similar to CUDA blocks. They are
-groups of threads that can share memory and synchronize with each other. The
-workgroup size is the number of threads in a workgroup.
-
 )");
 
 section(R"(
-Creating a kernel
-------------------
+`CreateKernel()` is used to create a Kernel
+-------------------------------------------
 
-TODO(avh)
+Reviewing our GELU example and after using `CreateTensor()` to allocate and
+bind buffers for input and output data, we can use `CreateKernel()` to create a
+kernel.
+
+```
+  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Kernel op =
+      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+```
+
+Note this *does not run* the kernel, it just prepares the kernel as a resource
+to be dispatched later.
+
+There are four arguments to `CreateKernel()`:
+- `GPUContext` - the context for the GPU
+- `ShaderCode` - the shader code for the kernel
+- `GPUTensor` - the input tensor. Even though the kernel is not executed,
+GPUTensor provides a handle to the buffers on the GPU to be loaded when the
+kernel is run. If there's more than one input, `GPUTensors` can be used which
+is an ordered collection of `GPUTensor`.
+- `GPUTensor` - the output tensor. As with the input tensor, the values are not
+important at this point, the underlying reference to the GPU buffer is bound to
+the kernel so that when the kernel is dispatched, it will know where to write
+the output data.
+
 )");
 
 

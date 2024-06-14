@@ -131,7 +131,7 @@ struct Kernel {
   size_t numInputs;
   WGPUCommandBuffer commandBuffer;
   WGPUBuffer readbackBuffer;
-  CallbackDataDyn callbackData; 
+  CallbackDataDyn callbackData;
   std::promise<void> promise;
   std::future<void> future;
 };
@@ -174,26 +174,27 @@ bool operator<(const Kernel &lhs, const Kernel &rhs) {
   return lhs.commandBuffer < rhs.commandBuffer;
 }
 
-void FreeKernel(Kernel* op) {
+void FreeKernel(Kernel *op) {
   log(kDefLog, kInfo, "Freeing kernel");
+  // TODO(avh): nullptr is insufficient check for freeable resources
   if (op->commandBuffer != nullptr) {
-    // wgpuCommandBufferRelease(op->commandBuffer);
+    wgpuCommandBufferRelease(op->commandBuffer);
   }
   if (op->readbackBuffer != nullptr) {
-    // wgpuBufferRelease(op->readbackBuffer);
+    wgpuBufferRelease(op->readbackBuffer);
   }
   if (op->callbackData.buffer != nullptr) {
-    // wgpuBufferRelease(op->callbackData.buffer);
+    wgpuBufferRelease(op->callbackData.buffer);
   }
 }
 
-void FreeMultiKernel(MultiKernel &pipeline) {
+void FreeMultiKernel(MultiKernel *pipeline) {
   log(kDefLog, kInfo, "Freeing multi kernel");
-  if (pipeline.commandBuffer) {
-    wgpuCommandBufferRelease(pipeline.commandBuffer);
+  if (pipeline->commandBuffer) {
+    // wgpuCommandBufferRelease(pipeline->commandBuffer);
   }
-  if (pipeline.readbackBuffer) {
-    wgpuBufferRelease(pipeline.readbackBuffer);
+  if (pipeline->readbackBuffer) {
+    // wgpuBufferRelease(pipeline->readbackBuffer);
   }
 }
 
@@ -202,7 +203,16 @@ struct KernelPool {
   GPUContext *ctx;
   std::set<Kernel *> data;
   std::set<MultiKernel *> multiData;
-  ~KernelPool();
+  ~KernelPool() {
+    for (auto kernelPtr : data) {
+      FreeKernel(kernelPtr);
+    }
+    data.clear();
+    for (MultiKernel *multiKernelPtr : multiData) {
+      FreeMultiKernel(multiKernelPtr);
+    }
+    multiData.clear();
+  }
 };
 
 struct GPUContext {
@@ -212,11 +222,8 @@ struct GPUContext {
   WGPUQueue queue;
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
-  /*
   ~GPUContext() {
     log(kDefLog, kInfo, "Destroying context");
-    pool.~TensorPool();
-    kernelPool.~KernelPool();
     if (queue) {
       wgpuQueueRelease(queue);
       wgpuInstanceProcessEvents(instance);
@@ -240,28 +247,9 @@ struct GPUContext {
     } else {
       log(kDefLog, kWarn, "Instance is null");
     }
+    log(kDefLog, kInfo, "Destroyed context");
   }
-  */
 };
-
-KernelPool::~KernelPool() {
-  for (auto kernelPtr : data) {
-    FreeKernel(kernelPtr);
-    // data.erase(kernelPtr);
-  }
-  /*
-  for (MultiKernel *multiKernelPtr : multiData) {
-    while (multiKernelPtr->future.wait_for(std::chrono::seconds(0)) !=
-           std::future_status::ready) {
-      log(kDefLog, kWarn,
-          "MultiKernel future not ready, waiting before freeing");
-      wgpuInstanceProcessEvents(ctx->instance);
-    }
-    FreeMultiKernel(*multiKernelPtr);
-    multiData.erase(multiKernelPtr);
-  }
-  */
-}
 
 /* Tensor factory function */
 GPUTensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
@@ -380,9 +368,9 @@ void showDeviceInfo(WGPUAdapter &adapter) {
 }
 
 GPUContext CreateContext(bool quietLogging = true,
-                            const WGPUInstanceDescriptor &desc = {},
-                            const WGPURequestAdapterOptions &adapterOpts = {},
-                            WGPUDeviceDescriptor devDescriptor = {}) {
+                         const WGPUInstanceDescriptor &desc = {},
+                         const WGPURequestAdapterOptions &adapterOpts = {},
+                         WGPUDeviceDescriptor devDescriptor = {}) {
   if (quietLogging) {
     kDefLog.level = kError;
   }
@@ -732,8 +720,7 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   }
 
   log(kDefLog, kInfo, "Initializing callbackData");
-  op.callbackData =
-    {op.readbackBuffer, op.outputSize, nullptr, &op.promise};
+  op.callbackData = {op.readbackBuffer, op.outputSize, nullptr, &op.promise};
 
   ctx.kernelPool.data.insert(&op);
 
