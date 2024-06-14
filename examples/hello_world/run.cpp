@@ -1,5 +1,6 @@
 #include "gpu.h"
 #include "nn/shaders.h"
+#include "utils/logging.h"
 #include <array>
 #include <cstdio>
 
@@ -23,7 +24,8 @@ fn main(
 )";
 
 int main(int argc, char **argv) {
-  GPUContext ctx = CreateGPUContext();
+  log(kDefLog, kInfo, "Hello, gpu.cpp!");
+  GPUContext ctx = CreateContext();
   fprintf(stdout, "\nHello, gpu.cpp\n\n");
   static constexpr size_t N = 3072;
   std::array<float, N> inputArr;
@@ -35,7 +37,7 @@ int main(int argc, char **argv) {
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
 
   Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32),
-                           std::array{input}, output);
+                           input, output);
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));

@@ -66,3 +66,9 @@ clean-build:
 
 clean:
 	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/*
+
+all: build
+	cd examples/gpu_puzzles && make
+	cd examples/hello_world && make
+	cd eamples/raymarch && make
+	cd examples/webgpu_intro && make

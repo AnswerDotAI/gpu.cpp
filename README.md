@@ -23,7 +23,7 @@ gpu.cpp provides a minimal set of composable functions and types that make
 WebGPU compute simple and concise to work with for GPU compute R&D use cases,
 while keeping abstractions minimal and transparent.
 
-# Hello World: A GELU Kernel
+## Hello World: A GELU Kernel
 
 Here's an GELU kernel implemented (based on the CUDA implementation of
 [llm.c](https://github.com/karpathy/llm.c)) as an on-device WGSL shader and
@@ -80,7 +80,7 @@ For those curious about what happens under the hood with the raw WebGPU API,
 the equivalent functionality is implemented using the WebGPU C API in
 `examples/webgpu_intro/run.cpp`.
 
-## Quick Start
+## Quick Start: Building and Running
 
 The only dependency of this library is a WebGPU implementation. Currently we
 recommend using the Dawn backend until further testing, but we plan to support
@@ -115,18 +115,8 @@ Welcome!
 
 This program is a brief intro to the gpu.cpp library.
 
-You can use the library by simply including the gpu.h header, starting with a
-build template (see examples/hello_gpu/ for a template project that builds the
-library).
+...
 
-  #include "gpu.h"
-
-See `examples/hello_world/` for an examle of build scripts to run a standalone
-program that uses this library.
-
-┌──────────────────────────────┐
-│ Press Enter to Continue...   │
-└──────────────────────────────┘
 ```
 
 The first time you build and run the project, it will download the WebGPU

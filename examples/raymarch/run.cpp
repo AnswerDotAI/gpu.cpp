@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
     float sphereCenterZ;
   } params = {NCOLS, NROWS, 0.5, 0.0, 0.0, 0.0};
 
-  GPUContext ctx = CreateGPUContext();
+  GPUContext ctx = CreateContext();
   GPUTensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
   Kernel render = CreateKernel(ctx, ShaderCode{kSDF, 64}, {}, 0, devScreen, params);
   DispatchKernel(ctx, render);

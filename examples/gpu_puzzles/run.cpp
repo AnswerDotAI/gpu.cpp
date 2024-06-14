@@ -120,7 +120,7 @@ void puzzle3(GPUContext& ctx) {
 // ...
 
 int main(int argc, char **argv) {
-  GPUContext ctx = CreateGPUContext();
+  GPUContext ctx = CreateContext();
   puzzle1(ctx);
   puzzle2(ctx);
   puzzle3(ctx);

@@ -8,6 +8,10 @@ FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON
 run:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET) && ./$(TARGET)
 
+watch:
+	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
+	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET) && make -j$(NUM_JOBS) $(TARGET) && ./$(TARGET)"
+
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
 

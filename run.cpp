@@ -30,6 +30,43 @@ void section(const char *content) {
   // fprintf(stdout, "\033[4A\033[0J"); // clear lines
 }
 
+void runHelloGELU(GPUContext& ctx) {
+  // Device code (runs on the GPU) using WGSL (WebGPU Shading Language)
+  const char *kGELU = R"(
+  const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
+  @group(0) @binding(0) var<storage, read_write> inp: array<f32>;
+  @group(0) @binding(1) var<storage, read_write> out: array<f32>;
+  @compute @workgroup_size(256)
+  fn main(
+      @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+      let i: u32 = GlobalInvocationID.x;
+      if (i < arrayLength(&inp)) {
+          let x: f32 = inp[i];
+          let cube: f32 = 0.044715 * x * x * x;
+          out[i] = 0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR * (x + cube)));
+      }
+  }
+  )";
+
+  static constexpr size_t N = 3072;
+  std::array<float, N> inputArr, outputArr;
+  for (int i = 0; i < N; ++i) {
+    inputArr[i] = static_cast<float>(i); // dummy input data
+  }
+  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Kernel op =
+      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+  DispatchKernel(ctx, op);
+  Wait(ctx, op.future);
+  ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  for (int i = 0; i < 10; ++i) {
+    fprintf(stdout, "%d : %f\n", i, outputArr[i]);
+  }
+  fprintf(stdout, "...\n\n");
+  wait();
+}
+
 int main(int argc, char **argv) {
 
   // Clear screen and print banner
@@ -43,52 +80,173 @@ Welcome!
 
 This program is a brief intro to the gpu.cpp library.
 
-You can use the library by simply including the gpu.h header, starting with a
-build template (see examples/hello_gpu/ for a template project that builds the
-library).
+You can use the library by simply including the gpu.h header:
 
   #include "gpu.h"
 
-See `examples/hello_world/` for an examle of build scripts to run a standalone
-program that uses this library.
+and starting with a build template (see examples/hello_gpu/ for a template
+project that builds the library).
+)");
+
+  section(R"(
+Before diving into the details of the library, let's test out some code to
+perform a simple GPU computation - a GELU activation function. These activation
+functions are common in deep learning large language models.
+
+The code is broken into two parts:
+
+*The code that runs on the GPU*
+
+.. is written in WGSL the WebGPU Shading Language. WGSL is a domain specific
+language for writing GPU compute kernels approximately maps to the computations
+available on the GPU. If you are familiar with CUDA, this is similar to writing
+a CUDA kernel.
+
+*The code that runs on the host (CPU)*
+
+.. is written in C++ and uses the gpu.cpp which invokes the WebGPU C API.
+
+We'll see a WGSL example later, for now let's see the host CPU C++ code that
+uses the gpu.cpp to run the GELU activation function.
+)");
+
+  section(R"(
+Here is the host CPU C++ code that uses the gpu.cpp to run the GELU activation
+function:
+
+```
+#include <array>
+#include <cstdio>
+#include "gpu.h"
+
+using namespace gpu;
+
+// Device code (runs on the GPU) using WGSL (WebGPU Shading Language)
+const char *kGELU = ... // we'll look at the WGSL shader code later
+
+int main(int argc, char **argv) {
+  GPUContext ctx = CreateContext();
+  static constexpr size_t N = 3072;
+  std::array<float, N> inputArr, outputArr;
+  for (int i = 0; i < N; ++i) {
+    inputArr[i] = static_cast<float>(i); // dummy input data
+  }
+  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Kernel op =
+      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+  DispatchKernel(ctx, op);
+  Wait(ctx, op.future);
+  ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  for (int i = 0; i < 10; ++i) {
+    fprintf(stdout, "%d : %f\n", i, outputArr[i]);
+  }
+  fprintf(stdout, "...\n\n");
+  return 0;
+}
+```
+
+Let's try running this.
+)");
+
+  GPUContext ctx = CreateContext();
+  runHelloGELU(ctx);
+
+
+  section(R"(
+Design Objectives of gpu.cpp
+----------------------------
+
+1. Maximal Leverage. Maximize the space of implementations that this
+   library is useful for with the least amount of implementation complexity.
+   Implementation complexity. 
+
+2. Minimize integration complexity. Whereas the integration pattern for custom
+   low-level GPU algorithm code is to integrate it into an existing engine (eg
+   an inference runtime, or a compiler), the objective of gpu.cpp is to enable
+   adding GPU computation code inside your own project with a minimal amount of
+   integration complexity.
+
+2. High ceiling on low-level control.
+    - Direct control of on-device GPU code unconstrained by fixed set of ops
+    - Direct control of on-device GPU memory management
+)");
+
+  section(R"(
+Separating Resource Acquisition and Dispatch
+--------------------------------------------
+
+We can think of the use of gpu.cpp library as a collection of GPU nouns and
+verbs.
+
+The "nouns" are GPU resources modeled by the type definitions of the library
+and the "verbs" actions on GPU resources, modeled by the functions of the
+library. 
+
+The key functions can be further subdivided into two categories in relation to
+when the GPU computation occurs: 
+
+1) Ahead-of-time GPU Resource Preparation: these are functions that
+   acquire resources and prepare state for GPU computation. These are less
+   performance critical.
+
+2) Performance critical dispatch of GPU computation: these are functions that
+   dispatch GPU computation to the GPU, usually in a tight hot-path loop. 
+
+)");
+
+  section(R"(
+*Ahead-of-time GPU Resource Preparation*
+)");
+
+  section(R"(
+Preparing GPU Resources I: Resource Type Definitions
+----------------------------------------------------
+
+The main resources are:
+
+- `GPUContext` - the state of resources for interacting with the GPU.
+- `GPUTensor` - a buffer of data on the GPU.
+- `ShaderCode` - the code for a shader program that can be dispatched to the
+  GPU. This is a thin wrapper around a WGSL string but also includes the
+  workgroup size the code is designed to run with.
+- `Kernel` - a GPU program that can be dispatched to the GPU. This accepts a
+  `ShaderCode` and a list of `GPUTensor` resources to bind for the dispatch
+  computation.
+- `MultiKernel` - a collection of kernels that can be dispatched to the GPU.
+)");
+
+  section(R"(
+Preparing GPU Resources II: Acquiring GPU Resources with `Create*` Functions
+----------------------------------------------------------------------------
+
+Resources are acquired using the `Create` functions. These are assumed to be
+ahead-of-time and not performance critical.
+
+- `GPUContext CreateContext(...)` - creates a GPU context.
+- `GPUTensor CreateTensor(...)` - creates and allocates a buffer for a tensor
+  on the GPU.
+- `Kernel CreateKernel(...)` - creates and prepares a kernel on the GPU,
+  including underlying GPU buffer data bindings and compute pipeline for the
+  shader code.
+- `MultiKernel CreateMultiKernel(...)` - Same as `CreateKernel`, but for
+  multiple kernels to be dispatched together.
+
+There's a few supporting types in addition to these. `Shape` is a simple type
+to specify the shape of a tensor. `KernelDesc` and `MultiKernelDesc` are
+effectively. `TensorPool` manages `GPUTensor` resources and is used as context
+for allocating and deallocating tensors data on the GPU. In practice
+`TensorPool` is managed as a member variable of `GPUContext`.
+
 )");
 
 
   section(R"(
-Nouns and Verbs of gpu.cpp
---------------------------
+`CreateContext()` creates a GPUContext
+--------------------------------------
 
-We can think of gpu.cpp in terms of its "nouns" (types or resources) and
-"verbs" (functions). 
-
-The core nouns (resources / types) are:
-
-- *Device State* - Interacting with the GPU state - `GPUContext` and supporting types.
-  Once instantiated, the GPUContext instance is passed to most functions to provide 
-  references to interact with the GPU.
-- *Data* - Data that you want to pass to/from the GPU for the
-  computation. These are effectively flat buffers of values (GPUArray),
-  optionally with an associated shape (GPUTensor).
-- *Computation* - that you want to execute on the GPU - a Kernel instance comprised of a
-  Shader and references to its associated data.
-
-The core verbs (functions) of interest are:
-
-- *Requesting GPU Resources* - CreateGPUContext(), CreateArray() and
-  CreateTensor() 
-- *Ahead-of-Time Preparation of a Computation* - CreateKernel() which both binds
-  resources and compiles the kernel 
-- *Asynchronous Execution of Computation* - DispatchKernel(), Wait()
-- *Data Movement* - ToCPU(), ToGPU(), also CreateArray and CreateTensor have
-  convenience overloads that take CPU data directly as part of instantiation.
-
-Each of these has some supporting functions and types which we can get to
-later.
-)");
-
-  section(R"(
-Interfacing with the GPU  
--------------------------
+Let's zoom in a bit on the invocation of these Create functions, starting with
+CreateContext:
 
 The GPUContext is the main entry point for interacting with the GPU. It
 represents the state of the GPU and is used to allocate resources and execute
@@ -96,18 +254,12 @@ kernels.
 
 In your program, you can create a GPUContext like this:
 
-  GPUContext ctx = gpu::GPUContext();
-
-Let's try doing that in this program now.
+  GPUContext ctx = CreateContext();
 )");
 
-  GPUContext ctx = CreateGPUContext();
-  fprintf(stdout, "\nSuccessfully created a GPUContext.\n\n");
-  wait();
-
   section(R"(
-Creating Data on the GPU
--------------------------
+`CreateTensor()` allocates GPUTensor on the GPU
+-----------------------------------------------
 
 As a low-level library, gpu.cpp primarily deals with flat arrays of data either
 on the CPU or GPU. 
@@ -144,8 +296,8 @@ wait();
 
 
 section(R"(
-Custom WGSL Compute Kernels
----------------------------
+WGSL Compute Kernels Define GPU Computation Programs
+----------------------------------------------------
 
 Device code in WebGPU uses the WGSL shading language. In addition to mechanisms
 for invoking WGSL shaders as compute kernels as shown so far, you can write
@@ -213,4 +365,5 @@ like to interact directly with the WebGPU.
 )");
 
   fprintf(stdout, "Goodbye!\n");
+  return 0;
 }

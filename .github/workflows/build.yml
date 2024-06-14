@@ -1,0 +1,14 @@
+name: build
+
+on:
+  push:
+  pull_request:
+    types: [opened, reopened, labeled, unlabeled, synchronize]
+  workflow_dispatch:
+
+jobs:
+  build:
+    - name: Build
+      run: 
+        echo "Hello, ${{ github.actor }}"
+      

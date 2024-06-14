@@ -6,6 +6,7 @@
 #include <cstring>
 #include <future>
 #include <memory>
+#include <set>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -87,40 +88,6 @@ struct TensorPool {
   ~TensorPool();
 };
 
-struct GPUContext {
-  WGPUInstance instance;
-  WGPUAdapter adapter;
-  WGPUDevice device;
-  WGPUQueue queue;
-  TensorPool pool = TensorPool(this);
-  ~GPUContext() {
-    log(kDefLog, kInfo, "Destroying context");
-    if (queue) {
-      wgpuQueueRelease(queue);
-      wgpuInstanceProcessEvents(instance);
-    } else {
-      log(kDefLog, kWarn, "Queue is null");
-    }
-    if (device) {
-      wgpuDeviceRelease(device);
-      wgpuInstanceProcessEvents(instance);
-    } else {
-      log(kDefLog, kWarn, "Device is null");
-    }
-    if (adapter) {
-      wgpuAdapterRelease(adapter);
-      wgpuInstanceProcessEvents(instance);
-    } else {
-      log(kDefLog, kWarn, "Adapter is null");
-    }
-    if (instance) {
-      wgpuInstanceRelease(instance);
-    } else {
-      log(kDefLog, kWarn, "Instance is null");
-    }
-  }
-};
-
 enum NumType { kf32 };
 
 const char *ToString(NumType type) {
@@ -133,95 +100,18 @@ const char *ToString(NumType type) {
   }
 }
 
-/* Tensor factory function */
-GPUTensor CreateTensor(TensorPool &pool, const Shape &shape, NumType dtype,
-                       WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
-                                                    WGPUBufferUsage_CopyDst |
-                                                    WGPUBufferUsage_CopySrc) {
-  log(kDefLog, kInfo, "Creating tensor");
-  size_t numElements = 1;
-  for (size_t dim = 0; dim < shape.rank; dim++) {
-    numElements *= shape.data[dim];
-  }
-  size_t size = dtype == kf32 ? sizeof(float) * numElements : 0;
-  WGPUBufferDescriptor bufferDesc = {
-      .usage = usage,
-      .size = size,
-  };
-  WGPUBuffer buffer = wgpuDeviceCreateBuffer(pool.ctx->device, &bufferDesc);
-  pool.data[buffer] = GPUTensor{
-      .data = GPUArray{.buffer = buffer, .usage = usage, .size = size},
-      .shape = shape,
-  };
-  wgpuDeviceCreateBuffer(pool.ctx->device, &bufferDesc);
-  return pool.data[buffer];
-}
-
-/* Syntactic sugar - take in ctx instead of pool*/
-GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype) {
-  return CreateTensor(ctx.pool, shape, dtype,
-                      WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                          WGPUBufferUsage_CopySrc);
-}
-
-/* With Value Initialization (pointer) */
-GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype,
-                       float *data) {
-  GPUTensor tensor =
-      CreateTensor(ctx.pool, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
-}
-
-void FreeTensor(TensorPool &pool, GPUTensor tensor) {
-  wgpuBufferRelease(tensor.data.buffer);
-  pool.data.erase(tensor.data.buffer);
-}
-
-TensorPool::~TensorPool() {
-  // Need to get keys in a separate iteration, otherwise iterator is getting
-  // invalidated during erase.
-  std::vector<WGPUBuffer> keys;
-  for (auto &pair : data) {
-    keys.push_back(pair.first);
-  }
-  for (auto &key : keys) {
-    FreeTensor(*this, data[key]);
-    log(kDefLog, kTrace, "Freed tensor");
-  }
-}
-
-struct CallbackDataDyn {
-  WGPUBuffer buffer;
-  size_t bufferSize;
-  float *output;
-  std::promise<void> *promise;
-};
-
 struct ShaderCode {
   std::string data;
   size_t wgSize; // workgroup size
 };
 
-void ReplaceAll(std::string &str, const std::string &from,
-                const std::string &to) {
-  size_t start_pos = 0;
-  while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
-    str.replace(start_pos, from.length(), to);
-    start_pos += to.length();
-  }
-}
-
-ShaderCode CreateShader(const char *shaderRaw, size_t workgroupSize,
-                        NumType precision) {
-  std::string codeString(shaderRaw);
-  ReplaceAll(codeString, "{{workgroupSize}}", std::to_string(workgroupSize));
-  ReplaceAll(codeString, "{{precision}}", ToString(precision));
-  return ShaderCode{codeString, workgroupSize};
-}
+struct CallbackDataDyn {
+  WGPUBuffer buffer; // managed by owning Kernel
+  size_t bufferSize;
+  float *output; // non-owning, only for target memory in ToCPU, not used for
+                 // kernel invocations
+  std::promise<void> *promise;
+};
 
 struct KernelDesc {
   const ShaderCode shader;
@@ -233,15 +123,15 @@ struct KernelDesc {
 };
 
 struct Kernel {
-  std::unique_ptr<WGPUBuffer[]> buffers;
+  std::unique_ptr<WGPUBuffer[]> buffers; // non-owning
   std::unique_ptr<size_t[]> bufferSizes;
-  WGPUBuffer outputBuffer;
+  WGPUBuffer outputBuffer; // non-owning
   size_t outputSize;
   size_t numBuffers;
   size_t numInputs;
   WGPUCommandBuffer commandBuffer;
   WGPUBuffer readbackBuffer;
-  CallbackDataDyn callbackData;
+  CallbackDataDyn callbackData; 
   std::promise<void> promise;
   std::future<void> future;
 };
@@ -279,6 +169,187 @@ struct MultiKernel {
   std::future<void> future;
 };
 
+// make Kernel hashable by std::set
+bool operator<(const Kernel &lhs, const Kernel &rhs) {
+  return lhs.commandBuffer < rhs.commandBuffer;
+}
+
+void FreeKernel(Kernel* op) {
+  log(kDefLog, kInfo, "Freeing kernel");
+  if (op->commandBuffer != nullptr) {
+    // wgpuCommandBufferRelease(op->commandBuffer);
+  }
+  if (op->readbackBuffer != nullptr) {
+    // wgpuBufferRelease(op->readbackBuffer);
+  }
+  if (op->callbackData.buffer != nullptr) {
+    // wgpuBufferRelease(op->callbackData.buffer);
+  }
+}
+
+void FreeMultiKernel(MultiKernel &pipeline) {
+  log(kDefLog, kInfo, "Freeing multi kernel");
+  if (pipeline.commandBuffer) {
+    wgpuCommandBufferRelease(pipeline.commandBuffer);
+  }
+  if (pipeline.readbackBuffer) {
+    wgpuBufferRelease(pipeline.readbackBuffer);
+  }
+}
+
+struct KernelPool {
+  KernelPool(GPUContext *ctx) : ctx(ctx), data() {}
+  GPUContext *ctx;
+  std::set<Kernel *> data;
+  std::set<MultiKernel *> multiData;
+  ~KernelPool();
+};
+
+struct GPUContext {
+  WGPUInstance instance;
+  WGPUAdapter adapter;
+  WGPUDevice device;
+  WGPUQueue queue;
+  TensorPool pool = TensorPool(this);
+  KernelPool kernelPool = KernelPool(this);
+  /*
+  ~GPUContext() {
+    log(kDefLog, kInfo, "Destroying context");
+    pool.~TensorPool();
+    kernelPool.~KernelPool();
+    if (queue) {
+      wgpuQueueRelease(queue);
+      wgpuInstanceProcessEvents(instance);
+    } else {
+      log(kDefLog, kWarn, "Queue is null");
+    }
+    if (device) {
+      wgpuDeviceRelease(device);
+      wgpuInstanceProcessEvents(instance);
+    } else {
+      log(kDefLog, kWarn, "Device is null");
+    }
+    if (adapter) {
+      wgpuAdapterRelease(adapter);
+      wgpuInstanceProcessEvents(instance);
+    } else {
+      log(kDefLog, kWarn, "Adapter is null");
+    }
+    if (instance) {
+      wgpuInstanceRelease(instance);
+    } else {
+      log(kDefLog, kWarn, "Instance is null");
+    }
+  }
+  */
+};
+
+KernelPool::~KernelPool() {
+  for (auto kernelPtr : data) {
+    FreeKernel(kernelPtr);
+    // data.erase(kernelPtr);
+  }
+  /*
+  for (MultiKernel *multiKernelPtr : multiData) {
+    while (multiKernelPtr->future.wait_for(std::chrono::seconds(0)) !=
+           std::future_status::ready) {
+      log(kDefLog, kWarn,
+          "MultiKernel future not ready, waiting before freeing");
+      wgpuInstanceProcessEvents(ctx->instance);
+    }
+    FreeMultiKernel(*multiKernelPtr);
+    multiData.erase(multiKernelPtr);
+  }
+  */
+}
+
+/* Tensor factory function */
+GPUTensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
+                       NumType dtype,
+                       WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
+                                                    WGPUBufferUsage_CopyDst |
+                                                    WGPUBufferUsage_CopySrc) {
+  log(kDefLog, kInfo, "Creating tensor");
+  size_t numElements = 1;
+  for (size_t dim = 0; dim < shape.rank; dim++) {
+    numElements *= shape.data[dim];
+  }
+  size_t size = dtype == kf32 ? sizeof(float) * numElements : 0;
+  WGPUBufferDescriptor bufferDesc = {
+      .usage = usage,
+      .size = size,
+  };
+  WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
+  pool.data[buffer] = GPUTensor{
+      .data = GPUArray{.buffer = buffer, .usage = usage, .size = size},
+      .shape = shape,
+  };
+  wgpuDeviceCreateBuffer(device, &bufferDesc);
+  return pool.data[buffer];
+}
+
+/* Syntactic sugar - take in ctx instead of pool*/
+GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype) {
+  return CreateTensor(ctx.pool, ctx.device, shape, dtype,
+                      WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                          WGPUBufferUsage_CopySrc);
+}
+
+/* With Value Initialization (pointer) */
+GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype,
+                       float *data) {
+  GPUTensor tensor =
+      CreateTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+void FreeTensor(TensorPool &pool, GPUTensor tensor) {
+  if (tensor.data.buffer) {
+    wgpuBufferRelease(tensor.data.buffer);
+  } else {
+    log(kDefLog, kWarn, "Tried to free tensor with null buffer");
+  }
+  if (pool.data.find(tensor.data.buffer) != pool.data.end()) {
+    pool.data.erase(tensor.data.buffer);
+  } else {
+    log(kDefLog, kWarn, "Tried to free tensor that was not in pool");
+  }
+}
+
+TensorPool::~TensorPool() {
+  // Need to get keys in a separate iteration, otherwise iterator is getting
+  // invalidated during erase.
+  std::vector<WGPUBuffer> keys;
+  for (auto &pair : data) {
+    keys.push_back(pair.first);
+  }
+  for (auto &key : keys) {
+    FreeTensor(*this, data[key]);
+    log(kDefLog, kTrace, "Freed tensor");
+  }
+}
+
+void ReplaceAll(std::string &str, const std::string &from,
+                const std::string &to) {
+  size_t start_pos = 0;
+  while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+    str.replace(start_pos, from.length(), to);
+    start_pos += to.length();
+  }
+}
+
+ShaderCode CreateShader(const char *shaderRaw, size_t workgroupSize,
+                        NumType precision) {
+  std::string codeString(shaderRaw);
+  ReplaceAll(codeString, "{{workgroupSize}}", std::to_string(workgroupSize));
+  ReplaceAll(codeString, "{{precision}}", ToString(precision));
+  return ShaderCode{codeString, workgroupSize};
+}
+
 struct NoParam {};
 
 template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
@@ -308,7 +379,7 @@ void showDeviceInfo(WGPUAdapter &adapter) {
   wgpuAdapterGetLimits(adapter, &supportedLimits);
 }
 
-GPUContext CreateGPUContext(bool quietLogging = true,
+GPUContext CreateContext(bool quietLogging = true,
                             const WGPUInstanceDescriptor &desc = {},
                             const WGPURequestAdapterOptions &adapterOpts = {},
                             WGPUDeviceDescriptor devDescriptor = {}) {
@@ -660,6 +731,12 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
 
+  log(kDefLog, kInfo, "Initializing callbackData");
+  op.callbackData =
+    {op.readbackBuffer, op.outputSize, nullptr, &op.promise};
+
+  ctx.kernelPool.data.insert(&op);
+
   log(kDefLog, kInfo, "Exiting CreateKernel");
   return op;
 }
@@ -678,18 +755,6 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     log(kDefLog, kInfo, "No params");
     return CreateKernel(ctx, shader, inputs, numInputs, output, nullptr, 0);
   }
-}
-
-/*
- * CreateKernel with array of inputs (convienence function)
- */
-template <typename ParamsType = NoParam, size_t numInputs>
-Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
-                    const std::array<GPUTensor, numInputs> &inputs,
-                    const GPUTensor &output,
-                    const ParamsType &params = ParamsType{}) {
-  return CreateKernel<ParamsType>(ctx, shader, inputs.data(), numInputs, output,
-                                  params);
 }
 
 /*
@@ -901,15 +966,18 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   pipeline.promise = std::promise<void>();
   pipeline.future = pipeline.promise.get_future();
 
+  pipeline.callbackData = CallbackDataDyn{
+      pipeline.readbackBuffer, pipeline.outputSize[pipeline.numShaders - 1],
+      nullptr, &pipeline.promise};
+
+  ctx.kernelPool.multiData.insert(&pipeline);
+
   return pipeline;
 }
 
 void DispatchKernel(GPUContext &ctx, Kernel &op) {
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
-
-  op.callbackData =
-      CallbackDataDyn{op.readbackBuffer, op.outputSize, nullptr, &op.promise};
 
   // Set up the callback for when the work is done
   wgpuQueueOnSubmittedWorkDone(
@@ -927,10 +995,6 @@ void DispatchKernel(GPUContext &ctx, Kernel &op) {
 
 void DispatchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
   wgpuQueueSubmit(ctx.queue, 1, &pipeline.commandBuffer);
-
-  pipeline.callbackData = CallbackDataDyn{
-      pipeline.readbackBuffer, pipeline.outputSize[pipeline.numShaders - 1],
-      nullptr, &pipeline.promise};
 
   // Set up the callback for when the work is done
   wgpuQueueOnSubmittedWorkDone(
