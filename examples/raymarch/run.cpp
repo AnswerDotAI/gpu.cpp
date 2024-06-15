@@ -1,26 +1,26 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
-#include <iomanip>
-#include <sstream>
 
 #include "gpu.h"
 #include "utils/array_utils.h"
+#include "utils/logging.h"
 
 using namespace gpu;
 
 const char *kSDF = R"(
 @group(0) @binding(0) var<storage, read_write> out: array<f32>;
 @group(0) @binding(1) var<uniform> params: Params;
-const FOCAL_LENGTH: f32 = 0.5;
 
 struct Params {
+    focalLength: f32,
     screenWidth: u32,
     screenHeight: u32,
     sphereRadius: f32,
     sphereCenterX: f32,
     sphereCenterY: f32,
     sphereCenterZ: f32,
+    time: i32,
 };
 
 fn sdf(p: vec3<f32>, c: vec3<f32>, r: f32) -> f32 {
@@ -40,68 +40,113 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let y: f32 = f32(GlobalInvocationID.y);
 
     let p: vec3<f32> = vec3<f32>((x / f32(params.screenWidth)) - 0.5,
-                                 (y / f32(params.screenWidth)) - 0.5,
-                                 FOCAL_LENGTH);
-    let c: vec3<f32> = vec3<f32>(params.sphereCenterX, params.sphereCenterY, params.sphereCenterZ);
+                                 (y / f32(params.screenHeight)) - 0.5,
+                                 params.focalLength);
+    let offset: f32 = sin(f32(params.time) / 1000) * 0.2;
+    let offsetZ: f32 = cos(f32(params.time) / 1000) * 0.1;
+    let c: vec3<f32> = vec3<f32>(params.sphereCenterX + offset,  params.sphereCenterY, params.sphereCenterZ + offsetZ);
     let len: f32 = length(p);
 
     let dir: vec3<f32> = vec3<f32>(p.x / len, p.y / len, p.z / len);
 
-    let maxIter: u32 = 5;
+    let maxIter: u32 = 20;
     let dist: f32 = 0.0;
+    out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] = 0.0;
     for (var i: u32 = 0; i < maxIter; i++) {
       let step: f32 = sdf(p, c, params.sphereRadius);
       if (step < .001) {
         return;
-      }
-      // out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] += step;
-      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] +=  1.0; // debugging
+      } 
+      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] += step;
+      // p = p + dir * step;
     }
 
 }
 )";
 
-constexpr size_t NROWS = 24;
-constexpr size_t NCOLS = 80;
-
-
-std::int64_t getCurrentTimeInMilliseconds() {
-    auto now = std::chrono::system_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
-    return duration.count();
+std::uint32_t getCurrentTimeInMilliseconds() {
+  auto now = std::chrono::system_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      now.time_since_epoch());
+  return static_cast<uint32_t>(duration.count());
 }
 
-
 int main(int argc, char **argv) {
+
+  constexpr size_t NROWS = 16;
+  constexpr size_t NCOLS = 64;
+
   std::array<float, NROWS * NCOLS> screen;
 
   struct Params {
+    float focalLength;
     uint32_t screenWidth;
     uint32_t screenHeight;
     float sphereRadius;
     float sphereCenterX;
     float sphereCenterY;
     float sphereCenterZ;
-  } params = {NCOLS, NROWS, 0.5, 0.0, 0.0, 0.0};
+    uint32_t time;
+  } params = {/* focal length */ 0.2,
+              NCOLS,
+              NROWS,
+              /* radius */ 1.5,
+              0.0,
+              0.0,
+              /* z */ 5.0,
+              0};
+
+
+  std::fill(begin(screen), end(screen), 0.0f);
 
   GPUContext ctx = CreateContext();
   GPUTensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
-  Kernel render = CreateKernel(ctx, ShaderCode{kSDF, 64}, {}, 0, devScreen, params);
-  DispatchKernel(ctx, render);
-  Wait(ctx, render.future);
-  ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
+  uint32_t zeroTime = getCurrentTimeInMilliseconds();
 
-  // https://stackoverflow.com/questions/30097953/ascii-art-sorting-an-array-of-ascii-characters-by-brightness-levels-c-c
-  static const char intensity[] = "`.-':_,^=;><+!rc*/"
-                                  "z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]"
-                                  "2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
+  while (true) {
+    params.time = getCurrentTimeInMilliseconds() - zeroTime;
+    Kernel render =
+        CreateKernel(ctx, CreateShader(kSDF), {}, 0, devScreen, params);
+    // ToGPU(ctx, &params, render.buffers[render.numBuffers - 1], sizeof(params));
+    DispatchKernel(ctx, render);
+    Wait(ctx, render.future);
+    ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
 
-  fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen).c_str());
-  std::array<char, NROWS *(NCOLS + 1)> raster;
-  for (size_t row = 0; row < NROWS; ++row) {
-    for (size_t col = 0; col < NCOLS; ++col) {
-      // TODO(av): clamp distance + rasterize
-      // raster[row * NCOLS + col] =
+    // https://stackoverflow.com/questions/30097953/ascii-art-sorting-an-array-of-ascii-characters-by-brightness-levels-c-c
+
+    static const char intensity[] = " .:-=+*#%@";
+    static const char intensityReversed[] = "@%#*+=-:. ";
+    // clear the screen
+    printf("\033[2J");
+
+    fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen, "Raw values").c_str());
+
+    // normalize values
+    float min = *std::min_element(screen.begin(), screen.end());
+    float max = *std::max_element(screen.begin(), screen.end());
+    // float min = 20.0;
+    // float max = 100.0;
+
+    for (size_t i = 0; i < screen.size(); ++i) {
+      screen[i] = (screen[i] - min) / (max - min);
     }
+    fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen, "Normalized").c_str());
+
+    // index into intensity array
+    std::array<char, NROWS *(NCOLS + 1)> raster;
+    for (size_t i = 0; i < screen.size(); ++i) {
+      raster[i] = intensityReversed[static_cast<size_t>(
+          screen[i] * (sizeof(intensity) - 1))];
+    }
+
+    for (size_t row = 0; row < NROWS; ++row) {
+      for (size_t col = 0; col < NCOLS; ++col) {
+        printf("%c", raster[row * NCOLS + col]);
+      }
+      printf("\n");
+    }
+
+    // wait for key
+    // getchar();
   }
 }

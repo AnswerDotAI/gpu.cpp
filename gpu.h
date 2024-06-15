@@ -17,6 +17,9 @@
 
 namespace gpu {
 
+static Logger kGpuLog = {stdout, "", kInfo};
+
+
 #ifdef NDEBUG
 static constexpr bool kDebug = false;
 #else
@@ -303,8 +306,8 @@ void ReplaceAll(std::string &str, const std::string &from,
   }
 }
 
-ShaderCode CreateShader(const char *shaderRaw, size_t workgroupSize,
-                        NumType precision) {
+ShaderCode CreateShader(const char *shaderRaw, size_t workgroupSize = 256,
+                        NumType precision = kf32) {
   std::string codeString(shaderRaw);
   ReplaceAll(codeString, "{{workgroupSize}}", std::to_string(workgroupSize));
   ReplaceAll(codeString, "{{precision}}", ToString(precision));
@@ -499,6 +502,11 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));
 }
 
+void ToGPU(GPUContext &ctx, const void *data, WGPUBuffer buffer, size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, buffer, 0, data,
+                       size);
+}
+
 void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
@@ -685,6 +693,9 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
                                        nullptr);
+    // log(kGpuLog, kInfo, "Dispatching workgroups for # threads %d", outN);
+    // log(kGpuLog, kInfo, "Dispatching workgroup size %d", shader.wgSize);
+    // log(kGpuLog, kInfo, "Dispatching # workgroups %d", (outN + shader.wgSize - 1) / shader.wgSize);
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder, (outN + (shader.wgSize - 1)) / shader.wgSize, 1, 1);
     wgpuComputePassEncoderEnd(computePassEncoder);
