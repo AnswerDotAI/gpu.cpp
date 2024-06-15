@@ -35,36 +35,46 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
       return;
     }
 
-    // Screen coordinates for this thread.
     let x: f32 = f32(GlobalInvocationID.x);
     let y: f32 = f32(GlobalInvocationID.y);
 
-    let p: vec3<f32> = vec3<f32>((x / f32(params.screenWidth)) - 0.5,
-                                 (y / f32(params.screenHeight)) - 0.5,
+    // ray position, starting at the camera
+    var p: vec3<f32> = vec3<f32>((x / f32(params.screenWidth)) * 2.0 - 1.0,
+                                 (y / f32(params.screenHeight)) * 2.0 - 1.0,
                                  params.focalLength);
-    let offsetX: f32 = sin(f32(params.time) / 1000) * 0.2;
-    let offsetY: f32 = cos(f32(params.time) / 1000) * 0.2;
-    let offsetZ: f32 = cos(f32(params.time) / 1000) * 0.1;
+
+    let len: f32 = length(p);
+    let dir: vec3<f32> = vec3<f32>(p.x / len, p.y / len, p.z / len);
+
+    // object dynamics
+    // let offsetX: f32 = sin(f32(params.time) / 200) * 6.0;
+    // let offsetY: f32 = cos(f32(params.time) / 200) * 6.0;
+    let offsetX: f32 = 0.0;
+    let offsetY: f32 = 0.0;
+    let offsetZ: f32 = sin(f32(params.time) / 400) * 2.0;
+    // let offsetZ: f32 = 0.0;
     let c: vec3<f32> = vec3<f32>(params.sphereCenterX + offsetX,
                                  params.sphereCenterY + offsetY,
                                  params.sphereCenterZ + offsetZ);
-    let len: f32 = length(p);
-
-    let dir: vec3<f32> = vec3<f32>(p.x / len, p.y / len, p.z / len);
 
     let dist: f32 = 0.0;
     out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] = 0.0;
 
-    let maxIter: u32 = 40;
+    let maxIter: u32 = 10;
 
+    // march the ray in the direction of dir by length derived by the SDF
     for (var i: u32 = 0; i < maxIter; i++) {
-      let dist: f32 = sdf(p, c, params.sphereRadius);
-      if (abs(dist) < .001) {
+      // largest step we can take w/o intersection is = SDF value at point
+      let step : f32 = sdf(p, c, params.sphereRadius);
+      if (abs(step) < .001) {
         return;
-      } 
-      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] += dist;
-      // TODO(avh) : march the ray - comment for now until we get the scaling right
-      // p = p + dir * step;
+      }
+      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] =
+        max(0, min(10.0, out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] + step));
+      if (out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] == 10.0) {
+        return;
+      }
+      p = p + dir * step;
     }
 
 }
@@ -80,7 +90,7 @@ std::uint32_t getCurrentTimeInMilliseconds() {
 int main(int argc, char **argv) {
 
   constexpr size_t NROWS = 16;
-  constexpr size_t NCOLS = 96;
+  constexpr size_t NCOLS = 64;
 
   std::array<float, NROWS * NCOLS> screen;
 
@@ -96,9 +106,9 @@ int main(int argc, char **argv) {
   } params = {/* focal length */ 0.2,
               NCOLS,
               NROWS,
-              /* radius */ 1.5,
-              0.0,
-              0.0,
+              /* radius */ 2.0,
+              /* x */ 0.0,
+              /* y */ 0.0,
               /* z */ 5.0,
               0};
 
@@ -119,17 +129,17 @@ int main(int argc, char **argv) {
     ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
 
     static const char intensity[] = "@%#*+=-:. ";
-    // clear the screen
-    printf("\033[2J");
+    // clear the screen, move cursor to the top
+    printf("\033[2J\033[H");
 
     fprintf(stdout, "%s",
             show<float, NROWS, NCOLS>(screen, "Raw values").c_str());
 
     // normalize values
-    float min = *std::min_element(screen.begin(), screen.end());
-    float max = *std::max_element(screen.begin(), screen.end());
-    // float min = 0.0;
-    // float max = 5.0;
+    // float min = *std::min_element(screen.begin(), screen.end());
+    // float max = *std::max_element(screen.begin(), screen.end());
+    float min = 0.0;
+    float max = 10.0;
 
     for (size_t i = 0; i < screen.size(); ++i) {
       screen[i] = (screen[i] - min) / (max - min);
@@ -150,8 +160,5 @@ int main(int argc, char **argv) {
       }
       printf("\n");
     }
-
-    // wait for key
-    // getchar();
   }
 }
