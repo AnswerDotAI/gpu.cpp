@@ -42,22 +42,28 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let p: vec3<f32> = vec3<f32>((x / f32(params.screenWidth)) - 0.5,
                                  (y / f32(params.screenHeight)) - 0.5,
                                  params.focalLength);
-    let offset: f32 = sin(f32(params.time) / 1000) * 0.2;
+    let offsetX: f32 = sin(f32(params.time) / 1000) * 0.2;
+    let offsetY: f32 = cos(f32(params.time) / 1000) * 0.2;
     let offsetZ: f32 = cos(f32(params.time) / 1000) * 0.1;
-    let c: vec3<f32> = vec3<f32>(params.sphereCenterX + offset,  params.sphereCenterY, params.sphereCenterZ + offsetZ);
+    let c: vec3<f32> = vec3<f32>(params.sphereCenterX + offsetX,
+                                 params.sphereCenterY + offsetY,
+                                 params.sphereCenterZ + offsetZ);
     let len: f32 = length(p);
 
     let dir: vec3<f32> = vec3<f32>(p.x / len, p.y / len, p.z / len);
 
-    let maxIter: u32 = 20;
     let dist: f32 = 0.0;
     out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] = 0.0;
+
+    let maxIter: u32 = 40;
+
     for (var i: u32 = 0; i < maxIter; i++) {
-      let step: f32 = sdf(p, c, params.sphereRadius);
-      if (step < .001) {
+      let dist: f32 = sdf(p, c, params.sphereRadius);
+      if (abs(dist) < .001) {
         return;
       } 
-      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] += step;
+      out[GlobalInvocationID.y * params.screenWidth + GlobalInvocationID.x] += dist;
+      // TODO(avh) : march the ray - comment for now until we get the scaling right
       // p = p + dir * step;
     }
 
@@ -74,7 +80,7 @@ std::uint32_t getCurrentTimeInMilliseconds() {
 int main(int argc, char **argv) {
 
   constexpr size_t NROWS = 16;
-  constexpr size_t NCOLS = 64;
+  constexpr size_t NCOLS = 96;
 
   std::array<float, NROWS * NCOLS> screen;
 
@@ -96,7 +102,6 @@ int main(int argc, char **argv) {
               /* z */ 5.0,
               0};
 
-
   std::fill(begin(screen), end(screen), 0.0f);
 
   GPUContext ctx = CreateContext();
@@ -107,36 +112,36 @@ int main(int argc, char **argv) {
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
     Kernel render =
         CreateKernel(ctx, CreateShader(kSDF), {}, 0, devScreen, params);
-    // ToGPU(ctx, &params, render.buffers[render.numBuffers - 1], sizeof(params));
+    // ToGPU(ctx, &params, render.buffers[render.numBuffers - 1],
+    // sizeof(params));
     DispatchKernel(ctx, render);
     Wait(ctx, render.future);
     ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
 
-    // https://stackoverflow.com/questions/30097953/ascii-art-sorting-an-array-of-ascii-characters-by-brightness-levels-c-c
-
-    static const char intensity[] = " .:-=+*#%@";
-    static const char intensityReversed[] = "@%#*+=-:. ";
+    static const char intensity[] = "@%#*+=-:. ";
     // clear the screen
     printf("\033[2J");
 
-    fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen, "Raw values").c_str());
+    fprintf(stdout, "%s",
+            show<float, NROWS, NCOLS>(screen, "Raw values").c_str());
 
     // normalize values
     float min = *std::min_element(screen.begin(), screen.end());
     float max = *std::max_element(screen.begin(), screen.end());
-    // float min = 20.0;
-    // float max = 100.0;
+    // float min = 0.0;
+    // float max = 5.0;
 
     for (size_t i = 0; i < screen.size(); ++i) {
       screen[i] = (screen[i] - min) / (max - min);
     }
-    fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen, "Normalized").c_str());
+    fprintf(stdout, "%s",
+            show<float, NROWS, NCOLS>(screen, "Normalized").c_str());
 
     // index into intensity array
     std::array<char, NROWS *(NCOLS + 1)> raster;
     for (size_t i = 0; i < screen.size(); ++i) {
-      raster[i] = intensityReversed[static_cast<size_t>(
-          screen[i] * (sizeof(intensity) - 1))];
+      raster[i] =
+          intensity[static_cast<size_t>(screen[i] * (sizeof(intensity) - 1))];
     }
 
     for (size_t row = 0; row < NROWS; ++row) {
