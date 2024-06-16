@@ -1,6 +1,5 @@
 #include "gpu.h"
 #include "nn/shaders.h"
-#include "utils/logging.h"
 #include <array>
 #include <cstdio>
 
@@ -24,7 +23,6 @@ fn main(
 )";
 
 int main(int argc, char **argv) {
-  log(kDefLog, kInfo, "Hello, gpu.cpp!");
   GPUContext ctx = CreateContext();
   fprintf(stdout, "\nHello, gpu.cpp\n\n");
   static constexpr size_t N = 3072;
