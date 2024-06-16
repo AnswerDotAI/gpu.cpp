@@ -50,6 +50,19 @@ struct Shape {
   }
 };
 
+// TODO(avh): note there's no parens/brackets so that this can be used for string substitutions
+// in shader code
+std::string ToString(const Shape &shape) {
+  std::string str;
+  for (size_t i = 0; i < shape.rank; i++) {
+    str += std::to_string(shape.data[i]);
+    if (i < shape.rank - 1) {
+      str += ", ";
+    }
+  }
+  return str;
+}
+
 size_t size(const Shape &shape) {
   size_t numels = 1;
   for (size_t i = 0; i < shape.rank; i++) {
@@ -317,10 +330,10 @@ void ReplaceAll(std::string &str, const std::string &from,
   }
 }
 
-ShaderCode CreateShader(const char *shaderRaw, size_t workgroupSize = 256,
+ShaderCode CreateShader(const char *shaderRaw, const Shape& workgroupSize = {256, 1, 1},
                         NumType precision = kf32) {
   std::string codeString(shaderRaw);
-  ReplaceAll(codeString, "{{workgroupSize}}", std::to_string(workgroupSize));
+  ReplaceAll(codeString, "{{workgroupSize}}", ToString(workgroupSize));
   ReplaceAll(codeString, "{{precision}}", ToString(precision));
   return ShaderCode{codeString, workgroupSize};
 }

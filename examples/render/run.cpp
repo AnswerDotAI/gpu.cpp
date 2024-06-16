@@ -39,16 +39,17 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let y: f32 = f32(GlobalInvocationID.y);
 
     // ray position, starting at the camera
-    var p: vec3<f32> = vec3<f32>((x / f32(params.screenWidth)) * 4.0 - 2.0,
+    // TODO{(avh): explicitly encode aspect ratio
+    var p: vec3<f32> = vec3<f32>((x / f32(params.screenWidth)) * 2.0 - 1.0,
                                  (y / f32(params.screenHeight)) * 2.0 - 1.0,
                                  params.focalLength);
 
     let dir: vec3<f32> = p / length(p); // direction from focal point to pixel
 
     // object dynamics
-    var offsetX: f32 = sin(f32(params.time) / 750) * 0.5;
-    var offsetY: f32 = cos(f32(params.time) / 750) * 0.5;
-    var offsetZ: f32 = sin(f32(params.time) / 1000) * 1.0;
+    var offsetX: f32 = sin(f32(params.time) / 500) * 0.5;
+    var offsetY: f32 = cos(f32(params.time) / 500) * 0.5;
+    var offsetZ: f32 = sin(f32(params.time) / 2000) * 1.0;
     let c: vec3<f32> = vec3<f32>(params.sphereCenterX + offsetX,
                                  params.sphereCenterY + offsetY,
                                  params.sphereCenterZ + offsetZ);
@@ -84,8 +85,8 @@ std::uint32_t getCurrentTimeInMilliseconds() {
 
 int main(int argc, char **argv) {
 
-  constexpr size_t NROWS = 32;
-  constexpr size_t NCOLS = 64;
+  constexpr size_t NROWS = 16;
+  constexpr size_t NCOLS = 32;
 
   std::array<float, NROWS * NCOLS> screen;
 
@@ -104,7 +105,7 @@ int main(int argc, char **argv) {
               /* radius */ 1.0,
               /* x */ 0.0,
               /* y */ 0.0,
-              /* z */ 2.5,
+              /* z */ 3.0,
               0};
 
   std::fill(begin(screen), end(screen), 0.0f);
@@ -115,8 +116,14 @@ int main(int argc, char **argv) {
 
   while (true) {
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
-    Kernel render =
-        CreateKernel(ctx, CreateShader(kSDF), {}, 0, devScreen, params);
+    ShaderCode shader = CreateShader(kSDF, Shape{16, 16, 1});
+
+    // TODO(avh): Clean this up - too easy to miscalculate # of workgroups in x
+    // and y directions since tensor dimensions (rows, cols) are reversed from
+    // screen dimensions (cols, rows)
+    Kernel render = CreateKernel(ctx, shader, {}, 0, devScreen,
+                                 static_cast<void *>(&params), sizeof(params),
+                                 {NCOLS, NROWS, 1});
     DispatchKernel(ctx, render);
     Wait(ctx, render.future);
     ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
@@ -130,14 +137,21 @@ int main(int argc, char **argv) {
             show<float, NROWS, NCOLS>(screen, "Raw values").c_str());
 
     // normalize values
-    float min = *std::min_element(screen.begin(), screen.end());
-    float max = min + params.sphereRadius; // maximize dynamic range
+    // float min = *std::min_element(screen.begin(), screen.end());
+    // float max = min + params.sphereRadius; // maximize dynamic range
+    float min = 0.0;
+    float max = params.sphereRadius * 3;
 
     for (size_t i = 0; i < screen.size(); ++i) {
       screen[i] = (screen[i] - min) / (max - min);
     }
-    fprintf(stdout, "%s",
-            show<float, NROWS, NCOLS>(screen, "Scaled").c_str());
+
+    fprintf(stdout, "Workgroup size: %zu %zu %zu \n", shader.workgroupSize[0],
+            shader.workgroupSize[1], shader.workgroupSize[2]);
+    fprintf(stdout, "Nthreads: %zu %zu %d \n", devScreen.shape[1],
+            devScreen.shape[0], 1);
+
+    fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen, "Scaled").c_str());
 
     // index into intensity array
     std::array<char, screen.size()> raster;
@@ -149,11 +163,20 @@ int main(int argc, char **argv) {
       raster[i] = intensity[index];
     }
 
+    for (size_t col = 0; col < NCOLS; ++col) {
+      printf("-");
+    }
+    printf("--\n");
     for (size_t row = 0; row < NROWS; ++row) {
+      printf("|");
       for (size_t col = 0; col < NCOLS; ++col) {
         printf("%c", raster[row * NCOLS + col]);
       }
-      printf("\n");
+      printf("|\n");
     }
+    for (size_t col = 0; col < NCOLS; ++col) {
+      printf("-");
+    }
+    printf("--\n");
   }
 }

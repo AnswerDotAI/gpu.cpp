@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(raymarch)
+project(render)
 
 include(FetchContent)
 set(CMAKE_CXX_STANDARD 17)
@@ -22,6 +22,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(gpu)
 
-add_executable(raymarch run.cpp)
-target_link_libraries(raymarch PRIVATE gpu webgpu)
-target_include_directories(raymarch PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
+add_executable(render run.cpp)
+target_link_libraries(render PRIVATE gpu webgpu)
+target_include_directories(render PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
