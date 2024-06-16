@@ -301,20 +301,20 @@ void TestMultiKernel2(GPUContext &ctx) {
   std::mt19937 gen(31415);
   randint(inputArr, gen, 0, 3);
 
-  std::array<ShaderCode, 2> shaders;
   std::array<GPUTensor, 2> inputs;
   std::array<GPUTensor, 2> outputs;
   std::array<SoftmaxParam, 2> params;
 
   inputs[0] = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
   outputs[0] = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
-  shaders[0] = CreateShader(kShaderSoftmax1, 256, kf32);
   params[0] = SoftmaxParam{B * T, C};
 
   inputs[1] = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
   outputs[1] = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
-  shaders[1] = CreateShader(kShaderSoftmax1, 256, kf32);
   params[1] = SoftmaxParam{B * T, C};
+
+  std::array<ShaderCode, 2> shaders = {CreateShader(kShaderSoftmax1, 256, kf32),
+                                       CreateShader(kShaderSoftmax1, 256, kf32)};
 
   std::array<size_t, 2> numInputs = {1, 1};
   std::array<size_t, 2> paramSizes = {sizeof(SoftmaxParam),

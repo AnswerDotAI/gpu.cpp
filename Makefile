@@ -9,7 +9,8 @@ USE_WGPU=-DWEBGPU_TAG=wgpu
 
 .PHONY: demo tests libgpu debug build check-entr watch-demo watch-tests clean
 
-FLAGS = --trace -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX)
+# Add --trace to see the cmake commands
+FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX)
 
 # TODO(avh): decide whether to use wgpu as default
 FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON

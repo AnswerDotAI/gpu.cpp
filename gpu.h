@@ -48,9 +48,6 @@ struct Shape {
     assert(index < rank);
     return data[index];
   }
-  size_t x() const { return data[0]; }
-  size_t y() const { return data[1]; }
-  size_t z() const { return data[2]; }
 };
 
 size_t size(const Shape &shape) {
@@ -143,7 +140,8 @@ struct Kernel {
   size_t outputSize;
   size_t numBuffers;
   size_t numInputs;
-  WGPUCommandBuffer commandBuffer; // managed automatically by wgpuQueueSubmit
+  WGPUCommandBuffer commandBuffer; // destroyed upon submission
+  WGPUComputePipeline computePipeline; // persists between submission
   WGPUBuffer readbackBuffer;
   CallbackDataDyn callbackData;
   std::promise<void> promise;
@@ -177,6 +175,7 @@ struct MultiKernel {
                   //    paramSizes = 0 means no params buffer
   std::unique_ptr<size_t[]> numInputs; // length = numShaders
   WGPUCommandBuffer commandBuffer;     // All kernels in the pipeline
+  WGPUComputePipeline computePipeline; // TODO(avh): decide how to handle compute pipelines for multikernel
   WGPUBuffer readbackBuffer; // Readback buffer for the final output buffer
   CallbackDataDyn callbackData;
   std::promise<void> promise;
@@ -524,8 +523,15 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
 
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensor *inputs, size_t numInputs,
-                    const GPUTensor &output, const void *params = nullptr,
-                    size_t paramsSize = 0) {
+                    const GPUTensor &output, const void *params,
+                    size_t paramsSize, Shape nThreads) {
+  if (nThreads.rank < 3) {
+    const size_t rank = nThreads.rank;
+    nThreads.rank = 3;
+    for (size_t i = rank; i < 3; i++) {
+      nThreads[i] = 1;
+    }
+  }
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op;
@@ -649,9 +655,6 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   op.promise = std::promise<void>();
   op.future = op.promise.get_future();
 
-  log(kDefLog, kInfo, "Preparing command bufer");
-  size_t outN = size(output.shape);
-
   log(kDefLog, kInfo, "Create the readback buffer");
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
@@ -663,7 +666,6 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   }
 
   log(kDefLog, kInfo, "Create the compute pipeline");
-  WGPUComputePipeline computePipeline;
   {
     WGPUPipelineLayout pipelineLayout;
     WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
@@ -684,9 +686,9 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     computePipelineDesc.compute.module =
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
     computePipelineDesc.compute.entryPoint = "main";
-    computePipeline =
+    op.computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-    check(computePipeline, "Create compute pipeline", __FILE__, __LINE__);
+    check(op.computePipeline, "Create compute pipeline", __FILE__, __LINE__);
   }
 
   log(kDefLog, kInfo, "Create the command encoder");
@@ -700,24 +702,16 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
     computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
                                        nullptr);
-    // log(kGpuLog, kInfo, "Dispatching workgroups for # threads %d", outN);
-    // log(kGpuLog, kInfo, "Dispatching workgroup size %d", shader.wgSize);
-    // log(kGpuLog, kInfo, "Dispatching # workgroups %d", (outN + shader.wgSize
-    // - 1) / shader.wgSize);
-
-    // TODO(avh): not all workloads are 1 output element per thread
-    // For those that are, this is conservative since it accounts for outN in
-    // all directions
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder,
-        /*X workgroups */ (outN + (shader.workgroupSize[0] - 1)) /
+        /*X workgroups */ (nThreads[0] + (shader.workgroupSize[0] - 1)) /
             shader.workgroupSize[0],
-        /*Y workgroups */ (outN + (shader.workgroupSize[1] - 1)) /
+        /*Y workgroups */ (nThreads[1] + (shader.workgroupSize[1] - 1)) /
             shader.workgroupSize[1],
-        /*Y workgroups */ (outN + (shader.workgroupSize[2] - 1)) /
+        /*Y workgroups */ (nThreads[2] + (shader.workgroupSize[2] - 1)) /
             shader.workgroupSize[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
@@ -733,6 +727,16 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   return op;
 }
 
+// default nThreads to output.shape
+Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
+                    const GPUTensor *inputs, size_t numInputs,
+                    const GPUTensor &output, const void *params = nullptr,
+                    size_t paramsSize = 0) {
+  return CreateKernel(ctx, shader, inputs, numInputs, output, params,
+                      paramsSize, output.shape);
+}
+
+// comptime template for paramtype - is this needed?
 template <typename ParamsType = NoParam>
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensor *inputs, size_t numInputs,
@@ -752,6 +756,7 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
 /*
  * CreateKernel with GPUTensors of inputs (convienence function)
  */
+
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensors<numInputs> &inputs,
@@ -765,6 +770,7 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
 /*
  * CreateKernel with single input case (convienence function)
  */
+
 template <typename ParamsType = NoParam>
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensor &input, const GPUTensor &output,
