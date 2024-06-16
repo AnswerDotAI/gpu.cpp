@@ -84,7 +84,7 @@ std::uint32_t getCurrentTimeInMilliseconds() {
 
 int main(int argc, char **argv) {
 
-  constexpr size_t NROWS = 16;
+  constexpr size_t NROWS = 32;
   constexpr size_t NCOLS = 64;
 
   std::array<float, NROWS * NCOLS> screen;

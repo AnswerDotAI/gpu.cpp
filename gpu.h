@@ -48,6 +48,9 @@ struct Shape {
     assert(index < rank);
     return data[index];
   }
+  size_t x() const { return data[0]; }
+  size_t y() const { return data[1]; }
+  size_t z() const { return data[2]; }
 };
 
 size_t size(const Shape &shape) {
@@ -103,8 +106,17 @@ const char *ToString(NumType type) {
 }
 
 struct ShaderCode {
+  ShaderCode(const std::string &data, size_t workgroupSize = 256,
+             NumType precision = kf32)
+      : data(data), workgroupSize({workgroupSize, 1, 1}), precision(precision) {
+  }
+
+  ShaderCode(const std::string &data, const Shape &workgroupSize,
+             NumType precision = kf32)
+      : data(data), workgroupSize(workgroupSize), precision(precision) {}
   std::string data;
-  size_t wgSize; // workgroup size
+  Shape workgroupSize;
+  NumType precision;
 };
 
 struct CallbackDataDyn {
@@ -695,8 +707,18 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     // log(kGpuLog, kInfo, "Dispatching workgroup size %d", shader.wgSize);
     // log(kGpuLog, kInfo, "Dispatching # workgroups %d", (outN + shader.wgSize
     // - 1) / shader.wgSize);
+
+    // TODO(avh): not all workloads are 1 output element per thread
+    // For those that are, this is conservative since it accounts for outN in
+    // all directions
     wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder, (outN + (shader.wgSize - 1)) / shader.wgSize, 1, 1);
+        computePassEncoder,
+        /*X workgroups */ (outN + (shader.workgroupSize[0] - 1)) /
+            shader.workgroupSize[0],
+        /*Y workgroups */ (outN + (shader.workgroupSize[1] - 1)) /
+            shader.workgroupSize[1],
+        /*Y workgroups */ (outN + (shader.workgroupSize[2] - 1)) /
+            shader.workgroupSize[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
@@ -908,10 +930,15 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     log(kDefLog, kInfo, "Dispatch workgroups");
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder,
-        (pipeline.outputSize[shaderIndex] +
-         (desc.shader[shaderIndex].wgSize - 1)) /
-            desc.shader[shaderIndex].wgSize,
-        1, 1);
+        ((pipeline.outputSize[shaderIndex] +
+          (desc.shader[shaderIndex].workgroupSize[0] - 1)) /
+         desc.shader[shaderIndex].workgroupSize[0]),
+        ((pipeline.outputSize[shaderIndex] +
+          (desc.shader[shaderIndex].workgroupSize[1] - 1)) /
+         desc.shader[shaderIndex].workgroupSize[1]),
+        ((pipeline.outputSize[shaderIndex] +
+          (desc.shader[shaderIndex].workgroupSize[2] - 1)) /
+         desc.shader[shaderIndex].workgroupSize[2]));
     wgpuComputePassEncoderEnd(computePassEncoder);
 
     // TODO(avh): add capability for synchronization between shaders
