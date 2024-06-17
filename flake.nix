@@ -23,6 +23,9 @@
           devShells.default = mkShell ({
             shellHook = ''
               source ${git}/share/bash-completion/completions/git-prompt.sh
+              if [ -f /run/opengl-driver/share/vulkan/icd.d/nvidia_icd.x86_64.json ] ; then
+                export VK_DRIVER_FILES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.x86_64.json
+              fi
             '';
             buildInputs = [
               cmake
