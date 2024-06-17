@@ -17,7 +17,9 @@ template <typename numtype, size_t rows, size_t cols>
 std::string show(const std::array<numtype, rows * cols>& a, const std::string& name = "") {
   std::string output = "\n";
   if (name != "") {
-    output += name + " : \n";
+    output += name + " (" + std::to_string(rows) + ", " + std::to_string(cols) + ")\n";
+  } else {
+    output += std::to_string(rows) + ", " + std::to_string(cols) + "\n";
   }
   // spacing as log10 of max value
   int spacing = 1;
@@ -32,9 +34,9 @@ std::string show(const std::array<numtype, rows * cols>& a, const std::string& n
   }
   // print to stdout line break for each row
   for (size_t i = 0; i < rows; i++) {
-    if (i == 7 && rows > 14) {
+    if (i == kShowMaxRows / 2 && rows > kShowMaxRows) {
       output += "...\n";
-      i = rows - 7;
+      i = rows - kShowMaxRows  /2;
     }
     for (size_t j = 0; j < cols; j++) {
       if (j == kShowMaxCols / 2 && cols > kShowMaxCols) {

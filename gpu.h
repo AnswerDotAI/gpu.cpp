@@ -50,8 +50,8 @@ struct Shape {
   }
 };
 
-// TODO(avh): note there's no parens/brackets so that this can be used for string substitutions
-// in shader code
+// TODO(avh): note there's no parens/brackets so that this can be used for
+// string substitutions in shader code
 std::string ToString(const Shape &shape) {
   std::string str;
   for (size_t i = 0; i < shape.rank; i++) {
@@ -97,7 +97,7 @@ template <std::size_t N> GPUTensors(std::array<GPUTensor, N>) -> GPUTensors<N>;
 template <typename... Args> GPUTensors(Args...) -> GPUTensors<sizeof...(Args)>;
 
 struct TensorPool {
-  TensorPool(GPUContext *ctx) : ctx(ctx), data(){};
+  TensorPool(GPUContext *ctx) : ctx(ctx), data() {};
   GPUContext *ctx;
   std::unordered_map<WGPUBuffer, GPUTensor> data;
   ~TensorPool();
@@ -330,12 +330,19 @@ void ReplaceAll(std::string &str, const std::string &from,
   }
 }
 
-ShaderCode CreateShader(const char *shaderRaw, const Shape& workgroupSize = {256, 1, 1},
+ShaderCode CreateShader(const char *shaderRaw,
+                        const Shape &workgroupSize = {256, 1, 1},
                         NumType precision = kf32) {
   std::string codeString(shaderRaw);
   ReplaceAll(codeString, "{{workgroupSize}}", ToString(workgroupSize));
   ReplaceAll(codeString, "{{precision}}", ToString(precision));
+  log(kDefLog, kInfo, "Shader code:\n%s", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
+}
+
+ShaderCode CreateShader(const char *shaderRaw, size_t workgroupSize,
+                        NumType precision = kf32) {
+  return CreateShader(shaderRaw, Shape{workgroupSize, 1, 1}, precision);
 }
 
 struct NoParam {};
@@ -524,10 +531,26 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
                        tensor.data.size);
 }
 
+WGPUCommandBuffer
+CreateCommandBuffer(GPUContext &ctx,
+                    const WGPUComputePipeline &computePipeline) {
+  WGPUCommandBuffer commandBuffer;
+  WGPUCommandEncoder commandEncoder;
+  WGPUComputePassEncoder computePassEncoder;
+  commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
+  computePassEncoder =
+      wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+  wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
+  // TODO(avh): WIP - set bind group etc and finish the command buffer
+  // then split CreateKernel / CreateMultiKernel s.t.
+  // CommandBuffer is prepared per-dispatch since it's not reusable
+  return commandBuffer;
+}
+
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensor *inputs, size_t numInputs,
-                    const GPUTensor &output, const void *params,
-                    size_t paramsSize, Shape nThreads) {
+                    const GPUTensor &output, const Shape &nThreads, const void *params,
+                    size_t paramsSize) {
   assert(nThreads.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
@@ -694,21 +717,23 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     // wgpuComputePassEncoderInsertDebugMarker instead of
     // wgpuCommandEncoderInsertDebugMarker o/w the command encoder will be
     // locked after wgpuComputePassEncoderEnd.
-    WGPUCommandEncoder commandEncoder;
-    WGPUComputePassEncoder computePassEncoder;
-    commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
-    computePassEncoder =
+    WGPUCommandEncoder commandEncoder =
+        wgpuDeviceCreateCommandEncoder(device, nullptr);
+    WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
     wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
                                        nullptr);
+
+    log(kDefLog, kInfo, "Dispatching workgroups for number of threads = %s",
+        ToString(nThreads).c_str());
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder,
-        /*X workgroups */ (nThreads[0] + (shader.workgroupSize[0] - 1)) /
+        /* # X workgroups */ (nThreads[0] + (shader.workgroupSize[0] - 1)) /
             shader.workgroupSize[0],
-        /*Y workgroups */ (nThreads[1] + (shader.workgroupSize[1] - 1)) /
+        /* # Y workgroups */ (nThreads[1] + (shader.workgroupSize[1] - 1)) /
             shader.workgroupSize[1],
-        /*Y workgroups */ (nThreads[2] + (shader.workgroupSize[2] - 1)) /
+        /* # Z workgroups */ (nThreads[2] + (shader.workgroupSize[2] - 1)) /
             shader.workgroupSize[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
@@ -724,58 +749,42 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   return op;
 }
 
-Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
-                    const GPUTensor *inputs, size_t numInputs,
-                    const GPUTensor &output, const void *params = nullptr,
-                    size_t paramsSize = 0) {
-  Shape nThreads = output.shape;
-  nThreads.rank = 3;
-  for (size_t i = output.shape.rank; i < 3; i++) {
-    nThreads[i] = 1;
-  }
-  return CreateKernel(ctx, shader, inputs, numInputs, output, params,
-                      paramsSize, nThreads);
-}
-
+// Convenience wrapper: params type is statically templated instead of void*
 template <typename ParamsType = NoParam>
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensor *inputs, size_t numInputs,
-                    const GPUTensor &output,
+                    const GPUTensor &output, const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
-    return CreateKernel(ctx, shader, inputs, numInputs, output,
+    return CreateKernel(ctx, shader, inputs, numInputs, output, nThreads,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType));
   } else {
     log(kDefLog, kInfo, "No params");
-    return CreateKernel(ctx, shader, inputs, numInputs, output, nullptr, 0);
+    return CreateKernel(ctx, shader, inputs, numInputs, output, nThreads,
+                        nullptr, 0);
   }
 }
 
-/*
- * CreateKernel with GPUTensors of inputs (convienence function)
- */
-
+// Convenience wrapper: inputs is GPUTensors static collection instead of a pointer
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensors<numInputs> &inputs,
-                    const GPUTensor &output,
+                    const GPUTensor &output, const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   // first .data gets the array, second .data() gets the pointer
   return CreateKernel<ParamsType>(ctx, shader, inputs.data.data(), numInputs,
-                                  output, params);
+                                  output, nThreads, params);
 }
 
-/*
- * CreateKernel with single input case (convienence function)
- */
-
+// Convenience wrapper: specialization for single input passed by reference
 template <typename ParamsType = NoParam>
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensor &input, const GPUTensor &output,
+                    const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
-  return CreateKernel(ctx, shader, &input, 1, output, params);
+  return CreateKernel(ctx, shader, &input, 1, output, nThreads, params);
 }
 
 MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
@@ -934,6 +943,11 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
                                        nullptr);
 
     log(kDefLog, kInfo, "Dispatch workgroups");
+    // print workgroupSizes
+    log(kDefLog, kInfo, "Workgroup sizes: %s",
+        ToString(desc.shader[shaderIndex].workgroupSize).c_str());
+
+    // TODO(avh): update to nThreads 3D shape as in single kernel
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder,
         ((pipeline.outputSize[shaderIndex] +

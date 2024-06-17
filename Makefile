@@ -53,7 +53,7 @@ watch-demo: check-entr check-dependencies
 	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_DEMO) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)"
 
 watch-tests: check-entr check-dependencies
-	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
+	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && ls ../utils/test_kernels.cpp ../*.h ../utils/*.h ../nn/*.h | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 # experimental
 watch-tests-wgpu: check-entr check-dependencies

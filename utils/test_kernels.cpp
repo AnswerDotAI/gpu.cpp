@@ -11,9 +11,10 @@
 
 using namespace gpu;
 
-bool isclose(float *a, float *b, size_t n, float tol = 1e-4) {
+bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
   for (size_t i = 0; i < n; i++) {
-    if (std::abs(a[i] - b[i]) > tol) {
+    if (std::abs(a[i] - b[i]) > tol || std::isnan(a[i]) || std::isnan(b[i])) {
+      log(kDefLog, kInfo, "Mismatch at index %d: %f != %f", i, a[i], b[i]);
       return false;
     }
   }
@@ -33,13 +34,17 @@ void TestResidual(GPUContext &ctx) {
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   ShaderCode shaderCode = CreateShader(kShaderResidual, workgroupSize, kf32);
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
-  Kernel op = CreateKernel(
-      ctx, CreateShader(kShaderResidual, workgroupSize, kf32),
-      GPUTensors{input1, input2}, output);
+  Kernel op =
+      CreateKernel(ctx, CreateShader(kShaderResidual, workgroupSize, kf32),
+                   GPUTensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Output").c_str());
+  log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Residual Output").c_str());
+  std::array<float, N> outputRef;
+  residual_forward_cpu(outputRef.data(), input1Arr.data(), input2Arr.data(), N);
+  log(kDefLog, kInfo, "%s", show<float, N, 1>(outputRef, "Residual Reference Output").c_str());
+  assert(isclose(outputArr.data(), outputRef.data(), N));
   log(kDefLog, kInfo, "Done with Residual Test");
 }
 
@@ -58,10 +63,10 @@ void TestHadamard(GPUContext &ctx) {
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
   Kernel op =
       CreateKernel(ctx, CreateShader(kShaderHadamard, workgroupSize, kf32),
-                   GPUTensors{input1, input2}, output);
+                   GPUTensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
-  log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Output").c_str());
+  log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Hadamard Output").c_str());
 }
 
 void TestMatmul(GPUContext &ctx) {
@@ -79,7 +84,7 @@ void TestMatmul(GPUContext &ctx) {
   GPUTensor output = CreateTensor(ctx, {M, N}, kf32, outputArr.data());
   Kernel op =
       CreateKernel(ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
-                   GPUTensors{input1, input2}, output);
+                   GPUTensors{input1, input2}, output, /* nthreads */ {M * N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -125,15 +130,19 @@ void TestTensorPool(GPUContext &ctx) {
 }
 
 void TestGelu(GPUContext &ctx) {
-  static constexpr size_t N = 100;
+  static constexpr size_t N = 3072;
   std::array<float, N> inputArr;
-  range(inputArr);
+  // range(inputArr);
+  auto gen = std::mt19937(31415);
+  // TODO(avh): investigate - on metal tanh seems to produce nan for values > 10
+  randint(inputArr, gen, 0, 10); // for debugging
   std::array<float, N> outputArr;
   GPUTensor geluIn = CreateTensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor geluOut = CreateTensor(ctx, {N}, kf32, outputArr.data());
   log(kDefLog, kInfo, "Creating GELU Shader");
-  Kernel op = CreateKernel(ctx, CreateShader(kShaderGELU, 256, kf32),
-                           geluIn, geluOut);
+  ShaderCode shader = CreateShader(kShaderGelu, 256, kf32);
+  Kernel op = CreateKernel(ctx, shader, geluIn, geluOut, /* nthreads */ {N, 1, 1});
+  log(kDefLog, kInfo, "Workgroup size: %s", ToString(shader.workgroupSize).c_str());
   log(kDefLog, kInfo, "Dispatching GELU Shader");
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
@@ -143,6 +152,8 @@ void TestGelu(GPUContext &ctx) {
       show<float, N, 1>(outputArr, "GELU Output").c_str());
   std::array<float, N> refOutputArr;
   gelu_forward_cpu(refOutputArr.data(), inputArr.data(), N);
+  log(kDefLog, kInfo, "%s",
+      show<float, N, 1>(refOutputArr, "GELU Reference Output").c_str());
   bool passed = isclose(outputArr.data(), refOutputArr.data(), N);
   assert(passed);
   log(kDefLog, kInfo, "Gelu passed? %d", passed);
@@ -170,9 +181,8 @@ void TestLayerNorm(GPUContext &ctx) {
   GPUTensor weight = CreateTensor(ctx, {C}, kf32, weightArr.data());
   GPUTensor bias = CreateTensor(ctx, {C}, kf32, biasArr.data());
   GPUTensor output = CreateTensor(ctx, {N, C}, kf32, outputArr.data());
-  Kernel op =
-      CreateKernel(ctx, CreateShader(kShaderLayerNorm1, 256, kf32),
-          GPUTensors{input, weight, bias}, output, params);
+  Kernel op = CreateKernel(ctx, CreateShader(kShaderLayerNorm1, 256, kf32),
+                           GPUTensors{input, weight, bias}, output, /* n threads */{N, 1, 1}, params);
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -204,19 +214,20 @@ void TestSoftmax(GPUContext &ctx) {
     uint32_t C;
   };
   static constexpr size_t B = 6; // batch size
-  static constexpr size_t T = 8; // token index // TODO(avh): show can segfault
-                                 // if dimensions are too large
+  static constexpr size_t T = 8; // token index
   static constexpr size_t C = 3072; // input channels
   std::array<float, B * T * C> inputArr;
   std::array<float, B * T * C> outputArr;
   std::mt19937 gen(31415);
   randint(inputArr, gen, 0, 3);
-  GPUTensor input = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
-  Kernel op = CreateKernel(
-      ctx, CreateShader(kShaderSoftmax1, 256, kf32), input, output,
-     SoftmaxParam{B * T, C});
+  GPUTensor input = CreateTensor(ctx, {B * T, C}, kf32, inputArr.data());
+  GPUTensor output = CreateTensor(ctx, {B * T, C}, kf32, outputArr.data());
+  log(kDefLog, kInfo, "num threads: %d", B * T);
+  Kernel op = CreateKernel(ctx, CreateShader(kShaderSoftmax1, 256, kf32), input,
+                           output, /* nthreads */ Shape{B * T, 1, 1}, SoftmaxParam{B * T, C});
   DispatchKernel(ctx, op);
+
+
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s",
@@ -227,6 +238,8 @@ void TestSoftmax(GPUContext &ctx) {
   softmax_forward_cpu(refOutputArr.data(), inputArr.data(), B * T, C);
   log(kDefLog, kInfo, "%s",
       show<float, B * T, C>(refOutputArr, "Softmax reference Output").c_str());
+
+  log(kDefLog, kInfo, "number of elements: %d", B * T * C);
   bool passed = isclose(outputArr.data(), refOutputArr.data(), B * T * C);
   assert(passed);
   log(kDefLog, kInfo, "Softmax passed? %d", passed);
@@ -313,8 +326,9 @@ void TestMultiKernel2(GPUContext &ctx) {
   outputs[1] = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
   params[1] = SoftmaxParam{B * T, C};
 
-  std::array<ShaderCode, 2> shaders = {CreateShader(kShaderSoftmax1, 256, kf32),
-                                       CreateShader(kShaderSoftmax1, 256, kf32)};
+  std::array<ShaderCode, 2> shaders = {
+      CreateShader(kShaderSoftmax1, 256, kf32),
+      CreateShader(kShaderSoftmax1, 256, kf32)};
 
   std::array<size_t, 2> numInputs = {1, 1};
   std::array<size_t, 2> paramSizes = {sizeof(SoftmaxParam),

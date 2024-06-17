@@ -37,14 +37,15 @@ void runHelloGELU(GPUContext &ctx) {
   const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
   @group(0) @binding(0) var<storage, read_write> inp: array<f32>;
   @group(0) @binding(1) var<storage, read_write> out: array<f32>;
-  @compute @workgroup_size(256)
+  @compute @workgroup_size(256, 1, 1)
   fn main(
       @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
       let i: u32 = GlobalInvocationID.x;
       if (i < arrayLength(&inp)) {
           let x: f32 = inp[i];
-          let cube: f32 = 0.044715 * x * x * x;
-          out[i] = 0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR * (x + cube)));
+          // select is more stable for larger values of x
+          out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
+                    * (x + .044715 * x * x * x))), x, x > 10.0);
       }
   }
   )";
@@ -56,7 +57,8 @@ void runHelloGELU(GPUContext &ctx) {
   }
   GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
-  Kernel op = CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+  Kernel op = CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output,
+                           /*nthreads*/ {N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -134,7 +136,7 @@ int main(int argc, char **argv) {
   GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
   GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   Kernel op =
-      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output, {N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -316,10 +318,10 @@ kernel.
   // ...
 
   Kernel op =
-      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output);
+      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output, /*nthreads*/{N, 1, 1});
 ```
 
-Note this *does not run* the kernel, it just prepares the kernel as a resource
+Note this *does not* run the kernel, it just prepares the kernel as a resource
 to be dispatched later.
 
 There are four arguments to `CreateKernel()`:
@@ -352,15 +354,15 @@ Here is an example of a custom WGSL shader that implements the GELU activation:
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
 @group(0) @binding(0) var<storage, read_write> inp: array<f32>;
 @group(0) @binding(1) var<storage, read_write> out: array<f32>;
-@compute @workgroup_size(256)
+@compute @workgroup_size(256, 1, 1)
 fn main(
     @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let i: u32 = GlobalInvocationID.x;
-    // Ensure we do not access out of bounds
     if (i < arrayLength(&inp)) {
         let x: f32 = inp[i];
-        let cube: f32 = 0.044715 * x * x * x;
-        out[i] = 0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR * (x + cube)));
+        // select is more stable for larger values of x
+        out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
+                  * (x + .044715 * x * x * x))), x, x > 10.0);
     }
 }
 ```
@@ -371,8 +373,8 @@ passed in.
 
 The `@group(0)` and `@binding(0)` annotations are used to specify the binding
 points for the input and output buffers. The `@compute` annotation specifies
-that this is a compute kernel. The `@workgroup_size(256)` annotation specifies
-the workgroup size for the kernel.
+that this is a compute kernel. The `@workgroup_size(256, 1, 1)` annotation
+specifies the workgroup size for the kernel.
 )");
 
   section(R"(
@@ -387,7 +389,6 @@ None of these actually execute computation on the GPU yet.
 Next we'll look at the dispatch functions which asynchronously dispatches the
 kernel for execution.
 )");
-
 
   section(R"(
 Dispatch a kernel for execution with `DispatchKernel()`
@@ -423,7 +424,7 @@ This is intentional to allow for efficient pipelining of GPU computation and
 reusing GPU resources without copying data back and forth unless it's specified.
 )");
 
-section(R"(
+  section(R"(
 Dispatch multiple kernels for execution with `DispatchMultiKernel()`
 ---------------------------------------------------------------------
 
@@ -441,7 +442,6 @@ otherwise usage is similar.
 Note that inputs can even be shared between kernels, allowing for building a
 complex computation graphs with shared inputs between them.
 )");
-
 
   section(R"(
 gpu.cpp vs. the raw WebGPU API

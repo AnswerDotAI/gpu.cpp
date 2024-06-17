@@ -6,7 +6,7 @@
 namespace gpu {
 
 // test function - multiply by constant
-const char *kShaderCMul = R"(
+static const char *kShaderCMul = R"(
 @group(0) @binding(0) var<storage, read_write> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @compute @workgroup_size(64)
@@ -19,8 +19,8 @@ fn main(
   }
 )";
 
-// approximate gelu
-const char *kShaderGELU = R"(
+
+static const char *kShaderGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
 @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
@@ -28,16 +28,16 @@ const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
 fn main(
     @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let i: u32 = GlobalInvocationID.x;
-    // Ensure we do not access out of bounds
     if (i < arrayLength(&inp)) {
         let x: f32 = inp[i];
-        let cube: f32 = 0.044715 * x * x * x;
-        out[i] = 0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR * (x + cube)));
+        // select is more stable for larger values of x
+        out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
+                  * (x + .044715 * x * x * x))), x, x > 10.0);
     }
 }
 )";
 
-const char *kShaderHadamard = R"(
+static const char *kShaderHadamard = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
@@ -51,7 +51,7 @@ fn main(
 }
 )";
 
-const char *kShaderResidual = R"(
+static const char *kShaderResidual = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
@@ -73,7 +73,7 @@ fn main(
  */
 // TODO(avh): Allow larger virtual 1D workgroups by making use of y / z
 // dimensions and calculating the threadID accordingly.
-const char *kShaderLayerNorm1 = R"(
+static const char *kShaderLayerNorm1 = R"(
 @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> weight: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> bias: array<{{precision}}>;
@@ -118,7 +118,7 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>,
 )";
 
 // matrix multiplication (naive implementation)
-const char *kShaderMatMul1 = R"(
+static const char *kShaderMatMul1 = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
@@ -137,7 +137,7 @@ fn main(
 }
 )";
 
-const char *kShaderMatMul2 = R"(
+static const char *kShaderMatMul2 = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<f32>;
 @group(0) @binding(1) var<storage, read_write> B: array<f32>;
 @group(0) @binding(2) var<storage, read_write> C: array<f32>;
@@ -205,18 +205,15 @@ ShaderCode MatmulShader(size_t workgroupSize, const char *shaderRaw,
  * v1:
  * - equivalent to naive softmax with one thread per row
  */
-const char *kShaderSoftmax1 = R"(
+static const char *kShaderSoftmax1 = R"(
 @group(0) @binding(0) var<storage, read_write> inp : array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> out : array<{{precision}}>;
 @group(0) @binding(2) var<uniform> params : Params;
-
 struct Params {
     N: u32,
     C: u32,
 };
-
 const NEG_INFINITY: f32 = -3.0e38; // WGSL has problem representing -3.4028235e+38
-
 @compute @workgroup_size({{workgroupSize}})
 fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
     let N : u32 = params.N;
@@ -242,7 +239,7 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
         // Normalize the row to get probabilities
         let norm : f32 = 1.0f / sum;
         for (var j : u32 = 0u; j < C; j++) {
-            out[inp_row_start + j] *= norm;
+            out[inp_row_start + j] /= sum;
         }
     }
 }
