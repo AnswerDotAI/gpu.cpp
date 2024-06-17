@@ -117,28 +117,24 @@ int main(int argc, char **argv) {
   GPUTensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
   uint32_t zeroTime = getCurrentTimeInMilliseconds();
 
+  ShaderCode shader = CreateShader(kSDF, Shape{16, 16, 1});
+  Kernel renderKernel =
+      CreateKernel(ctx, shader, {}, 0, devScreen, {NCOLS, NROWS, 1}, params);
   while (true) {
-    params.time = getCurrentTimeInMilliseconds() - zeroTime;
-    ShaderCode shader = CreateShader(kSDF, Shape{16, 16, 1});
-
-    // TODO(avh): Clean this up - too easy to miscalculate # of workgroups in x
-    // and y directions since tensor dimensions (rows, cols) are reversed from
-    // screen dimensions (cols, rows)
-    Kernel render = CreateKernel(ctx, shader, {}, 0, devScreen,
-                                 static_cast<void *>(&params), sizeof(params),
-                                 {NCOLS, NROWS, 1});
-    DispatchKernel(ctx, render);
-    Wait(ctx, render.future);
+    DispatchKernel(ctx, renderKernel);
+    Wait(ctx, renderKernel.future);
     ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
+    // Update the time field, write pparams to GPU, and create a new command buffer
+    params.time = getCurrentTimeInMilliseconds() - zeroTime;
+    wgpuQueueWriteBuffer(ctx.queue,
+                         renderKernel.buffers[renderKernel.numBuffers - 1], 0,
+                         static_cast<void *>(&params), sizeof(params));
+    ResetCommandBuffer(ctx.device, shader.workgroupSize, {NCOLS, NROWS, 1},
+                       renderKernel);
 
-    static const char intensity[] = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
+    static const char intensity[] = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/"
+                                    "\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
     // static const char intensity[] = "@%#8$X71x*+=-:^~'.` ";
-
-    // clear the screen, move cursor to the top
-    printf("\033[2J\033[H");
-
-    // fprintf(stdout, "%s",
-    //        show<float, NROWS, NCOLS>(screen, "Raw values").c_str());
 
     // normalize values
     float min = 0.0;
@@ -147,14 +143,6 @@ int main(int argc, char **argv) {
     for (size_t i = 0; i < screen.size(); ++i) {
       screen[i] = (screen[i] - min) / (max - min);
     }
-
-    fprintf(stdout, "Workgroup size: %zu %zu %zu \n", shader.workgroupSize[0],
-            shader.workgroupSize[1], shader.workgroupSize[2]);
-    fprintf(stdout, "Number of Threads: %zu %zu %d \n", devScreen.shape[1],
-            devScreen.shape[0], 1);
-
-    // fprintf(stdout, "%s", show<float, NROWS, NCOLS>(screen,
-    // "Scaled").c_str());
 
     // index into intensity array
     std::array<char, screen.size()> raster;
@@ -166,24 +154,33 @@ int main(int argc, char **argv) {
       raster[i] = intensity[index];
     }
 
-    // draw the tui screen
-    printf("+");
+    // Draw the raster
+    char buffer[(NROWS + 2) * (NCOLS + 2)];
+    char *offset = buffer;
+    sprintf(offset, "+");
     for (size_t col = 0; col < NCOLS; ++col) {
-      printf("-");
+      sprintf(offset + col + 1, "-");
     }
-    printf("+\n");
+    sprintf(buffer + NCOLS + 1, "+\n");
+    offset += NCOLS + 3;
     for (size_t row = 0; row < NROWS; ++row) {
-      printf("|");
+      sprintf(offset, "|");
       for (size_t col = 0; col < NCOLS; ++col) {
-        printf("%c", raster[row * NCOLS + col]);
+        sprintf(offset + col + 1, "%c", raster[row * NCOLS + col]);
       }
-      printf("|\n");
+      sprintf(offset + NCOLS + 1, "|\n");
+      offset += NCOLS + 3;
     }
-    printf("+");
+    sprintf(offset, "+");
     for (size_t col = 0; col < NCOLS; ++col) {
-      printf("-");
+      sprintf(offset + col + 1, "-");
     }
-    printf("+\n");
+    sprintf(offset + NCOLS + 1, "+\n");
+    printf("\033[2J\033[H");
+    printf("Workgroup size: %zu %zu %zu \n", shader.workgroupSize[0],
+           shader.workgroupSize[1], shader.workgroupSize[2]);
+    printf("Number of Threads: %zu %zu %d \n", devScreen.shape[1],
+           devScreen.shape[0], 1);
+    printf("%s", buffer);
   }
-
 }

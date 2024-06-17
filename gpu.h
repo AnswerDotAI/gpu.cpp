@@ -153,8 +153,9 @@ struct Kernel {
   size_t outputSize;
   size_t numBuffers;
   size_t numInputs;
-  WGPUCommandBuffer commandBuffer;     // destroyed upon submission
+  WGPUBindGroup bindGroup;             // persists between submission
   WGPUComputePipeline computePipeline; // persists between submission
+  WGPUCommandBuffer commandBuffer;     // destroyed upon submission
   WGPUBuffer readbackBuffer;
   CallbackDataDyn callbackData;
   std::promise<void> promise;
@@ -532,36 +533,34 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
 }
 
 // Separate this out since WGPUCommandBuffer is destroyed upon submission
-WGPUCommandBuffer
-CreateCommandBuffer(WGPUDevice &device,
-                    const WGPUComputePipeline &computePipeline,
-                    const WGPUBindGroup &bindGroup, const ShaderCode &shader,
-                    const Shape &nThreads) {
-  WGPUCommandBuffer commandBuffer;
-  log(kDefLog, kInfo, "Create command buffer 0x%x", commandBuffer);
+void ResetCommandBuffer(WGPUDevice &device,
+                    const Shape &workgroupSize,
+                    const Shape &nThreads, Kernel &op) {
+  log(kDefLog, kInfo, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
         wgpuDeviceCreateCommandEncoder(device, nullptr);
     WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
-    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
+    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
                                        nullptr);
     log(kDefLog, kInfo, "Dispatching workgroups for number of threads = %s",
         ToString(nThreads).c_str());
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder,
-        /* # X workgroups */ (nThreads[0] + (shader.workgroupSize[0] - 1)) /
-            shader.workgroupSize[0],
-        /* # Y workgroups */ (nThreads[1] + (shader.workgroupSize[1] - 1)) /
-            shader.workgroupSize[1],
-        /* # Z workgroups */ (nThreads[2] + (shader.workgroupSize[2] - 1)) /
-            shader.workgroupSize[2]);
+        /* # X workgroups */ (nThreads[0] + (workgroupSize[0] - 1)) /
+            workgroupSize[0],
+        /* # Y workgroups */ (nThreads[1] + (workgroupSize[1] - 1)) /
+            workgroupSize[1],
+        /* # Z workgroups */ (nThreads[2] + (workgroupSize[2] - 1)) /
+            workgroupSize[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
-    commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-    check(commandBuffer, "Create command buffer", __FILE__, __LINE__);
+    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
-  return commandBuffer;
+  op.promise = std::promise<void>();
+  op.future = op.promise.get_future();
 }
 
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
@@ -686,11 +685,7 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
       .entryCount = static_cast<uint32_t>(bindGroupEntries.size()),
       .entries = bindGroupEntries.data(),
   };
-  WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
-
-  log(kDefLog, kInfo, "Initializing promise and future");
-  op.promise = std::promise<void>();
-  op.future = op.promise.get_future();
+  op.bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
 
   log(kDefLog, kInfo, "Create the readback buffer");
   {
@@ -727,8 +722,8 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
     check(op.computePipeline, "Create compute pipeline", __FILE__, __LINE__);
   }
-  op.commandBuffer = CreateCommandBuffer(device, op.computePipeline, bindGroup,
-                                         shader, nThreads);
+  ResetCommandBuffer(device, shader.workgroupSize, nThreads, op);
+                                
 
   log(kDefLog, kInfo, "Initializing callbackData");
   op.callbackData = {op.readbackBuffer, op.outputSize, nullptr, &op.promise};
