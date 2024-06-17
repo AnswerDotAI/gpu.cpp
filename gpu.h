@@ -531,26 +531,43 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
                        tensor.data.size);
 }
 
+// Separate this out since WGPUCommandBuffer is destroyed upon submission
 WGPUCommandBuffer
-CreateCommandBuffer(GPUContext &ctx,
-                    const WGPUComputePipeline &computePipeline) {
+CreateCommandBuffer(WGPUDevice &device,
+                    const WGPUComputePipeline &computePipeline,
+                    const WGPUBindGroup &bindGroup, const ShaderCode &shader,
+                    const Shape &nThreads) {
   WGPUCommandBuffer commandBuffer;
-  WGPUCommandEncoder commandEncoder;
-  WGPUComputePassEncoder computePassEncoder;
-  commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
-  computePassEncoder =
-      wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-  wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
-  // TODO(avh): WIP - set bind group etc and finish the command buffer
-  // then split CreateKernel / CreateMultiKernel s.t.
-  // CommandBuffer is prepared per-dispatch since it's not reusable
+  log(kDefLog, kInfo, "Create command buffer 0x%x", commandBuffer);
+  {
+    WGPUCommandEncoder commandEncoder =
+        wgpuDeviceCreateCommandEncoder(device, nullptr);
+    WGPUComputePassEncoder computePassEncoder =
+        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
+    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
+                                       nullptr);
+    log(kDefLog, kInfo, "Dispatching workgroups for number of threads = %s",
+        ToString(nThreads).c_str());
+    wgpuComputePassEncoderDispatchWorkgroups(
+        computePassEncoder,
+        /* # X workgroups */ (nThreads[0] + (shader.workgroupSize[0] - 1)) /
+            shader.workgroupSize[0],
+        /* # Y workgroups */ (nThreads[1] + (shader.workgroupSize[1] - 1)) /
+            shader.workgroupSize[1],
+        /* # Z workgroups */ (nThreads[2] + (shader.workgroupSize[2] - 1)) /
+            shader.workgroupSize[2]);
+    wgpuComputePassEncoderEnd(computePassEncoder);
+    commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    check(commandBuffer, "Create command buffer", __FILE__, __LINE__);
+  }
   return commandBuffer;
 }
 
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensor *inputs, size_t numInputs,
-                    const GPUTensor &output, const Shape &nThreads, const void *params,
-                    size_t paramsSize) {
+                    const GPUTensor &output, const Shape &nThreads,
+                    const void *params, size_t paramsSize) {
   assert(nThreads.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
@@ -710,35 +727,8 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
     check(op.computePipeline, "Create compute pipeline", __FILE__, __LINE__);
   }
-
-  log(kDefLog, kInfo, "Create the command encoder");
-  {
-    // After beginning the compute pass, use
-    // wgpuComputePassEncoderInsertDebugMarker instead of
-    // wgpuCommandEncoderInsertDebugMarker o/w the command encoder will be
-    // locked after wgpuComputePassEncoderEnd.
-    WGPUCommandEncoder commandEncoder =
-        wgpuDeviceCreateCommandEncoder(device, nullptr);
-    WGPUComputePassEncoder computePassEncoder =
-        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
-    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
-                                       nullptr);
-
-    log(kDefLog, kInfo, "Dispatching workgroups for number of threads = %s",
-        ToString(nThreads).c_str());
-    wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder,
-        /* # X workgroups */ (nThreads[0] + (shader.workgroupSize[0] - 1)) /
-            shader.workgroupSize[0],
-        /* # Y workgroups */ (nThreads[1] + (shader.workgroupSize[1] - 1)) /
-            shader.workgroupSize[1],
-        /* # Z workgroups */ (nThreads[2] + (shader.workgroupSize[2] - 1)) /
-            shader.workgroupSize[2]);
-    wgpuComputePassEncoderEnd(computePassEncoder);
-    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
-  }
+  op.commandBuffer = CreateCommandBuffer(device, op.computePipeline, bindGroup,
+                                         shader, nThreads);
 
   log(kDefLog, kInfo, "Initializing callbackData");
   op.callbackData = {op.readbackBuffer, op.outputSize, nullptr, &op.promise};
@@ -767,7 +757,8 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   }
 }
 
-// Convenience wrapper: inputs is GPUTensors static collection instead of a pointer
+// Convenience wrapper: inputs is GPUTensors static collection instead of a
+// pointer
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
                     const GPUTensors<numInputs> &inputs,
@@ -817,7 +808,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   WGPUCommandEncoder commandEncoder =
       wgpuDeviceCreateCommandEncoder(device, nullptr);
   size_t bufferIndex = 0;
-  commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
 
   // Iterate over all shaders in the pipeline
   for (size_t shaderIndex = 0; shaderIndex < desc.numShaders; ++shaderIndex) {
