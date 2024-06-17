@@ -35,6 +35,10 @@ struct Shape {
   std::array<size_t, kMaxRank> data = {0};
   size_t rank = 0;
   Shape() = default;
+  Shape(size_t dim) {
+    data[0] = dim;
+    rank = 1;
+  }
   Shape(std::initializer_list<size_t> dims) {
     assert(dims.size() <= kMaxRank);
     std::copy(dims.begin(), dims.end(), data.begin());
