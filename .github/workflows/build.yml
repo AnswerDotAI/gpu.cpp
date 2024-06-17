@@ -8,5 +8,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v27
+      - name: Cache third_party
+        id:   cache-third_party
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-third-party-files
+        with:
+          path: /home/runner/work/gpu.cpp/gpu.cpp/third_party
+          key:          ${{ runner.os }}-${{ hashFiles('/home/runner/work/gpu.cpp/gpu.cpp/CMakeLists.txt') }}
+          restore-keys: ${{ runner.os }}-
       - run: |
           nix develop -c make tests
