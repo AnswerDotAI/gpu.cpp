@@ -1,14 +1,12 @@
-name: build
+name: nix-linux
 
-on:
-  push:
-  pull_request:
-    types: [opened, reopened, labeled, unlabeled, synchronize]
-  workflow_dispatch:
+on: [push, pull_request]
 
 jobs:
-  build:
-    - name: Build
-      run: 
-        echo "Hello, ${{ github.actor }}"
-      
+  build-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+      - run: |
+          nix develop -c make tests
