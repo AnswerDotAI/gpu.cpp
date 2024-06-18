@@ -4,7 +4,7 @@
 
 using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
                      // CreateShader, DispatchKernel, Wait, ToCPU
-                     // GPUTensor, Kernel, GPUContext, Shape, kf32
+                     // Tensor, Kernel, Context, Shape, kf32
 
 static const char *kGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -25,14 +25,14 @@ fn main(
 
 int main(int argc, char **argv) {
   printf("\nHello, gpu.cpp\n\n");
-  GPUContext ctx = CreateContext();
+  Context ctx = CreateContext();
   static constexpr size_t N = 3072;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i) / 2.0; // dummy input data
   }
-  GPUTensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, Shape{N}, kf32);
+  Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, Shape{N}, kf32);
   Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), input, output,
                            /* nthreads */ {N, 1, 1});
   DispatchKernel(ctx, op);

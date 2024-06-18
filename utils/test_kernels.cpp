@@ -21,7 +21,7 @@ bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
   return true;
 }
 
-void TestResidual(GPUContext &ctx) {
+void TestResidual(Context &ctx) {
   constexpr size_t N = 200000;
   constexpr size_t workgroupSize = 256;
   std::array<float, N> input1Arr;
@@ -29,14 +29,14 @@ void TestResidual(GPUContext &ctx) {
   range(input1Arr);
   range(input2Arr);
   std::array<float, N> outputArr;
-  GPUTensor input1 = CreateTensor(ctx, {N}, kf32, input1Arr.data());
-  GPUTensor input2 = CreateTensor(ctx, {N}, kf32, input2Arr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Tensor input1 = CreateTensor(ctx, {N}, kf32, input1Arr.data());
+  Tensor input2 = CreateTensor(ctx, {N}, kf32, input2Arr.data());
+  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   ShaderCode shaderCode = CreateShader(kShaderResidual, workgroupSize, kf32);
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
   Kernel op =
       CreateKernel(ctx, CreateShader(kShaderResidual, workgroupSize, kf32),
-                   GPUTensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
+                   Tensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -48,7 +48,7 @@ void TestResidual(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with Residual Test");
 }
 
-void TestHadamard(GPUContext &ctx) {
+void TestHadamard(Context &ctx) {
   constexpr size_t N = 200000;
   constexpr size_t workgroupSize = 256;
   std::array<float, N> input1Arr;
@@ -56,20 +56,20 @@ void TestHadamard(GPUContext &ctx) {
   range(input1Arr);
   range(input2Arr);
   std::array<float, N> outputArr;
-  GPUTensor input1 = CreateTensor(ctx, {N}, kf32, input1Arr.data());
-  GPUTensor input2 = CreateTensor(ctx, {N}, kf32, input2Arr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Tensor input1 = CreateTensor(ctx, {N}, kf32, input1Arr.data());
+  Tensor input2 = CreateTensor(ctx, {N}, kf32, input2Arr.data());
+  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   ShaderCode shaderCode = CreateShader(kShaderHadamard, workgroupSize, kf32);
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
   Kernel op =
       CreateKernel(ctx, CreateShader(kShaderHadamard, workgroupSize, kf32),
-                   GPUTensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
+                   Tensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Hadamard Output").c_str());
 }
 
-void TestMatmul(GPUContext &ctx) {
+void TestMatmul(Context &ctx) {
   static constexpr size_t M = 4;
   static constexpr size_t K = 5;
   static constexpr size_t N = 4;
@@ -79,12 +79,12 @@ void TestMatmul(GPUContext &ctx) {
   std::array<float, M * N> outputArr;
   randint(input1Arr, gen, 0, 5);
   range(input2Arr);
-  GPUTensor input1 = CreateTensor(ctx, {M, K}, kf32, input1Arr.data());
-  GPUTensor input2 = CreateTensor(ctx, {K, N}, kf32, input2Arr.data());
-  GPUTensor output = CreateTensor(ctx, {M, N}, kf32, outputArr.data());
+  Tensor input1 = CreateTensor(ctx, {M, K}, kf32, input1Arr.data());
+  Tensor input2 = CreateTensor(ctx, {K, N}, kf32, input2Arr.data());
+  Tensor output = CreateTensor(ctx, {M, N}, kf32, outputArr.data());
   Kernel op =
       CreateKernel(ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
-                   GPUTensors{input1, input2}, output, /* nthreads */ {M * N, 1, 1});
+                   Tensors{input1, input2}, output, /* nthreads */ {M * N, 1, 1});
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -105,20 +105,20 @@ void TestMatmul(GPUContext &ctx) {
   assert(passed);
 }
 
-void TestTensorPool(GPUContext &ctx) {
+void TestTensorPool(Context &ctx) {
   log(kDefLog, kInfo, "Starting Tensor Pool Test");
   // Test using the tensor pool to prepare tensor buffers for kernel invocation
   TensorPool pool = ctx.pool;
   std::array<float, 6> inputArr = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  GPUTensor input = CreateTensor(ctx, {2, 3}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {2, 3}, kf32);
+  Tensor input = CreateTensor(ctx, {2, 3}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {2, 3}, kf32);
   for (int i = 0; i < 10; i++) {
-    GPUTensor t = CreateTensor(ctx, {2, 3}, kf32);
+    Tensor t = CreateTensor(ctx, {2, 3}, kf32);
   }
   // initializing a gpu buffer w/ value and then copy it back to CPU
   std::array<float, 6> initValue = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   log(kDefLog, kInfo, "making tensors with init");
-  GPUTensor tInit = CreateTensor(ctx, {2, 3}, kf32, initValue.data());
+  Tensor tInit = CreateTensor(ctx, {2, 3}, kf32, initValue.data());
   log(kDefLog, kInfo, "Done with Tensor Pool Test");
   std::array<float, 6> targetValue;
   ToCPU(ctx, tInit, targetValue.data(), sizeof(initValue));
@@ -129,7 +129,7 @@ void TestTensorPool(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with Tensor Pool Test");
 }
 
-void TestGelu(GPUContext &ctx) {
+void TestGelu(Context &ctx) {
   static constexpr size_t N = 3072;
   std::array<float, N> inputArr;
   // range(inputArr);
@@ -137,8 +137,8 @@ void TestGelu(GPUContext &ctx) {
   // TODO(avh): investigate - on metal tanh seems to produce nan for values > 10
   randint(inputArr, gen, 0, 10); // for debugging
   std::array<float, N> outputArr;
-  GPUTensor geluIn = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor geluOut = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Tensor geluIn = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  Tensor geluOut = CreateTensor(ctx, {N}, kf32, outputArr.data());
   log(kDefLog, kInfo, "Creating GELU Shader");
   ShaderCode shader = CreateShader(kShaderGelu, 256, kf32);
   Kernel op = CreateKernel(ctx, shader, geluIn, geluOut, /* nthreads */ {N, 1, 1});
@@ -160,7 +160,7 @@ void TestGelu(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with Gelu Test");
 }
 
-void TestLayerNorm(GPUContext &ctx) {
+void TestLayerNorm(Context &ctx) {
   struct LNParam {
     uint32_t N; // check
     uint32_t C;
@@ -174,15 +174,15 @@ void TestLayerNorm(GPUContext &ctx) {
   std::array<float, N * C> outputArr;
   std::array<float, C> weightArr;
   std::array<float, C> biasArr;
-  GPUTensor input = CreateTensor(ctx, {N, C}, kf32, inputArr.data());
+  Tensor input = CreateTensor(ctx, {N, C}, kf32, inputArr.data());
   LNParam params = {N, C};
   randint(weightArr, gen, 0, 5); // populate randomly
   randint(biasArr, gen, 0, 5);
-  GPUTensor weight = CreateTensor(ctx, {C}, kf32, weightArr.data());
-  GPUTensor bias = CreateTensor(ctx, {C}, kf32, biasArr.data());
-  GPUTensor output = CreateTensor(ctx, {N, C}, kf32, outputArr.data());
+  Tensor weight = CreateTensor(ctx, {C}, kf32, weightArr.data());
+  Tensor bias = CreateTensor(ctx, {C}, kf32, biasArr.data());
+  Tensor output = CreateTensor(ctx, {N, C}, kf32, outputArr.data());
   Kernel op = CreateKernel(ctx, CreateShader(kShaderLayerNorm1, 256, kf32),
-                           GPUTensors{input, weight, bias}, output, /* n threads */{N, 1, 1}, params);
+                           Tensors{input, weight, bias}, output, /* n threads */{N, 1, 1}, params);
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -207,7 +207,7 @@ void TestLayerNorm(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with LayerNorm Test");
 }
 
-void TestSoftmax(GPUContext &ctx) {
+void TestSoftmax(Context &ctx) {
 
   struct SoftmaxParam {
     uint32_t N;
@@ -220,8 +220,8 @@ void TestSoftmax(GPUContext &ctx) {
   std::array<float, B * T * C> outputArr;
   std::mt19937 gen(31415);
   randint(inputArr, gen, 0, 3);
-  GPUTensor input = CreateTensor(ctx, {B * T, C}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {B * T, C}, kf32, outputArr.data());
+  Tensor input = CreateTensor(ctx, {B * T, C}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {B * T, C}, kf32, outputArr.data());
   log(kDefLog, kInfo, "num threads: %d", B * T);
   Kernel op = CreateKernel(ctx, CreateShader(kShaderSoftmax1, 256, kf32), input,
                            output, /* nthreads */ Shape{B * T, 1, 1}, SoftmaxParam{B * T, C});
@@ -246,7 +246,7 @@ void TestSoftmax(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with Softmax Test");
 }
 
-void TestAttention(GPUContext &ctx) {
+void TestAttention(Context &ctx) {
   static constexpr size_t B = 6;
   static constexpr size_t T = 32;   // token index
   static constexpr size_t C = 3072; // input channels
@@ -259,7 +259,7 @@ void TestAttention(GPUContext &ctx) {
   std::array<float, C * OC> weightArr;
 }
 
-void TestMultiKernel1(GPUContext &ctx) {
+void TestMultiKernel1(Context &ctx) {
 
   struct SoftmaxParam {
     uint32_t N;
@@ -272,8 +272,8 @@ void TestMultiKernel1(GPUContext &ctx) {
   std::array<float, B * T * C> outputArr;
   std::mt19937 gen(31415);
   randint(inputArr, gen, 0, 3);
-  GPUTensor input = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
+  Tensor input = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
   auto shader = CreateShader(kShaderSoftmax1, 256, kf32);
   constexpr size_t size = sizeof(SoftmaxParam);
   auto param = SoftmaxParam{B * T, C};
@@ -302,7 +302,7 @@ void TestMultiKernel1(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with MultiKernel Test 1");
 }
 
-void TestMultiKernel2(GPUContext &ctx) {
+void TestMultiKernel2(Context &ctx) {
 
   struct SoftmaxParam {
     uint32_t N;
@@ -316,8 +316,8 @@ void TestMultiKernel2(GPUContext &ctx) {
   std::mt19937 gen(31415);
   randint(inputArr, gen, 0, 3);
 
-  std::array<GPUTensor, 2> inputs;
-  std::array<GPUTensor, 2> outputs;
+  std::array<Tensor, 2> inputs;
+  std::array<Tensor, 2> outputs;
   std::array<SoftmaxParam, 2> params;
 
   inputs[0] = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
@@ -366,7 +366,7 @@ void TestMultiKernel2(GPUContext &ctx) {
 }
 
 int main(int argc, char **argv) {
-  GPUContext ctx = CreateContext(/* verbose logging */ false);
+  Context ctx = CreateContext(/* verbose logging */ false);
 
   TestTensorPool(ctx);
   TestResidual(ctx);

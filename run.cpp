@@ -31,7 +31,7 @@ void section(const char *content) {
   // fprintf(stdout, "\033[4A\033[0J"); // clear lines
 }
 
-void runHelloGELU(GPUContext &ctx) {
+void runHelloGELU(Context &ctx) {
   // Device code (runs on the GPU) using WGSL (WebGPU Shading Language)
   const char *kGELU = R"(
   const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -55,8 +55,8 @@ void runHelloGELU(GPUContext &ctx) {
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i); // dummy input data
   }
-  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Tensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   Kernel op = CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output,
                            /*nthreads*/ {N, 1, 1});
   DispatchKernel(ctx, op);
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
   // Clear screen and print banner
   fprintf(stdout, "\033[2J\033[1;1H");
 
-  // Creating a GPUContext
+  // Creating a Context
 
   section(R"(
 Welcome!
@@ -127,14 +127,14 @@ using namespace gpu;
 const char *kGELU = ... // we'll look at the WGSL shader code later
 
 int main(int argc, char **argv) {
-  GPUContext ctx = CreateContext();
+  Context ctx = CreateContext();
   static constexpr size_t N = 3072;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i); // dummy input data
   }
-  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Tensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   Kernel op =
       CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output, {N, 1, 1});
   DispatchKernel(ctx, op);
@@ -151,7 +151,7 @@ int main(int argc, char **argv) {
 Let's try running this.
 )");
 
-  GPUContext ctx = CreateContext();
+  Context ctx = CreateContext();
   runHelloGELU(ctx);
 
   section(R"(
@@ -213,13 +213,13 @@ Preparing GPU Resources I: Resource Type Definitions
 
 The main resources are:
 
-- `GPUContext` - the state of resources for interacting with the GPU.
-- `GPUTensor` - a buffer of data on the GPU.
+- `Context` - the state of resources for interacting with the GPU.
+- `Tensor` - a buffer of data on the GPU.
 - `ShaderCode` - the code for a shader program that can be dispatched to the
   GPU. This is a thin wrapper around a WGSL string but also includes the
   workgroup size the code is designed to run with.
 - `Kernel` - a GPU program that can be dispatched to the GPU. This accepts a
-  `ShaderCode` and a list of `GPUTensor` resources to bind for the dispatch
+  `ShaderCode` and a list of `Tensor` resources to bind for the dispatch
   computation.
 - `MultiKernel` - a collection of kernels that can be dispatched to the GPU.
 
@@ -232,8 +232,8 @@ Preparing GPU Resources II: Acquiring GPU Resources with `Create*()` Functions
 Resources are acquired using the `Create` functions. These are assumed to be
 ahead-of-time and not performance critical.
 
-- `GPUContext CreateContext(...)` - creates a GPU context.
-- `GPUTensor CreateTensor(...)` - creates and allocates a buffer for a tensor
+- `Context CreateContext(...)` - creates a GPU context.
+- `Tensor CreateTensor(...)` - creates and allocates a buffer for a tensor
   on the GPU.
 - `Kernel CreateKernel(...)` - creates and prepares a kernel on the GPU,
   including underlying GPU buffer data bindings and compute pipeline for the
@@ -243,37 +243,37 @@ ahead-of-time and not performance critical.
 
 There's a few supporting types in addition to these. `Shape` is a simple type
 to specify the shape of a tensor. `KernelDesc` and `MultiKernelDesc` are
-effectively. `TensorPool` manages `GPUTensor` resources and is used as context
+effectively. `TensorPool` manages `Tensor` resources and is used as context
 for allocating and deallocating tensors data on the GPU. In practice
-`TensorPool` is managed as a member variable of `GPUContext`.
+`TensorPool` is managed as a member variable of `Context`.
 
 )");
 
   section(R"(
-`CreateContext()` creates a GPUContext
+`CreateContext()` creates a Context
 --------------------------------------
 
 Let's zoom in a bit on the invocation of these Create functions, starting with
 CreateContext:
 
-The GPUContext is the main entry point for interacting with the GPU. It
+The Context is the main entry point for interacting with the GPU. It
 represents the state of the GPU and is used to allocate resources and execute
 kernels.
 
-In your program, you can create a GPUContext like this:
+In your program, you can create a Context like this:
 
-  GPUContext ctx = CreateContext();
+  Context ctx = CreateContext();
 )");
 
   section(R"(
-`CreateTensor()` allocates GPUTensor on the GPU
+`CreateTensor()` allocates Tensor on the GPU
 -----------------------------------------------
 
 As a low-level library, gpu.cpp primarily deals with flat arrays of data either
 on the CPU or GPU. 
 
 The main data structure is the GPUArray which represents a flat buffer of
-values on the GPU. GPUTensor is a thin wrapper around GPUArray that adds shape
+values on the GPU. Tensor is a thin wrapper around GPUArray that adds shape
 metadata.
 
 In most applications, you may prepare arrays or allocated
@@ -284,8 +284,8 @@ chunks on the CPU (eg for model weights or input data), and then
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i); // dummy input data
   }
-  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Tensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
 
 Let's try creating some data on the GPU now.
 
@@ -296,8 +296,8 @@ Let's try creating some data on the GPU now.
   for (int i = 0; i < 3072; ++i) {
     inputArr[i] = static_cast<float>(i); // dummy input data
   }
-  GPUTensor input = CreateTensor(ctx, {3072}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {3072}, kf32, outputArr.data());
+  Tensor input = CreateTensor(ctx, {3072}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {3072}, kf32, outputArr.data());
 
   fprintf(stdout, "\nSuccessfully created input and output tensors.\n\n");
   wait();
@@ -312,8 +312,8 @@ kernel.
 
 ```
   // Previously: Create the input and output tensors
-  GPUTensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  Tensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
 
   // ...
 
@@ -325,13 +325,13 @@ Note this *does not* run the kernel, it just prepares the kernel as a resource
 to be dispatched later.
 
 There are four arguments to `CreateKernel()`:
-- `GPUContext` - the context for the GPU
+- `Context` - the context for the GPU
 - `ShaderCode` - the shader code for the kernel
-- `GPUTensor` - the input tensor. Even though the kernel is not executed,
-GPUTensor provides a handle to the buffers on the GPU to be loaded when the
-kernel is run. If there's more than one input, `GPUTensors` can be used which
-is an ordered collection of `GPUTensor`.
-- `GPUTensor` - the output tensor. As with the input tensor, the values are not
+- `Tensor` - the input tensor. Even though the kernel is not executed,
+Tensor provides a handle to the buffers on the GPU to be loaded when the
+kernel is run. If there's more than one input, `Tensors` can be used which
+is an ordered collection of `Tensor`.
+- `Tensor` - the output tensor. As with the input tensor, the values are not
 important at this point, the underlying reference to the GPU buffer is bound to
 the kernel so that when the kernel is dispatched, it will know where to write
 the output data.

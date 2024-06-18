@@ -29,15 +29,11 @@ IF (NOT WEBGPU_TAG)
 ENDIF()
 message(STATUS "Using WebGPU distribution tag: ${WEBGPU_TAG}")
 
-# TODO - look into dawn version check build issue :(
-# ABSL_PROPAGATE_CXX_STD
-# https://github.com/google/dawn/blob/59b4421352ada94c98f0f3d63913c117378d970c/CMakeLists.txt#L246C5-L246C27
-
 if (WEBGPU_TAG STREQUAL "dawn")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBGPU_BACKEND_DAWN")
-  # actually use specific commit
-  # set(WEBGPU_TAG "1025b977e1927b6d0327e67352f90feb4bcf8274") # prev commit
-  # set(WEBGPU_TAG "acf972b7b909f52e183bdae3971b93bb13d4a29e") # latest commit
+  # use specific commit
+  # set(WEBGPU_TAG "1025b977e1927b6d0327e67352f90feb4bcf8274")
+  # set(WEBGPU_TAG "acf972b7b909f52e183bdae3971b93bb13d4a29e")
   # add_compile_options(-UABSL_INTERNAL_AT_LEAST_CXX20)
   # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -UABSL_INTERNAL_AT_LEAST_CXX20")
   message(STATUS "Using Dawn backend")
@@ -92,3 +88,5 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(SRC_LIB gpu.h nn/shaders.h utils/array_utils.h utils/logging.h)
 add_library(gpu SHARED ${SRC_LIB})
 set_target_properties(gpu PROPERTIES LINKER_LANGUAGE CXX)
+
+# For additional targets see directories under `examples/`, which have their own CMakeLists.txt

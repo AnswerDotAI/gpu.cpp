@@ -7,6 +7,7 @@
 #include <future>
 #include <memory>
 #include <set>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -29,7 +30,13 @@ static constexpr bool kDebug = true;
 // the shape of a tensor.
 static constexpr size_t kMaxRank = 8;
 
-struct GPUContext;
+struct Context;
+
+struct Array {
+  WGPUBuffer buffer;
+  WGPUBufferUsageFlags usage;
+  size_t size;
+};
 
 struct Shape {
   std::array<size_t, kMaxRank> data = {0};
@@ -50,8 +57,52 @@ struct Shape {
   }
 };
 
-// TODO(avh): note there's no parens/brackets so that this can be used for
-// string substitutions in shader code
+size_t size(const Shape &shape) {
+  size_t numels = 1;
+  for (size_t i = 0; i < shape.rank; i++) {
+    numels *= shape.data[i];
+  }
+  return numels;
+}
+
+struct Tensor {
+  Array data;
+  Shape shape;
+};
+
+template <std::size_t N> struct Tensors {
+  std::array<Tensor, N> data;
+  Tensors(std::initializer_list<Tensor> init) {
+    std::copy(init.begin(), init.end(), data.begin());
+  }
+  Tensor &operator[](std::size_t index) { return data[index]; }
+  const Tensor &operator[](std::size_t index) const { return data[index]; }
+};
+
+template <std::size_t N> Tensors(std::array<Tensor, N>) -> Tensors<N>;
+
+// Deduction guide for Tensors
+template <typename... Args> Tensors(Args...) -> Tensors<sizeof...(Args)>;
+
+struct TensorPool {
+  TensorPool(Context *ctx) : ctx(ctx), data() {};
+  Context *ctx;
+  std::unordered_map<WGPUBuffer, Tensor> data;
+  ~TensorPool();
+};
+
+enum NumType { kf32 };
+
+std::string ToString(NumType type) {
+  switch (type) {
+  case kf32:
+    return "f32";
+  default:
+    log(kDefLog, kError, "Invalid NumType in string conversion.");
+    return "unknown";
+  }
+}
+
 std::string ToString(const Shape &shape) {
   std::string str;
   for (size_t i = 0; i < shape.rank; i++) {
@@ -61,58 +112,6 @@ std::string ToString(const Shape &shape) {
     }
   }
   return str;
-}
-
-size_t size(const Shape &shape) {
-  size_t numels = 1;
-  for (size_t i = 0; i < shape.rank; i++) {
-    numels *= shape.data[i];
-  }
-  return numels;
-}
-
-struct GPUArray {
-  WGPUBuffer buffer;
-  WGPUBufferUsageFlags usage;
-  size_t size;
-};
-
-struct GPUTensor {
-  GPUArray data;
-  Shape shape;
-};
-
-template <std::size_t N> struct GPUTensors {
-  std::array<GPUTensor, N> data;
-  GPUTensors(std::initializer_list<GPUTensor> init) {
-    std::copy(init.begin(), init.end(), data.begin());
-  }
-  GPUTensor &operator[](std::size_t index) { return data[index]; }
-  const GPUTensor &operator[](std::size_t index) const { return data[index]; }
-};
-
-template <std::size_t N> GPUTensors(std::array<GPUTensor, N>) -> GPUTensors<N>;
-
-// Deduction guide for GPUTensors
-template <typename... Args> GPUTensors(Args...) -> GPUTensors<sizeof...(Args)>;
-
-struct TensorPool {
-  TensorPool(GPUContext *ctx) : ctx(ctx), data() {};
-  GPUContext *ctx;
-  std::unordered_map<WGPUBuffer, GPUTensor> data;
-  ~TensorPool();
-};
-
-enum NumType { kf32 };
-
-const char *ToString(NumType type) {
-  switch (type) {
-  case kf32:
-    return "f32";
-  default:
-    log(kDefLog, kError, "Invalid NumType in string conversion.");
-    return "unknown";
-  }
 }
 
 struct ShaderCode {
@@ -139,9 +138,9 @@ struct CallbackDataDyn {
 
 struct KernelDesc {
   const ShaderCode shader;
-  const GPUTensor *inputs;
+  const Tensor *inputs;
   size_t numInputs;
-  const GPUTensor output;
+  const Tensor output;
   const void *params;
   const size_t paramSize;
 };
@@ -166,9 +165,9 @@ struct Kernel {
 struct MultiKernelDesc {
   size_t numShaders;
   const ShaderCode *shader; // pointer to (dynamic) array of length = numShaders
-  const GPUTensor *inputs;  // length = sum of numInputs[]
+  const Tensor *inputs;  // length = sum of numInputs[]
   const size_t *numInputs;  // length = numShaders
-  const GPUTensor *output;  // length = numShaders
+  const Tensor *output;  // length = numShaders
   const void *params;       // length = numShaders
                             // use void* so params can be different
                             // types for each shader
@@ -212,8 +211,8 @@ bool operator<(const Kernel &lhs, const Kernel &rhs) {
 }
 
 struct KernelPool {
-  KernelPool(GPUContext *ctx) : ctx(ctx), data() {}
-  GPUContext *ctx;
+  KernelPool(Context *ctx) : ctx(ctx), data() {}
+  Context *ctx;
   std::set<Kernel *> data;
   std::set<MultiKernel *> multiData;
   ~KernelPool() {
@@ -225,14 +224,14 @@ struct KernelPool {
   }
 };
 
-struct GPUContext {
+struct Context {
   WGPUInstance instance;
   WGPUAdapter adapter;
   WGPUDevice device;
   WGPUQueue queue;
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
-  ~GPUContext() {
+  ~Context() {
     log(kDefLog, kInfo, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
@@ -262,7 +261,13 @@ struct GPUContext {
 };
 
 /* Tensor factory function */
-GPUTensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
+/**
+ * @brief 
+ * @param[in] 
+ * @return 
+ * @example 
+ */
+Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
                        NumType dtype,
                        WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
                                                     WGPUBufferUsage_CopyDst |
@@ -278,8 +283,8 @@ GPUTensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
       .size = size,
   };
   WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
-  pool.data[buffer] = GPUTensor{
-      .data = GPUArray{.buffer = buffer, .usage = usage, .size = size},
+  pool.data[buffer] = Tensor{
+      .data = Array{.buffer = buffer, .usage = usage, .size = size},
       .shape = shape,
   };
   wgpuDeviceCreateBuffer(device, &bufferDesc);
@@ -287,16 +292,16 @@ GPUTensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
 }
 
 /* Syntactic sugar - take in ctx instead of pool*/
-GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype) {
+Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype) {
   return CreateTensor(ctx.pool, ctx.device, shape, dtype,
                       WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
                           WGPUBufferUsage_CopySrc);
 }
 
 /* With Value Initialization (pointer) */
-GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype,
+Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype,
                        float *data) {
-  GPUTensor tensor =
+  Tensor tensor =
       CreateTensor(ctx.pool, ctx.device, shape, dtype,
                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
                        WGPUBufferUsage_CopySrc);
@@ -305,7 +310,7 @@ GPUTensor CreateTensor(GPUContext &ctx, const Shape &shape, NumType dtype,
   return tensor;
 }
 
-void FreeTensor(TensorPool &pool, GPUTensor tensor) {
+void FreeTensor(TensorPool &pool, Tensor tensor) {
   if (tensor.data.buffer) {
     wgpuBufferRelease(tensor.data.buffer);
   } else {
@@ -373,14 +378,14 @@ inline void check(bool condition, const char *message,
   }
 }
 
-GPUContext CreateContext(bool quietLogging = true,
+Context CreateContext(bool quietLogging = true,
                          const WGPUInstanceDescriptor &desc = {},
                          const WGPURequestAdapterOptions &adapterOpts = {},
                          WGPUDeviceDescriptor devDescriptor = {}) {
   if (quietLogging) {
     kDefLog.level = kError;
   }
-  GPUContext context;
+  Context context;
   {
     context.instance = wgpuCreateInstance(&desc);
     check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
@@ -456,7 +461,7 @@ GPUContext CreateContext(bool quietLogging = true,
   return context;
 }
 
-void Wait(GPUContext &ctx, std::future<void> &future) {
+void Wait(Context &ctx, std::future<void> &future) {
   while (future.wait_for(std::chrono::seconds(0)) !=
          std::future_status::ready) {
     wgpuInstanceProcessEvents(ctx.instance);
@@ -468,7 +473,7 @@ void Wait(GPUContext &ctx, std::future<void> &future) {
   reuse it for multiple readbacks. This version is a convenience implementation
   for non-hot paths.
 */
-void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
+void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;
   struct CopyOp {
     WGPUCommandBuffer commandBuffer;
@@ -525,22 +530,18 @@ void ToCPU(GPUContext &ctx, GPUTensor &tensor, float *data, size_t bufferSize) {
       &callbackData);
   Wait(ctx, op.future);
 }
-
 // Convenience wrapper for array outputs
 template <size_t N>
-void ToCPU(GPUContext &ctx, GPUTensor &tensor, std::array<float, N> data) {
+void ToCPU(Context &ctx, Tensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));
 }
-
-void ToGPU(GPUContext &ctx, const void *data, WGPUBuffer buffer, size_t size) {
+void ToGPU(Context &ctx, const void *data, WGPUBuffer buffer, size_t size) {
   wgpuQueueWriteBuffer(ctx.queue, buffer, 0, data, size);
 }
-
-void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
+void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
 }
-
 // Separate this out since WGPUCommandBuffer is destroyed upon submission
 void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
   log(kDefLog, kInfo, "Create command buffer 0x%x", op.commandBuffer);
@@ -564,7 +565,6 @@ void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
   op.promise = std::promise<void>();
   op.future = op.promise.get_future();
 }
-
 void ResetMultiCommandBuffer(WGPUDevice &device, MultiKernel &multiKernel) {
   WGPUCommandEncoder commandEncoder =
       wgpuDeviceCreateCommandEncoder(device, nullptr);
@@ -586,10 +586,9 @@ void ResetMultiCommandBuffer(WGPUDevice &device, MultiKernel &multiKernel) {
   multiKernel.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
   check(multiKernel.commandBuffer, "Create command buffer", __FILE__, __LINE__);
 }
-
-Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
-                    const GPUTensor *inputs, size_t numInputs,
-                    const GPUTensor &output, const Shape &nThreads,
+Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
+                    const Tensor *inputs, size_t numInputs,
+                    const Tensor &output, const Shape &nThreads,
                     const void *params, size_t paramsSize) {
   assert(nThreads.rank == 3);
   WGPUDevice device = ctx.device;
@@ -600,7 +599,6 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   size_t outputIndex = numInputs;    // index of the output buffer within
                                      // op.buffers, opbufferSizes and
                                      // bgLayoutEntries
-
   size_t paramIndex;
   // paramIndex is undefined
   // unless ParamsType != NoParam
@@ -610,7 +608,6 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     assert(outputIndex == numBuffers - 2);
     assert(paramIndex == numBuffers - 1);
   }
-
   op.buffers = std::make_unique<WGPUBuffer[]>(numBuffers);
   op.bufferSizes = std::make_unique<size_t[]>(numBuffers);
   op.numBuffers = numBuffers;
@@ -751,21 +748,17 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
       (nThreads[1] + (shader.workgroupSize[1] - 1)) / shader.workgroupSize[1],
       (nThreads[2] + (shader.workgroupSize[2] - 1)) / shader.workgroupSize[2]};
   ResetCommandBuffer(device, nThreads, op);
-
-  log(kDefLog, kInfo, "Initializing callbackData");
   op.callbackData = {op.readbackBuffer, op.outputSize, nullptr, &op.promise};
-
   ctx.kernelPool.data.insert(&op);
-
   log(kDefLog, kInfo, "Exiting CreateKernel");
   return op;
 }
 
 // Convenience wrapper: params type is statically templated instead of void*
 template <typename ParamsType = NoParam>
-Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
-                    const GPUTensor *inputs, size_t numInputs,
-                    const GPUTensor &output, const Shape &nThreads,
+Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
+                    const Tensor *inputs, size_t numInputs,
+                    const Tensor &output, const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
@@ -779,12 +772,12 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
   }
 }
 
-// Convenience wrapper: inputs is GPUTensors static collection instead of a
+// Convenience wrapper: inputs is Tensors static collection instead of a
 // pointer
 template <typename ParamsType = NoParam, size_t numInputs>
-Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
-                    const GPUTensors<numInputs> &inputs,
-                    const GPUTensor &output, const Shape &nThreads,
+Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
+                    const Tensors<numInputs> &inputs,
+                    const Tensor &output, const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   // first .data gets the array, second .data() gets the pointer
   return CreateKernel<ParamsType>(ctx, shader, inputs.data.data(), numInputs,
@@ -793,14 +786,14 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
 
 // Convenience wrapper: specialization for single input passed by reference
 template <typename ParamsType = NoParam>
-Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
-                    const GPUTensor &input, const GPUTensor &output,
+Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
+                    const Tensor &input, const Tensor &output,
                     const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   return CreateKernel(ctx, shader, &input, 1, output, nThreads, params);
 }
 
-MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
+MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   MultiKernel multiKernel;
@@ -810,7 +803,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   multiKernel.numInputs = std::make_unique<size_t[]>(desc.numShaders);
   multiKernel.outputBuffers = std::make_unique<WGPUBuffer[]>(desc.numShaders);
   multiKernel.outputSize = std::make_unique<size_t[]>(desc.numShaders);
-
   // Calculate total number of buffers
   for (size_t i = 0; i < desc.numShaders; ++i) {
     multiKernel.numInputs[i] = desc.numInputs[i];
@@ -821,15 +813,12 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     }
     totalBuffers += multiKernel.numBuffers[i];
   }
-
   multiKernel.buffers = std::make_unique<WGPUBuffer[]>(totalBuffers);
   multiKernel.bufferSizes = std::make_unique<size_t[]>(totalBuffers);
-
   // Create command encoder for all kernels
   WGPUCommandEncoder commandEncoder =
       wgpuDeviceCreateCommandEncoder(device, nullptr);
   size_t bufferIndex = 0;
-
   // Iterate over all shaders in the multiKernel
   // make and allocate computePipeline per shader
   multiKernel.computePipelines =
@@ -841,7 +830,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     size_t outputIndex = desc.numInputs[shaderIdx];
     size_t paramIndex =
         desc.paramSizes[shaderIdx] > 0 ? desc.numInputs[shaderIdx] + 1 : -1;
-
     // Create layout entries for input buffers
     log(kDefLog, kInfo, "Create the bind group layout");
     std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(
@@ -862,7 +850,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
                                     : desc.paramSizes[shaderIdx],
           }};
     }
-
     WGPUBindGroupLayoutDescriptor bgLayoutDesc = {
         .entryCount = static_cast<uint32_t>(bgLayoutEntries.size()),
         .entries = bgLayoutEntries.data()};
@@ -882,7 +869,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     multiKernel.buffers[bufferIndex] = multiKernel.outputBuffers[shaderIdx];
     multiKernel.bufferSizes[bufferIndex] = multiKernel.outputSize[shaderIdx];
     bufferIndex++;
-
     // Set up params buffer if required
     if (desc.paramSizes[shaderIdx] > 0) {
       WGPUBufferDescriptor paramsBufferDesc = {
@@ -900,8 +886,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     } else {
       log(kDefLog, kInfo, "No params buffer needed");
     }
-
-    log(kDefLog, kInfo, "Create bind group");
     {
       std::vector<WGPUBindGroupEntry> bindGroupEntries(
           multiKernel.numBuffers[shaderIdx]);
@@ -916,7 +900,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
             .size = multiKernel.bufferSizes[i + bufferIndex -
                                             multiKernel.numBuffers[shaderIdx]]};
       }
-
       WGPUBindGroupDescriptor bindGroupDesc = {
           .layout = bgLayout,
           .entryCount = static_cast<uint32_t>(bindGroupEntries.size()),
@@ -924,15 +907,11 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
       multiKernel.bindGroups[shaderIdx] =
           wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
     }
-
-    log(kDefLog, kInfo, "Create multiKernel layout desc");
     WGPUPipelineLayoutDescriptor multiKernelLayoutDesc = {
         .bindGroupLayoutCount = 1, .bindGroupLayouts = &bgLayout};
     WGPUPipelineLayout multiKernelLayout =
         wgpuDeviceCreatePipelineLayout(device, &multiKernelLayoutDesc);
-
     // Create shader module
-    log(kDefLog, kInfo, "Create shader module");
     WGPUShaderModuleWGSLDescriptor wgslDesc = {
         .code = desc.shader[shaderIdx].data.c_str(),
     };
@@ -941,16 +920,11 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
         .nextInChain = &wgslDesc.chain, .label = "shader"};
     WGPUShaderModule shaderModule =
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
-
-    // ComputePipeline
-    log(kDefLog, kInfo, "Create compute multiKernel desc");
     WGPUComputePipelineDescriptor computePipelineDesc = {
         .layout = multiKernelLayout,
         .compute = {.module = shaderModule, .entryPoint = "main"}};
     multiKernel.computePipelines[shaderIdx] =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-
-    // precompute # workgroups
     multiKernel.nWorkgroups[shaderIdx] = {
       (desc.nThreads[shaderIdx][0] + (desc.shader[shaderIdx].workgroupSize[0] - 1)) /
           desc.shader[shaderIdx].workgroupSize[0],
@@ -961,39 +935,6 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     };
   }
   ResetMultiCommandBuffer(device, multiKernel);
-
-  /*
-  for (size_t shaderIdx = 0; shaderIdx < desc.numShaders; ++shaderIdx) {
-    WGPUComputePassEncoder computePassEncoder =
-        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    log(kDefLog, kInfo, "Set multiKernel");
-    wgpuComputePassEncoderSetPipeline(computePassEncoder,
-                                      multiKernel.computePipelines[shaderIdx]);
-    log(kDefLog, kInfo, "Set bind group");
-    wgpuComputePassEncoderSetBindGroup(
-        computePassEncoder, 0, multiKernel.bindGroups[shaderIdx], 0, nullptr);
-    log(kDefLog, kInfo, "Dispatch workgroups");
-    // print workgroupSizes
-    log(kDefLog, kInfo, "Workgroup sizes: %s",
-        ToString(desc.shader[shaderIdx].workgroupSize).c_str());
-    // TODO(avh): update to nThreads 3D shape as in single kernel
-    wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder,
-        ((multiKernel.outputSize[shaderIdx] +
-          (desc.shader[shaderIdx].workgroupSize[0] - 1)) /
-         desc.shader[shaderIdx].workgroupSize[0]),
-        ((multiKernel.outputSize[shaderIdx] +
-          (desc.shader[shaderIdx].workgroupSize[1] - 1)) /
-         desc.shader[shaderIdx].workgroupSize[1]),
-        ((multiKernel.outputSize[shaderIdx] +
-          (desc.shader[shaderIdx].workgroupSize[2] - 1)) /
-         desc.shader[shaderIdx].workgroupSize[2]));
-    wgpuComputePassEncoderEnd(computePassEncoder);
-    log(kDefLog, kInfo, "End of shader %d", shaderIdx);
-  }
-  log(kDefLog, kInfo, "Finish command encoder");
-  multiKernel.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-  */
 
   check(multiKernel.commandBuffer, "Create command buffer", __FILE__, __LINE__);
 
@@ -1021,11 +962,9 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   return multiKernel;
 }
 
-void DispatchKernel(GPUContext &ctx, Kernel &op) {
+void DispatchKernel(Context &ctx, Kernel &op) {
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
-
-  // Set up the callback for when the work is done
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
@@ -1039,10 +978,8 @@ void DispatchKernel(GPUContext &ctx, Kernel &op) {
       &op.callbackData);
 }
 
-void DispatchMultiKernel(GPUContext &ctx, MultiKernel &multiKernel) {
+void DispatchMultiKernel(Context &ctx, MultiKernel &multiKernel) {
   wgpuQueueSubmit(ctx.queue, 1, &multiKernel.commandBuffer);
-
-  // Set up the callback for when the work is done
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {

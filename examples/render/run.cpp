@@ -113,8 +113,8 @@ int main(int argc, char **argv) {
 
   std::fill(begin(screen), end(screen), 0.0f);
 
-  GPUContext ctx = CreateContext();
-  GPUTensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
+  Context ctx = CreateContext();
+  Tensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
   uint32_t zeroTime = getCurrentTimeInMilliseconds();
 
   ShaderCode shader = CreateShader(kSDF, Shape{16, 16, 1});
