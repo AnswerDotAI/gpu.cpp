@@ -257,7 +257,6 @@ void TestAttention(GPUContext &ctx) {
   std::array<float, B * T * C> inputArr;
   std::array<float, B * OC> outputArr;
   std::array<float, C * OC> weightArr;
-  // TODO: finish
 }
 
 void TestMultiKernel1(GPUContext &ctx) {
@@ -280,6 +279,8 @@ void TestMultiKernel1(GPUContext &ctx) {
   auto param = SoftmaxParam{B * T, C};
   std::array<size_t, 1> numInputs = {1};
   // First test with the degenerate case of a 1-shader multi kernel
+  std::unique_ptr<Shape[]> nThreads(new Shape[1]);
+  nThreads[0] = {B * T, 1, 1};
   MultiKernelDesc desc{
       .numShaders = 1,
       .shader = &shader,
@@ -288,6 +289,7 @@ void TestMultiKernel1(GPUContext &ctx) {
       .output = &output,
       .params = &param,
       .paramSizes = &size,
+      .nThreads = nThreads.get(),
   };
   MultiKernel pipeline = CreateMultiKernel(ctx, desc);
   DispatchMultiKernel(ctx, pipeline);
@@ -335,6 +337,9 @@ void TestMultiKernel2(GPUContext &ctx) {
                                       sizeof(SoftmaxParam)};
 
   // First test with the degenerate case of a 1-shader multi kernel
+  std::unique_ptr<Shape[]> nThreads(new Shape[2]);
+  nThreads[0] = {B * T, 1, 1};
+  nThreads[1] = {B * T, 1, 1};
   MultiKernelDesc desc{
       .numShaders = 2,
       .shader = shaders.data(),
@@ -343,6 +348,7 @@ void TestMultiKernel2(GPUContext &ctx) {
       .output = outputs.data(),
       .params = params.data(),
       .paramSizes = paramSizes.data(),
+      .nThreads = nThreads.get(),
   };
   MultiKernel pipeline = CreateMultiKernel(ctx, desc);
   DispatchMultiKernel(ctx, pipeline);

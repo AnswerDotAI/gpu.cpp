@@ -9,7 +9,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
 option(USE_LOCAL_LIBS "Use local libraries instead of fetching from the internet" OFF)
 
 # Define paths for local and remote repositories
@@ -30,11 +29,19 @@ IF (NOT WEBGPU_TAG)
 ENDIF()
 message(STATUS "Using WebGPU distribution tag: ${WEBGPU_TAG}")
 
-IF (WEBGPU_TAG STREQUAL "dawn")
-  # Pin the dawn backend to a specific commit
-  set(WEBGPU_TAG "1025b977e1927b6d0327e67352f90feb4bcf8274")
+# TODO - look into dawn version check build issue :(
+# ABSL_PROPAGATE_CXX_STD
+# https://github.com/google/dawn/blob/59b4421352ada94c98f0f3d63913c117378d970c/CMakeLists.txt#L246C5-L246C27
+
+if (WEBGPU_TAG STREQUAL "dawn")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBGPU_BACKEND_DAWN")
+  # actually use specific commit
+  # set(WEBGPU_TAG "1025b977e1927b6d0327e67352f90feb4bcf8274") # prev commit
+  # set(WEBGPU_TAG "acf972b7b909f52e183bdae3971b93bb13d4a29e") # latest commit
+  # add_compile_options(-UABSL_INTERNAL_AT_LEAST_CXX20)
+  # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -UABSL_INTERNAL_AT_LEAST_CXX20")
   message(STATUS "Using Dawn backend")
-ENDIF()
+endif()
 
 FetchContent_Declare(
   webgpu
@@ -43,11 +50,6 @@ FetchContent_Declare(
   GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(webgpu)
-
-if (WEBGPU_TAG STREQUAL "dawn")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWEBGPU_BACKEND_DAWN")
-  message(STATUS "Using Dawn backend")
-endif()
 
 option(FASTBUILD "Option to enable fast builds" OFF)
 if(FASTBUILD)

@@ -153,6 +153,7 @@ struct Kernel {
   size_t outputSize;
   size_t numBuffers;
   size_t numInputs;
+  Shape nWorkgroups;
   WGPUBindGroup bindGroup;             // persists between submission
   WGPUComputePipeline computePipeline; // persists between submission
   WGPUCommandBuffer commandBuffer;     // destroyed upon submission
@@ -172,6 +173,7 @@ struct MultiKernelDesc {
                             // use void* so params can be different
                             // types for each shader
   const size_t *paramSizes; // length = numShaders
+  const Shape *nThreads;    // length = numShaders
 };
 
 // TODO(avh): implement equivalent of CreateKernel for MultiKernel with
@@ -187,10 +189,17 @@ struct MultiKernel {
                   // value[i] = numInputs[i] + 1 (output) + 0 or 1
                   //    depending on whether paramSizes is > 0 or not.
                   //    paramSizes = 0 means no params buffer
-  std::unique_ptr<size_t[]> numInputs; // length = numShaders
-  WGPUCommandBuffer commandBuffer;     // All kernels in the pipeline
+  std::unique_ptr<size_t[]> numInputs;         // length = numShaders
+  std::unique_ptr<Shape[]> nWorkgroups;        // length = numShaders
+  std::unique_ptr<WGPUBindGroup[]> bindGroups; // length = numShaders
+                                               // persists between submission
+  std::unique_ptr<WGPUComputePipeline[]>
+      computePipelines;                // length = numShaders
+                                       // persists between
+                                       // submission
+  WGPUCommandBuffer commandBuffer;     // All kernels in the multiKernel
   WGPUComputePipeline computePipeline; // TODO(avh): decide how to handle
-                                       // compute pipelines for multikernel
+                                       // compute multiKernels for multikernel
   WGPUBuffer readbackBuffer; // Readback buffer for the final output buffer
   CallbackDataDyn callbackData;
   std::promise<void> promise;
@@ -533,9 +542,7 @@ void ToGPU(GPUContext &ctx, const float *data, GPUTensor &tensor) {
 }
 
 // Separate this out since WGPUCommandBuffer is destroyed upon submission
-void ResetCommandBuffer(WGPUDevice &device,
-                    const Shape &workgroupSize,
-                    const Shape &nThreads, Kernel &op) {
+void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
   log(kDefLog, kInfo, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
@@ -548,19 +555,36 @@ void ResetCommandBuffer(WGPUDevice &device,
     log(kDefLog, kInfo, "Dispatching workgroups for number of threads = %s",
         ToString(nThreads).c_str());
     wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder,
-        /* # X workgroups */ (nThreads[0] + (workgroupSize[0] - 1)) /
-            workgroupSize[0],
-        /* # Y workgroups */ (nThreads[1] + (workgroupSize[1] - 1)) /
-            workgroupSize[1],
-        /* # Z workgroups */ (nThreads[2] + (workgroupSize[2] - 1)) /
-            workgroupSize[2]);
+        computePassEncoder, op.nWorkgroups[0], op.nWorkgroups[1],
+        op.nWorkgroups[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
   op.promise = std::promise<void>();
   op.future = op.promise.get_future();
+}
+
+void ResetMultiCommandBuffer(WGPUDevice &device, MultiKernel &multiKernel) {
+  WGPUCommandEncoder commandEncoder =
+      wgpuDeviceCreateCommandEncoder(device, nullptr);
+  for (size_t shaderIdx = 0; shaderIdx < multiKernel.numShaders; ++shaderIdx) {
+    WGPUComputePassEncoder computePassEncoder =
+        wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+    wgpuComputePassEncoderSetPipeline(computePassEncoder,
+                                      multiKernel.computePipelines[shaderIdx]);
+    wgpuComputePassEncoderSetBindGroup(
+        computePassEncoder, 0, multiKernel.bindGroups[shaderIdx], 0, nullptr);
+    wgpuComputePassEncoderDispatchWorkgroups(
+        computePassEncoder,
+        multiKernel.nWorkgroups[shaderIdx][0],
+        multiKernel.nWorkgroups[shaderIdx][1],
+        multiKernel.nWorkgroups[shaderIdx][2]);
+    wgpuComputePassEncoderEnd(computePassEncoder);
+  }
+  log(kDefLog, kInfo, "Finish command encoder");
+  multiKernel.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+  check(multiKernel.commandBuffer, "Create command buffer", __FILE__, __LINE__);
 }
 
 Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
@@ -697,15 +721,15 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
         wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
   }
 
-  log(kDefLog, kInfo, "Create the compute pipeline");
+  log(kDefLog, kInfo, "Create the compute multiKernel");
   {
-    WGPUPipelineLayout pipelineLayout;
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
+    WGPUPipelineLayout multiKernelLayout;
+    WGPUPipelineLayoutDescriptor multiKernelLayoutDesc = {
         .bindGroupLayoutCount = 1,
         .bindGroupLayouts = &bgLayout,
     };
-    pipelineLayout =
-        wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
+    multiKernelLayout =
+        wgpuDeviceCreatePipelineLayout(device, &multiKernelLayoutDesc);
     WGPUShaderModuleWGSLDescriptor wgslDesc = {
         .code = shader.data.c_str(),
     };
@@ -714,16 +738,19 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
     shaderModuleDesc.nextInChain = &wgslDesc.chain;
     shaderModuleDesc.label = "shader";
     WGPUComputePipelineDescriptor computePipelineDesc = {};
-    computePipelineDesc.layout = pipelineLayout;
+    computePipelineDesc.layout = multiKernelLayout;
     computePipelineDesc.compute.module =
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
     computePipelineDesc.compute.entryPoint = "main";
     op.computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-    check(op.computePipeline, "Create compute pipeline", __FILE__, __LINE__);
+    check(op.computePipeline, "Create compute multiKernel", __FILE__, __LINE__);
   }
-  ResetCommandBuffer(device, shader.workgroupSize, nThreads, op);
-                                
+  op.nWorkgroups = {
+      (nThreads[0] + (shader.workgroupSize[0] - 1)) / shader.workgroupSize[0],
+      (nThreads[1] + (shader.workgroupSize[1] - 1)) / shader.workgroupSize[1],
+      (nThreads[2] + (shader.workgroupSize[2] - 1)) / shader.workgroupSize[2]};
+  ResetCommandBuffer(device, nThreads, op);
 
   log(kDefLog, kInfo, "Initializing callbackData");
   op.callbackData = {op.readbackBuffer, op.outputSize, nullptr, &op.promise};
@@ -776,46 +803,50 @@ Kernel CreateKernel(GPUContext &ctx, const ShaderCode &shader,
 MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
-  MultiKernel pipeline;
-
-  pipeline.numShaders = desc.numShaders;
+  MultiKernel multiKernel;
+  multiKernel.numShaders = desc.numShaders;
   size_t totalBuffers = 0;
-  pipeline.numBuffers = std::make_unique<size_t[]>(desc.numShaders);
-  pipeline.numInputs = std::make_unique<size_t[]>(desc.numShaders);
-  pipeline.outputBuffers = std::make_unique<WGPUBuffer[]>(desc.numShaders);
-  pipeline.outputSize = std::make_unique<size_t[]>(desc.numShaders);
+  multiKernel.numBuffers = std::make_unique<size_t[]>(desc.numShaders);
+  multiKernel.numInputs = std::make_unique<size_t[]>(desc.numShaders);
+  multiKernel.outputBuffers = std::make_unique<WGPUBuffer[]>(desc.numShaders);
+  multiKernel.outputSize = std::make_unique<size_t[]>(desc.numShaders);
 
   // Calculate total number of buffers
   for (size_t i = 0; i < desc.numShaders; ++i) {
-    pipeline.numInputs[i] = desc.numInputs[i];
-    pipeline.numBuffers[i] = desc.numInputs[i] + 1; // +1 for output buffer
+    multiKernel.numInputs[i] = desc.numInputs[i];
+    multiKernel.numBuffers[i] = desc.numInputs[i] + 1; // +1 for output buffer
     if (desc.paramSizes[i] > 0) {
       // == 0 means shader does not have a parameter input
-      pipeline.numBuffers[i] += 1; // +1 for params buffer
+      multiKernel.numBuffers[i] += 1; // +1 for params buffer
     }
-    totalBuffers += pipeline.numBuffers[i];
+    totalBuffers += multiKernel.numBuffers[i];
   }
 
-  pipeline.buffers = std::make_unique<WGPUBuffer[]>(totalBuffers);
-  pipeline.bufferSizes = std::make_unique<size_t[]>(totalBuffers);
+  multiKernel.buffers = std::make_unique<WGPUBuffer[]>(totalBuffers);
+  multiKernel.bufferSizes = std::make_unique<size_t[]>(totalBuffers);
 
   // Create command encoder for all kernels
   WGPUCommandEncoder commandEncoder =
       wgpuDeviceCreateCommandEncoder(device, nullptr);
   size_t bufferIndex = 0;
 
-  // Iterate over all shaders in the pipeline
-  for (size_t shaderIndex = 0; shaderIndex < desc.numShaders; ++shaderIndex) {
+  // Iterate over all shaders in the multiKernel
+  // make and allocate computePipeline per shader
+  multiKernel.computePipelines =
+      std::make_unique<WGPUComputePipeline[]>(desc.numShaders);
+  multiKernel.bindGroups = std::make_unique<WGPUBindGroup[]>(desc.numShaders);
+  multiKernel.nWorkgroups = std::make_unique<Shape[]>(desc.numShaders);
+  for (size_t shaderIdx = 0; shaderIdx < desc.numShaders; ++shaderIdx) {
     // Create buffers and bind group for each shader
-    size_t outputIndex = desc.numInputs[shaderIndex];
+    size_t outputIndex = desc.numInputs[shaderIdx];
     size_t paramIndex =
-        desc.paramSizes[shaderIndex] > 0 ? desc.numInputs[shaderIndex] + 1 : -1;
+        desc.paramSizes[shaderIdx] > 0 ? desc.numInputs[shaderIdx] + 1 : -1;
 
     // Create layout entries for input buffers
     log(kDefLog, kInfo, "Create the bind group layout");
     std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(
-        pipeline.numBuffers[shaderIndex]);
-    for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
+        multiKernel.numBuffers[shaderIdx]);
+    for (size_t i = 0; i < multiKernel.numBuffers[shaderIdx]; ++i) {
       log(kDefLog, kInfo, "Create layout entry for buffer %d", i);
       log(kDefLog, kInfo, "i %d outputIndex %d i == paramIndex ? %d", i,
           outputIndex, i == paramIndex);
@@ -827,8 +858,8 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
                                         : WGPUBufferBindingType_Uniform,
               .minBindingSize = i < outputIndex ? desc.inputs[i].data.size
                                 : i == outputIndex
-                                    ? desc.output[shaderIndex].data.size
-                                    : desc.paramSizes[shaderIndex],
+                                    ? desc.output[shaderIdx].data.size
+                                    : desc.paramSizes[shaderIdx],
           }};
     }
 
@@ -839,31 +870,31 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
         wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
 
     log(kDefLog, kInfo, "Create input and output buffers");
-    for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIndex];
+    for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIdx];
          ++inputIndex) {
-      pipeline.buffers[bufferIndex] = desc.inputs[inputIndex].data.buffer;
-      pipeline.bufferSizes[bufferIndex] = desc.inputs[inputIndex].data.size;
+      multiKernel.buffers[bufferIndex] = desc.inputs[inputIndex].data.buffer;
+      multiKernel.bufferSizes[bufferIndex] = desc.inputs[inputIndex].data.size;
       bufferIndex++;
     }
     // Set up output buffer
-    pipeline.outputBuffers[shaderIndex] = desc.output[shaderIndex].data.buffer;
-    pipeline.outputSize[shaderIndex] = desc.output[shaderIndex].data.size;
-    pipeline.buffers[bufferIndex] = pipeline.outputBuffers[shaderIndex];
-    pipeline.bufferSizes[bufferIndex] = pipeline.outputSize[shaderIndex];
+    multiKernel.outputBuffers[shaderIdx] = desc.output[shaderIdx].data.buffer;
+    multiKernel.outputSize[shaderIdx] = desc.output[shaderIdx].data.size;
+    multiKernel.buffers[bufferIndex] = multiKernel.outputBuffers[shaderIdx];
+    multiKernel.bufferSizes[bufferIndex] = multiKernel.outputSize[shaderIdx];
     bufferIndex++;
 
     // Set up params buffer if required
-    if (desc.paramSizes[shaderIndex] > 0) {
+    if (desc.paramSizes[shaderIdx] > 0) {
       WGPUBufferDescriptor paramsBufferDesc = {
           .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
-          .size = desc.paramSizes[shaderIndex],
+          .size = desc.paramSizes[shaderIdx],
           .mappedAtCreation = false,
       };
       log(kDefLog, kInfo, "Create the params buffer at bufferIndex %d",
           bufferIndex);
-      pipeline.buffers[bufferIndex] =
+      multiKernel.buffers[bufferIndex] =
           wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
-      pipeline.bufferSizes[bufferIndex] = desc.paramSizes[shaderIndex];
+      multiKernel.bufferSizes[bufferIndex] = desc.paramSizes[shaderIdx];
       bufferIndex++;
       log(kDefLog, kInfo, "Params buffer written");
     } else {
@@ -871,39 +902,39 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
     }
 
     log(kDefLog, kInfo, "Create bind group");
-    WGPUBindGroup bindGroup;
     {
       std::vector<WGPUBindGroupEntry> bindGroupEntries(
-          pipeline.numBuffers[shaderIndex]);
+          multiKernel.numBuffers[shaderIdx]);
       log(kDefLog, kInfo, "Number of buffers: %d",
-          pipeline.numBuffers[shaderIndex]);
-      for (size_t i = 0; i < pipeline.numBuffers[shaderIndex]; ++i) {
+          multiKernel.numBuffers[shaderIdx]);
+      for (size_t i = 0; i < multiKernel.numBuffers[shaderIdx]; ++i) {
         bindGroupEntries[i] = WGPUBindGroupEntry{
             .binding = static_cast<uint32_t>(i),
-            .buffer = pipeline.buffers[i + bufferIndex -
-                                       pipeline.numBuffers[shaderIndex]],
+            .buffer = multiKernel.buffers[i + bufferIndex -
+                                          multiKernel.numBuffers[shaderIdx]],
             .offset = 0,
-            .size = pipeline.bufferSizes[i + bufferIndex -
-                                         pipeline.numBuffers[shaderIndex]]};
+            .size = multiKernel.bufferSizes[i + bufferIndex -
+                                            multiKernel.numBuffers[shaderIdx]]};
       }
 
       WGPUBindGroupDescriptor bindGroupDesc = {
           .layout = bgLayout,
           .entryCount = static_cast<uint32_t>(bindGroupEntries.size()),
           .entries = bindGroupEntries.data()};
-      bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
+      multiKernel.bindGroups[shaderIdx] =
+          wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
     }
 
-    log(kDefLog, kInfo, "Create pipeline layout desc");
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
+    log(kDefLog, kInfo, "Create multiKernel layout desc");
+    WGPUPipelineLayoutDescriptor multiKernelLayoutDesc = {
         .bindGroupLayoutCount = 1, .bindGroupLayouts = &bgLayout};
-    WGPUPipelineLayout pipelineLayout =
-        wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
+    WGPUPipelineLayout multiKernelLayout =
+        wgpuDeviceCreatePipelineLayout(device, &multiKernelLayoutDesc);
 
     // Create shader module
     log(kDefLog, kInfo, "Create shader module");
     WGPUShaderModuleWGSLDescriptor wgslDesc = {
-        .code = desc.shader[shaderIndex].data.c_str(),
+        .code = desc.shader[shaderIdx].data.c_str(),
     };
     wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
     WGPUShaderModuleDescriptor shaderModuleDesc = {
@@ -912,69 +943,82 @@ MultiKernel CreateMultiKernel(GPUContext &ctx, const MultiKernelDesc &desc) {
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
 
     // ComputePipeline
-    log(kDefLog, kInfo, "Create compute pipeline desc");
+    log(kDefLog, kInfo, "Create compute multiKernel desc");
     WGPUComputePipelineDescriptor computePipelineDesc = {
-        .layout = pipelineLayout,
+        .layout = multiKernelLayout,
         .compute = {.module = shaderModule, .entryPoint = "main"}};
-    WGPUComputePipeline computePipeline =
+    multiKernel.computePipelines[shaderIdx] =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
 
+    // precompute # workgroups
+    multiKernel.nWorkgroups[shaderIdx] = {
+      (desc.nThreads[shaderIdx][0] + (desc.shader[shaderIdx].workgroupSize[0] - 1)) /
+          desc.shader[shaderIdx].workgroupSize[0],
+      (desc.nThreads[shaderIdx][1] + (desc.shader[shaderIdx].workgroupSize[1] - 1)) /
+          desc.shader[shaderIdx].workgroupSize[1],
+      (desc.nThreads[shaderIdx][2] + (desc.shader[shaderIdx].workgroupSize[2] - 1)) /
+          desc.shader[shaderIdx].workgroupSize[2]
+    };
+  }
+  ResetMultiCommandBuffer(device, multiKernel);
+
+  /*
+  for (size_t shaderIdx = 0; shaderIdx < desc.numShaders; ++shaderIdx) {
     WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    log(kDefLog, kInfo, "Set pipeline");
-    wgpuComputePassEncoderSetPipeline(computePassEncoder, computePipeline);
+    log(kDefLog, kInfo, "Set multiKernel");
+    wgpuComputePassEncoderSetPipeline(computePassEncoder,
+                                      multiKernel.computePipelines[shaderIdx]);
     log(kDefLog, kInfo, "Set bind group");
-    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, bindGroup, 0,
-                                       nullptr);
-
+    wgpuComputePassEncoderSetBindGroup(
+        computePassEncoder, 0, multiKernel.bindGroups[shaderIdx], 0, nullptr);
     log(kDefLog, kInfo, "Dispatch workgroups");
     // print workgroupSizes
     log(kDefLog, kInfo, "Workgroup sizes: %s",
-        ToString(desc.shader[shaderIndex].workgroupSize).c_str());
-
+        ToString(desc.shader[shaderIdx].workgroupSize).c_str());
     // TODO(avh): update to nThreads 3D shape as in single kernel
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder,
-        ((pipeline.outputSize[shaderIndex] +
-          (desc.shader[shaderIndex].workgroupSize[0] - 1)) /
-         desc.shader[shaderIndex].workgroupSize[0]),
-        ((pipeline.outputSize[shaderIndex] +
-          (desc.shader[shaderIndex].workgroupSize[1] - 1)) /
-         desc.shader[shaderIndex].workgroupSize[1]),
-        ((pipeline.outputSize[shaderIndex] +
-          (desc.shader[shaderIndex].workgroupSize[2] - 1)) /
-         desc.shader[shaderIndex].workgroupSize[2]));
+        ((multiKernel.outputSize[shaderIdx] +
+          (desc.shader[shaderIdx].workgroupSize[0] - 1)) /
+         desc.shader[shaderIdx].workgroupSize[0]),
+        ((multiKernel.outputSize[shaderIdx] +
+          (desc.shader[shaderIdx].workgroupSize[1] - 1)) /
+         desc.shader[shaderIdx].workgroupSize[1]),
+        ((multiKernel.outputSize[shaderIdx] +
+          (desc.shader[shaderIdx].workgroupSize[2] - 1)) /
+         desc.shader[shaderIdx].workgroupSize[2]));
     wgpuComputePassEncoderEnd(computePassEncoder);
-
-    // TODO(avh): add capability for synchronization between shaders
-    log(kDefLog, kInfo, "End of shader %d", shaderIndex);
+    log(kDefLog, kInfo, "End of shader %d", shaderIdx);
   }
-
   log(kDefLog, kInfo, "Finish command encoder");
-  pipeline.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-  check(pipeline.commandBuffer, "Create command buffer", __FILE__, __LINE__);
+  multiKernel.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+  */
+
+  check(multiKernel.commandBuffer, "Create command buffer", __FILE__, __LINE__);
 
   log(kDefLog, kInfo, "Create the readback buffer");
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
-        .size = pipeline.outputSize[pipeline.numShaders - 1],
+        .size = multiKernel.outputSize[multiKernel.numShaders - 1],
     };
-    pipeline.readbackBuffer =
+    multiKernel.readbackBuffer =
         wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
   }
 
   // Set up promise and future for asynchronous handling
-  pipeline.promise = std::promise<void>();
-  pipeline.future = pipeline.promise.get_future();
+  multiKernel.promise = std::promise<void>();
+  multiKernel.future = multiKernel.promise.get_future();
 
-  pipeline.callbackData = CallbackDataDyn{
-      pipeline.readbackBuffer, pipeline.outputSize[pipeline.numShaders - 1],
-      nullptr, &pipeline.promise};
+  multiKernel.callbackData =
+      CallbackDataDyn{multiKernel.readbackBuffer,
+                      multiKernel.outputSize[multiKernel.numShaders - 1],
+                      nullptr, &multiKernel.promise};
 
-  ctx.kernelPool.multiData.insert(&pipeline);
+  ctx.kernelPool.multiData.insert(&multiKernel);
 
-  return pipeline;
+  return multiKernel;
 }
 
 void DispatchKernel(GPUContext &ctx, Kernel &op) {
@@ -995,8 +1039,8 @@ void DispatchKernel(GPUContext &ctx, Kernel &op) {
       &op.callbackData);
 }
 
-void DispatchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
-  wgpuQueueSubmit(ctx.queue, 1, &pipeline.commandBuffer);
+void DispatchMultiKernel(GPUContext &ctx, MultiKernel &multiKernel) {
+  wgpuQueueSubmit(ctx.queue, 1, &multiKernel.commandBuffer);
 
   // Set up the callback for when the work is done
   wgpuQueueOnSubmittedWorkDone(
@@ -1009,7 +1053,7 @@ void DispatchMultiKernel(GPUContext &ctx, MultiKernel &pipeline) {
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
         data->promise->set_value();
       },
-      &pipeline.callbackData);
+      &multiKernel.callbackData);
 }
 
 } // namespace gpu

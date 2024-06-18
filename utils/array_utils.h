@@ -89,6 +89,14 @@ void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min,
   }
 }
 
+void eye(float* a, size_t N) {
+  for (size_t i = 0; i < N; i++) {
+    for (size_t j = 0; j < N; j++) {
+      a[i * N + j] = (i == j) ? 1.0 : 0.0;
+    }
+  }
+}
+
 } // namespace gpu
 
 #endif 

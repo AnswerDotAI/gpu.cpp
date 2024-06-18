@@ -124,12 +124,13 @@ int main(int argc, char **argv) {
     DispatchKernel(ctx, renderKernel);
     Wait(ctx, renderKernel.future);
     ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
-    // Update the time field, write pparams to GPU, and create a new command buffer
+    // Update the time field, write pparams to GPU, and create a new command
+    // buffer
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
     wgpuQueueWriteBuffer(ctx.queue,
                          renderKernel.buffers[renderKernel.numBuffers - 1], 0,
                          static_cast<void *>(&params), sizeof(params));
-    ResetCommandBuffer(ctx.device, shader.workgroupSize, {NCOLS, NROWS, 1},
+    ResetCommandBuffer(ctx.device, /*nthreads*/ {NCOLS, NROWS, 1},
                        renderKernel);
 
     static const char intensity[] = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/"

@@ -10,7 +10,8 @@ USE_WGPU=-DWEBGPU_TAG=wgpu
 .PHONY: demo tests libgpu debug build check-entr watch-demo watch-tests clean
 
 # Add --trace to see the cmake commands
-FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX)
+# absl c++20 check is breaking mac builds
+FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX) -DABSL_INTERNAL_AT_LEAST_CXX20=OFF
 
 # TODO(avh): decide whether to use wgpu as default
 FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON
@@ -40,6 +41,9 @@ libgpu: check-dependencies
 debug: check-dependencies
 	$(CMAKE_CMD) $(DEBUG_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
+debug-wgpu: check-dependencies
+	$(CMAKE_CMD) $(DEBUG_FLAGS) $(USE_WGPU) && make -j$(NUM_JOBS) $(TARGET_ALL)
+
 build: check-dependencies
 	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
@@ -57,6 +61,7 @@ watch-tests: check-entr check-dependencies
 
 # experimental
 watch-tests-wgpu: check-entr check-dependencies
+	# export RUST_TRACE=1
 	$(CMAKE_CMD) $(FASTBUILD_FLAGS) $(USE_WGPU) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 watch-demo-local: check-entr check-dependencies
