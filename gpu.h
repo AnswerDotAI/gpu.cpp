@@ -26,19 +26,22 @@ static constexpr bool kDebug = false;
 static constexpr bool kDebug = true;
 #endif
 
-// Maximum rank of a tensor so we don't have to dynamically allocate memory for
-// the shape of a tensor.
-static constexpr size_t kMaxRank = 8;
-
-struct Context;
-
+/**
+ * @brief Represents a buffer of values on the GPU.
+ */
 struct Array {
   WGPUBuffer buffer;
   WGPUBufferUsageFlags usage;
-  size_t size;
+  size_t size; // in bytes
 };
 
+
+/**
+ * @brief Represents the shape of a tensor.
+ */
 struct Shape {
+  static constexpr size_t kMaxRank = 8; // Maximum rank of a tensor, avoids
+                                      // dynamic allocation for shape data
   std::array<size_t, kMaxRank> data = {0};
   size_t rank = 0;
   Shape() = default;
@@ -65,11 +68,18 @@ size_t size(const Shape &shape) {
   return numels;
 }
 
+/**
+ * @brief Represents a tensor on the GPU, which is a buffer of values with a
+ * shape.
+ */
 struct Tensor {
   Array data;
   Shape shape;
 };
 
+/**
+ * @brief Represents a collection of tensors.
+ */
 template <std::size_t N> struct Tensors {
   std::array<Tensor, N> data;
   Tensors(std::initializer_list<Tensor> init) {
@@ -79,10 +89,14 @@ template <std::size_t N> struct Tensors {
   const Tensor &operator[](std::size_t index) const { return data[index]; }
 };
 
+/**
+ * @brief Deduction guide for Tensors
+ */
 template <std::size_t N> Tensors(std::array<Tensor, N>) -> Tensors<N>;
-
-// Deduction guide for Tensors
 template <typename... Args> Tensors(Args...) -> Tensors<sizeof...(Args)>;
+
+struct Context; // Forward declaration so that TensorPool can have a pointer to
+                // Context
 
 struct TensorPool {
   TensorPool(Context *ctx) : ctx(ctx), data() {};
@@ -93,6 +107,9 @@ struct TensorPool {
 
 enum NumType { kf32 };
 
+/**
+ * @brief Converts NumType to string.
+ */
 std::string ToString(NumType type) {
   switch (type) {
   case kf32:
@@ -103,6 +120,11 @@ std::string ToString(NumType type) {
   }
 }
 
+/**
+ * @brief Converts Shape to string. The string formatting isn't arbitrary but
+ * is meant to be slotted into shader code (hence no additional parentheses or
+ * brackets).
+ */
 std::string ToString(const Shape &shape) {
   std::string str;
   for (size_t i = 0; i < shape.rank; i++) {
@@ -114,6 +136,12 @@ std::string ToString(const Shape &shape) {
   return str;
 }
 
+/**
+ * @brief Represents a shader code.
+ * workgroup size and precision are stored since they are specified in the
+ * shader code and making the values available helps keep parameters
+ * consistent.
+ */
 struct ShaderCode {
   ShaderCode(const std::string &data, size_t workgroupSize = 256,
              NumType precision = kf32)
@@ -128,6 +156,10 @@ struct ShaderCode {
   NumType precision;
 };
 
+/**
+ * @brief Used for on-done callback data for asynchronous operations sduch as
+ * kernel launching.
+ */
 struct CallbackDataDyn {
   WGPUBuffer buffer; // managed by owning Kernel
   size_t bufferSize;
@@ -145,6 +177,11 @@ struct KernelDesc {
   const size_t paramSize;
 };
 
+/**
+ * @brief Represents handles + metadata for a reusable kernel on the GPU.
+ * The struct members can be divided into "consumed upon dispatch"
+ * (commandBuffer) and reusable ahead-of-time setup (all other members).
+ */
 struct Kernel {
   std::unique_ptr<WGPUBuffer[]> buffers; // non-owning
   std::unique_ptr<size_t[]> bufferSizes;
@@ -162,21 +199,13 @@ struct Kernel {
   std::future<void> future;
 };
 
-struct MultiKernelDesc {
-  size_t numShaders;
-  const ShaderCode *shader; // pointer to (dynamic) array of length = numShaders
-  const Tensor *inputs;  // length = sum of numInputs[]
-  const size_t *numInputs;  // length = numShaders
-  const Tensor *output;  // length = numShaders
-  const void *params;       // length = numShaders
-                            // use void* so params can be different
-                            // types for each shader
-  const size_t *paramSizes; // length = numShaders
-  const Shape *nThreads;    // length = numShaders
-};
-
-// TODO(avh): implement equivalent of CreateKernel for MultiKernel with
-// MultiKernelDesc as input argument
+/**
+ * @brief Represents a GPU computation with multiple shaders in a single
+ * compute pipeline / command buffer dispatch.
+ *
+ * The fields are analogous to the fields in the single-shader Kernel type ,
+ * but with aggregates for each shader's data.
+ */
 struct MultiKernel {
   size_t numShaders;
   std::unique_ptr<WGPUBuffer[]> buffers;       // length = sum of numBuffers[]
@@ -205,7 +234,29 @@ struct MultiKernel {
   std::future<void> future;
 };
 
-// make Kernel hashable by std::set
+/**
+ * @brief Input arguments to CreateMultiKernel to construct a Kernel instance.
+ */
+struct MultiKernelDesc {
+  size_t numShaders;
+  const ShaderCode *shader; // pointer to (dynamic) array of length = numShaders
+  const Tensor *inputs;  // length = sum of numInputs[]
+  const size_t *numInputs;  // length = numShaders
+  const Tensor *output;  // length = numShaders
+  const void *params;       // length = numShaders
+                            // use void* so params can be different
+                            // types for each shader
+  const size_t *paramSizes; // length = numShaders
+  const Shape *nThreads;    // length = numShaders
+};
+
+
+/**
+ * @brief Operator implementation to make the Kernel type hashable.
+ * @param[in] lhs First Kernel instance to compare
+ * @param[in] rhs Second Kernel instance to compare
+ * @return True if lhs < rhs, false otherwise
+ */
 bool operator<(const Kernel &lhs, const Kernel &rhs) {
   return lhs.commandBuffer < rhs.commandBuffer;
 }
@@ -224,6 +275,13 @@ struct KernelPool {
   }
 };
 
+/**
+ * @brief Represents a GPU context, aggregates WebGPU API handles to interact with the GPU 
+ * including the instance, adapter, device, and queue.
+ *
+ * Additionally contains a TensorPool and KernelPool for managing GPU resources
+ * to simplify lifetime management of GPU resources.
+ */
 struct Context {
   WGPUInstance instance;
   WGPUAdapter adapter;
@@ -260,12 +318,23 @@ struct Context {
   }
 };
 
-/* Tensor factory function */
 /**
- * @brief 
- * @param[in] 
- * @return 
- * @example 
+ * @brief Tensor factory function to create a tensor (a Tensor type is simply
+ * an Array with an N-dimensional  Shape specification) on the GPU. The tensor
+ * is created with the given shape, data type, and usage flags, added to the
+ * TensorPool, and returned.
+ *
+ * This is the core implementation which takes the minimal set of parameters in
+ * terms of the raw WebGPU API, and is used by the other CreateTensor overloads
+ * which provide more ergonomic interfaces.
+ *
+ * @param[in] pool TensorPool instance to manage the tensor
+ * @param[in] device WGPUDevice instance to create the tensor on
+ * @param[in] shape Shape of the tensor
+ * @param[in] dtype Data type of the tensor (e.g. kf32)
+ * @param[in] usage Usage flags for the tensor buffer
+ * @return Tensor instance representing the created tensor
+ * @example Tensor tensor = CreateTensor(pool, device, {256, 256}, kf32);
  */
 Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
                        NumType dtype,
@@ -291,14 +360,43 @@ Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
   return pool.data[buffer];
 }
 
-/* Syntactic sugar - take in ctx instead of pool*/
+/**
+ * @brief Overload of the tensor factory function to instantiate a tensor on
+ * the GPU with a given shape and data type.
+ *
+ * Instead of taking the TensoPool and raw WebGPU API WGPUDevice and
+ * WGPUBufferUsageFlags arguments, this is a convenience wrapper around the
+ * core CreateTensor function which has default usage flags for a storage
+ * buffer, and also takes in the Context object.
+ *
+ * instance instead of the narrower TensorPool object.
+ * @param[in] ctx Context instance to manage the tensor
+ * @param[in] shape Shape of the tensor
+ * @param[in] dtype Data type of the tensor (e.g. kf32)
+ * @return Tensor instance representing the created tensor
+ * @example Tensor tensor = CreateTensor(ctx, {256, 256}, kf32);
+ */
 Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype) {
   return CreateTensor(ctx.pool, ctx.device, shape, dtype,
                       WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
                           WGPUBufferUsage_CopySrc);
 }
 
-/* With Value Initialization (pointer) */
+/**
+ * @brief Overload of the tensor factory function to instantiate a tensor on
+ * the GPU with a given shape, data type. Unlike the other overloads, this
+ * overload also takes initial data to populate the tensor with.
+ * 
+ * The data is assumed to be of size equal to the product of the dimensions in
+ * the shape, and is copied to the GPU buffer.
+ *
+ * @param[in] ctx Context instance to manage the tensor
+ * @param[in] shape Shape of the tensor
+ * @param[in] dtype Data type of the tensor (e.g. kf32)
+ * @param[in] data Initial data to populate the tensor with
+ * @return Tensor instance representing the created tensor
+ * @example Tensor tensor = CreateTensor(ctx, {256, 256}, kf32, data);
+ */
 Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype,
                        float *data) {
   Tensor tensor =
@@ -310,6 +408,17 @@ Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype,
   return tensor;
 }
 
+/**
+ * @brief Frees a tensor resource and updates the tensor pool. 
+ *
+ * Only needed if the use case requires manually managing resource lifetimes of
+ * GPU tensors. For simple use cases, the TensorPool destructor will automatically
+ * free all tensors.
+ *
+ * @param[in] pool TensorPool instance to manage the tensor
+ * @param[in] tensor Tensor instance to free
+ * @example FreeTensor(pool, tensor);
+ */
 void FreeTensor(TensorPool &pool, Tensor tensor) {
   if (tensor.data.buffer) {
     wgpuBufferRelease(tensor.data.buffer);
@@ -323,6 +432,9 @@ void FreeTensor(TensorPool &pool, Tensor tensor) {
   }
 }
 
+/**
+ * @brief Destructor for TensorPool which frees all tensors in the pool.
+ */
 TensorPool::~TensorPool() {
   // Need to get keys in a separate iteration, otherwise iterator is getting
   // invalidated during erase.
@@ -336,6 +448,19 @@ TensorPool::~TensorPool() {
   }
 }
 
+/**
+ * @brief simple string replacement helper function for substituting
+ * placeholders in a shader string template.
+ *
+ * Note this is not meant to be used in performance-critical code paths and
+ * should be used ahead-of-time before any performance-critical codepath to
+ * preprocess shader code strings.
+ *
+ * @param[in] str String to mutate with substitution replacements.
+ * @param[in] from Substring to replace
+ * @param[in] to Substring to replace with
+ * @example ReplaceAll(str, "{{workgroupSize}}", "256");
+ */
 void ReplaceAll(std::string &str, const std::string &from,
                 const std::string &to) {
   size_t start_pos = 0;
@@ -345,24 +470,49 @@ void ReplaceAll(std::string &str, const std::string &from,
   }
 }
 
-ShaderCode CreateShader(const char *shaderRaw,
+/**
+ * @brief Factory function to create a shader code object from a shader template
+ * string and optional workgroup size and precision.
+ *
+ * This function replaces placeholders in the shader template string with the
+ * provided workgroup size and precision, and returns a ShaderCode object.
+ *
+ * @param[in] shaderTemplate Shader template string with placeholders
+ * @param[in] workgroupSize Shape of the workgroup. Unlike tensor shapes which
+ * can be of arbitrary rank, workgroup size is always of rank 3 corresponding
+ * to x y and z. workgroupSize is stored as a field in the ShaderCode instance
+ * that is returned by CreateShader().
+ * @param[in] precision Data type precision for the shader. As with
+ * workgroupSize, precision is stored as a field in the ShaderCode instance
+ * that is returned by CreateShader().
+ * @example ShaderCode code = CreateShader(kPuzzle1, {256, 1, 1}, kf32);
+ */
+ShaderCode CreateShader(const char *shaderTemplate,
                         const Shape &workgroupSize = {256, 1, 1},
                         NumType precision = kf32) {
-  std::string codeString(shaderRaw);
+  std::string codeString(shaderTemplate);
   ReplaceAll(codeString, "{{workgroupSize}}", ToString(workgroupSize));
   ReplaceAll(codeString, "{{precision}}", ToString(precision));
   log(kDefLog, kInfo, "Shader code:\n%s", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
 }
 
-ShaderCode CreateShader(const char *shaderRaw, size_t workgroupSize,
+/**
+ * @brief Overload of the factory function to create a shader code object from a
+ * shader template string and workgroup size. Unlike the main factory function,
+ * this overload takes a single size_t workgroupSize parameter instead of a
+ * 3D shape for the workgroup size and instantiates a 3D shape with the
+ * workgroupSize in the x dimension and 1 in the y and z dimensions.
+ *
+ * @param[in] shaderTemplate Shader template string with placeholders
+ * @param[in] workgroupSize Workgroup size in the x dimension
+ * @param[in] precision Data type precision for the shader
+ * @example ShaderCode code = CreateShader(kPuzzle1, 256, kf32);
+ */
+ShaderCode CreateShader(const char *shaderTemplate, size_t workgroupSize,
                         NumType precision = kf32) {
-  return CreateShader(shaderRaw, Shape{workgroupSize, 1, 1}, precision);
+  return CreateShader(shaderTemplate, Shape{workgroupSize, 1, 1}, precision);
 }
-
-struct NoParam {};
-
-template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
 
 inline void check(bool condition, const char *message,
                   const char *file = "unkown", int line = -1) {
@@ -586,6 +736,38 @@ void ResetMultiCommandBuffer(WGPUDevice &device, MultiKernel &multiKernel) {
   multiKernel.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
   check(multiKernel.commandBuffer, "Create command buffer", __FILE__, __LINE__);
 }
+
+
+/** 
+ * @brief NoParam is a no-op type used to indicate that a kernel does not have any
+ * parameters. 
+ */
+struct NoParam {};
+template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
+
+/** 
+ * @brief A factory function to create a kernel on the GPU. The kernel is created
+ * with the given shader code, input tensors, output tensor, and optional parameters.
+ *
+ * Note that the values of the input tensors are not used here, only the
+ * reference handles to the underlying buffers as well as the size of the
+ * buffers. 
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] shader Shader code for the kernel
+ * @param[in] inputs A span of input tensors as a pointer
+ * @param[in] numInputs Number of input tensors, effectively the size of the
+ * *inputs span.
+ * @param[in] output Output tensor for the kernel
+ * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
+ * rank 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does not
+ * have any parameters, use NoParam. This is cast as void* to allow for arbitrary
+ * types to be passed as parameters.
+ * @param[in] paramsSize Size of the parameters buffer in bytes.
+ * @return Kernel instance representing the created kernel
+ * @example Kernel kernel = CreateKernel(ctx, shader, inputs, numInputs, output, nThreads, params, paramsSize);
+ */
 Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
                     const Tensor *inputs, size_t numInputs,
                     const Tensor &output, const Shape &nThreads,
@@ -649,14 +831,12 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
             },
     };
   }
-
   WGPUBindGroupLayoutDescriptor bgLayoutDesc = {
       .entryCount = static_cast<uint32_t>(bgLayoutEntries.size()),
       .entries = bgLayoutEntries.data(),
   };
   WGPUBindGroupLayout bgLayout =
       wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
-
   log(kDefLog, kInfo, "Create input and output buffers");
   for (size_t i = 0; i < numInputs; ++i) {
     op.buffers[i] = inputs[i].data.buffer;
@@ -676,13 +856,11 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
     };
     op.buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
     op.bufferSizes[paramIndex] = paramsSize;
-
     wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params, paramsSize);
     log(kDefLog, kInfo, "Params buffer written");
   } else {
     log(kDefLog, kInfo, "No params buffer needed");
   }
-
   log(kDefLog, kInfo, "Create the bind group");
   std::vector<WGPUBindGroupEntry> bindGroupEntries(numBuffers);
   for (size_t i = 0; i <= numInputs; ++i) { // <= for output buffer
@@ -707,7 +885,6 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
       .entries = bindGroupEntries.data(),
   };
   op.bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
-
   log(kDefLog, kInfo, "Create the readback buffer");
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
@@ -717,7 +894,6 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
     op.readbackBuffer =
         wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
   }
-
   log(kDefLog, kInfo, "Create the compute multiKernel");
   {
     WGPUPipelineLayout multiKernelLayout;
@@ -754,7 +930,24 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
   return op;
 }
 
-// Convenience wrapper: params type is statically templated instead of void*
+/**
+ * @brief Overload which wraps the CreateKernel factory function to create a
+ * kernel on the GPU with a statically determined ParamsType instead of casting
+ * params to a void pointer. paramSize is then determined by the size of the
+ * ParamsType.
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] shader Shader code for the kernel
+ * @param[in] inputs A span of input tensors as a pointer
+ * @param[in] numInputs Number of input tensors, effectively the size of the
+ * *inputs span.
+ * @param[in] output Output tensor for the kernel
+ * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
+ * rank 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does not
+ * have any parameters, use NoParam. 
+ * @example Kernel kernel = CreateKernel(ctx, shader, inputs, numInputs, output, nThreads, params);
+ */
 template <typename ParamsType = NoParam>
 Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
                     const Tensor *inputs, size_t numInputs,
@@ -772,8 +965,23 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
   }
 }
 
-// Convenience wrapper: inputs is Tensors static collection instead of a
-// pointer
+/**
+ * @brief Overload which wraps the CreateKernel factory function to create a
+ * kernel on the GPU. This overload uses takes a static collection of input
+ * tensors instead of a pointer and a statically determined ParamsType instead
+ * of casting params to a void pointer.
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] shader Shader code for the kernel
+ * @param[in] inputs A collection of input tensors
+ * @param[in] output Output tensor for the kernel
+ * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
+ * rank 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does not
+ * have any parameters, use NoParam.
+ * @return Kernel instance representing the created kernel
+ * @example Kernel kernel = CreateKernel(ctx, shader, inputs, output, nThreads, params);
+ */
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
                     const Tensors<numInputs> &inputs,

@@ -36,7 +36,7 @@ invoked from the host using this library.
 
 using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
                      // CreateShader, DispatchKernel, Wait, ToCPU
-                     // GPUTensor, Kernel, GPUContext, Shape, kf32
+                     // Tensor, Kernel, Context, Shape, kf32
 
 static const char *kGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -56,15 +56,14 @@ fn main(
 )";
 
 int main(int argc, char **argv) {
-  printf("\nHello, gpu.cpp\n\n");
-  GPUContext ctx = CreateContext();
+  Context ctx = CreateContext();
   static constexpr size_t N = 3072;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i) / 2.0; // dummy input data
   }
-  GPUTensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
-  GPUTensor output = CreateTensor(ctx, Shape{N}, kf32);
+  Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, Shape{N}, kf32);
   Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), input, output);
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
@@ -82,6 +81,8 @@ the equivalent functionality is implemented using the WebGPU C API in
 `examples/webgpu_intro/run.cpp`.
 
 ## Quick Start: Building and Running
+
+*Tutorial App*
 
 The only dependency of this library is a WebGPU implementation. Currently we
 recommend using the Dawn backend until further testing, but we plan to support
@@ -115,7 +116,6 @@ Welcome!
 --------
 
 This program is a brief intro to the gpu.cpp library.
-
 ...
 
 ```
@@ -126,6 +126,8 @@ minutes. The gpu.cpp library itself is small so after building the Dawn backend
 the first time, subsequent builds of the library should take seconds on most
 personal computing devices.
 
+*Using gpu.cpp as a Library*
+
 You can build the library itself which builds a shared library that you can
 link against for your own projects. This builds a library that can be used in
 other C++ projects (most of the code is in `gpu.h`, plus some supporting code
@@ -135,8 +137,11 @@ in `utils/`).
 make libgpu
 ```
 
-((TODO(avh): link to a template repo that with gpu.cpp as a library already
-configured.))
+If you are starting a new project using gpu.cpp as a library dependency, we
+recommend starting by cloning the template project
+[https://github.com/AnswerDotAI/gpu.cpp-template](https://github.com/AnswerDotAI/gpu.cpp-template).
+
+*Example Demos in `examples/`*
 
 From there you can explore the example projects in `examples/` which illustrate
 how to use gpu.cpp as a library. For example a standalone version of the hello
@@ -165,6 +170,8 @@ Hello, gpu.cpp
 ...
 ```
 
+*Machine Learning Kernel Implementations (WIP)*
+
 A more extensive set of (machine learning-centric) kernels is implemented in
 `utils/test_kernels.cpp`. This can be built and run (from the top level
 directory) using:
@@ -175,6 +182,8 @@ make tests
 
 For more configurability and control of the build, see the `cmake`  invocations
 in the `Makefile`,  as well as the configuration in `Cmakelists.txt`.
+
+*Resetting Build State / Removing Build Artifacts*
 
 If you need to clean up the build artifacts, you can run:
 
@@ -232,11 +241,14 @@ convenient API with both both native (e.g. Dawn) and browser implementations.
 It uses WebGPU as a portable GPU API first and foremost, with the possibility
 of running in the browser being support being a convenient bonus.
 
+For additional background on WebGPU as a portable native GPU API, see Elie
+Michel's talk [WebGPU is Not Just about the
+Web](https://www.youtube.com/watch?v=qHrx41aOTUQ).
+
 Finally, the focus of gpu.cpp is general-purpose GPU computation rather than
 rendering/graphics on the GPU, although it might be useful for compute shaders
 in graphics projects - one of the examples is a small compute renderer,
 rendered to the terminal.
-
 
 ## Contributing and Work-in-Progress
 
