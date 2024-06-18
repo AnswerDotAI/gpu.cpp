@@ -8,6 +8,7 @@
 #include "nn/shaders.h"
 #include "reference_impls.h"
 #include "utils/logging.h"
+#include "utils/functor.h"
 
 using namespace gpu;
 
@@ -171,7 +172,7 @@ void TestLayerNorm(GPUContext &ctx) {
   GPUTensor bias = CreateTensor(ctx, {C}, kf32, biasArr.data());
   GPUTensor output = CreateTensor(ctx, {N, C}, kf32, outputArr.data());
   Kernel op =
-      CreateKernel(ctx, CreateShader(kShaderLayerNorm1, 256, kf32),
+    CreateKernel(ctx, CreateShader(kShaderLayerNorm1, 256, kf32),
           GPUTensors{input, weight, bias}, output, params);
   DispatchKernel(ctx, op);
   Wait(ctx, op.future);
@@ -345,6 +346,36 @@ void TestMultiKernel2(GPUContext &ctx) {
   log(kDefLog, kInfo, "Done with MultiKernel Test 2");
 }
 
+void TestInline(GPUContext &ctx) {
+  static constexpr size_t N = 100;
+  std::array<float, N> inputArr;
+  range(inputArr);
+  std::array<float, N> outputArr;
+  GPUTensor in = CreateTensor(ctx, {N}, kf32, inputArr.data());
+  GPUTensor out = CreateTensor(ctx, {N}, kf32);
+  GPUTensor out2 = CreateTensor(ctx, {N}, kf32);
+  GPUTensor out3 = CreateTensor(ctx, {N}, kf32);
+
+  callKernel(ctx, fmap1(arg0, arg0 + " * 2.0"), in, out, N);
+  callKernel(ctx, foreach1(in0, out0, out0 + "=" + in0 + " + 3.0"), out, out2, N);
+  callKernel(ctx, fmap2(arg0, arg1, arg0 + " + " + arg1), in, out2, out3, N);
+
+  ToCPU(ctx, out3, outputArr.data(), sizeof(outputArr));
+  log(kDefLog, kInfo, "%s", show<float, N, 1>(inputArr, "Inline Input").c_str());
+  log(kDefLog, kInfo, "%s",
+      show<float, N, 1>(outputArr, "Inline Output").c_str());
+
+  std::array<float, N> refOutputArr;
+  for(int i=0;i<N;i++){
+    refOutputArr[i]=(inputArr[i]*2.0 + 3.0) + inputArr[i];
+  }
+  bool passed = isclose(outputArr.data(), refOutputArr.data(), N);
+  assert(passed);
+  log(kDefLog, kInfo, "Inline passed? %d", passed);
+  log(kDefLog, kInfo, "Done with Inline Test");
+}
+
+
 int main(int argc, char **argv) {
   GPUContext ctx = CreateContext(/* verbose logging */ false);
 
@@ -357,6 +388,7 @@ int main(int argc, char **argv) {
   TestSoftmax(ctx);
   TestMultiKernel1(ctx);
   TestMultiKernel2(ctx);
+  TestInline(ctx);
 
   log(kDefLog, kInfo, "Done with all tests");
 }

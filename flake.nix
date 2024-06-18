@@ -38,6 +38,7 @@
               xorg.libXinerama.dev
               xorg.libXcursor.dev
               xorg.libXi.dev
+              gdb
             ];
           } // (if stdenv.isLinux then {
             LD_LIBRARY_PATH="${vulkan-loader}/lib";

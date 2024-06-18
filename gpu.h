@@ -37,7 +37,9 @@ struct Shape {
   Shape() = default;
   Shape(size_t dim) {
     data[0] = dim;
-    rank = 1;
+    data[1] = 1;
+    data[2] = 1;
+    rank = 3;
   }
   Shape(std::initializer_list<size_t> dims) {
     assert(dims.size() <= kMaxRank);
@@ -334,12 +336,17 @@ void ReplaceAll(std::string &str, const std::string &from,
   }
 }
 
-ShaderCode CreateShader(const char *shaderRaw, const Shape& workgroupSize = {256, 1, 1},
+ShaderCode CreateShader(const std::string& shaderRaw, const Shape& workgroupSize = {256, 1, 1},
                         NumType precision = kf32) {
   std::string codeString(shaderRaw);
   ReplaceAll(codeString, "{{workgroupSize}}", ToString(workgroupSize));
   ReplaceAll(codeString, "{{precision}}", ToString(precision));
   return ShaderCode{codeString, workgroupSize};
+}
+
+ShaderCode CreateShader(const char *shaderRaw, const Shape& workgroupSize = {256, 1, 1},
+                        NumType precision = kf32) {
+  return CreateShader(std::string(shaderRaw), workgroupSize, precision);
 }
 
 struct NoParam {};

@@ -78,7 +78,7 @@ target_link_libraries(run_demo PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu)
 
 # Test of basic kernels
 
-set(SRC_TESTS utils/test_kernels.cpp gpu.h nn/shaders.h utils/array_utils.h utils/logging.h)
+set(SRC_TESTS utils/test_kernels.cpp gpu.h nn/shaders.h utils/array_utils.h utils/logging.h utils/functor.h)
 add_executable(run_tests ${SRC_TESTS})
 target_link_libraries(run_tests PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu)
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
