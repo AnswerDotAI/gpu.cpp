@@ -168,15 +168,6 @@ struct CallbackDataDyn {
   std::promise<void> *promise;
 };
 
-struct KernelDesc {
-  const ShaderCode shader;
-  const Tensor *inputs;
-  size_t numInputs;
-  const Tensor output;
-  const void *params;
-  const size_t paramSize;
-};
-
 /**
  * @brief Represents handles + metadata for a reusable kernel on the GPU.
  * The struct members can be divided into "consumed upon dispatch"
@@ -261,14 +252,19 @@ bool operator<(const Kernel &lhs, const Kernel &rhs) {
   return lhs.commandBuffer < rhs.commandBuffer;
 }
 
+/**
+ * @brief A pool of kernels to manage GPU resources. For simple use cases this
+ * is instantiated as a member in the Context struct although it's possible to
+ * have multiple resource pools of kernels in more complex scenarios.
+ */
 struct KernelPool {
   KernelPool(Context *ctx) : ctx(ctx), data() {}
   Context *ctx;
   std::set<Kernel *> data;
   std::set<MultiKernel *> multiData;
   ~KernelPool() {
-    // Note : commandBuffer is destroyed upon queue submission,
-    // explicitly destroying readback and callback buffers
+    // Note : Some kernel resources such as commandBuffer are harvested by
+    // queue submission, explicitly destroying readback and callback buffers
     // produces runtime errors.
     data.clear();
     multiData.clear();
@@ -528,13 +524,27 @@ inline void check(bool condition, const char *message,
   }
 }
 
-Context CreateContext(bool quietLogging = true,
+/**
+ * @brief Factory function to create a GPU context, which aggregates WebGPU API
+ * handles to interact with the GPU including the instance, adapter, device, and
+ * queue.
+ *
+ * The function takes optional descriptor parameters for the instance descriptor, adapter
+ * request options, and device descriptor, which are passed through to the WebGPU API
+ * calls to create the instance, adapter, and device.
+ *
+ * If dawn is used, it also sets up an error callback for device loss.
+ *
+ * @param[in] desc Instance descriptor for the WebGPU instance (optional)
+ * @param[in] adapterOpts Adapter request options for the WebGPU adapter (optional)
+ * @param[in] devDescriptor Device descriptor for the WebGPU device (optional)
+ * @return Context instance representing the created GPU context
+ * @example Context ctx = CreateContext();
+ */
+Context CreateContext(
                          const WGPUInstanceDescriptor &desc = {},
                          const WGPURequestAdapterOptions &adapterOpts = {},
                          WGPUDeviceDescriptor devDescriptor = {}) {
-  if (quietLogging) {
-    kDefLog.level = kError;
-  }
   Context context;
   {
     context.instance = wgpuCreateInstance(&desc);
@@ -606,7 +616,6 @@ Context CreateContext(bool quietLogging = true,
         },
         nullptr);
   }
-  // Queue
   context.queue = wgpuDeviceGetQueue(context.device);
   return context;
 }
@@ -1001,6 +1010,52 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
   return CreateKernel(ctx, shader, &input, 1, output, nThreads, params);
 }
 
+/**
+ * @brief Asynchronously submits a kernel to the GPU queue for execution.
+ * It also sets up a callback to notify when the kernel has finished executing
+ * by setting the value of the promise in the kernel instance argument.
+ *
+ * DispatchKernel does *not* wait for the kernel to finish executing and returns
+ * immediately. The caller can wait for the kernel to finish executing by
+ * calling Wait() on the future in the kernel instance.
+ *
+ * @param[in] ctx Context instance to manage the kernel, from which the queue
+ * for the GPU is obtained
+ * @param[in] kernel Kernel instance to dispatch
+ * @example DispatchKernel(ctx, kernel);
+ */
+void DispatchKernel(Context &ctx, Kernel &kernel) {
+  // Submit the command buffer
+  wgpuQueueSubmit(ctx.queue, 1, &kernel.commandBuffer);
+  wgpuQueueOnSubmittedWorkDone(
+      ctx.queue,
+      [](WGPUQueueWorkDoneStatus status, void *callbackData) {
+        log(kDefLog, kTrace, "QueueOnSubmittedWorkDone status success ? %d",
+            WGPUQueueWorkDoneStatus_Success == status);
+        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+              __FILE__, __LINE__);
+        const auto *data = static_cast<CallbackDataDyn *>(callbackData);
+        data->promise->set_value();
+      },
+      &kernel.callbackData);
+}
+
+
+/**
+ * @brief Factory function to create a multi-kernel on the GPU. This is similar
+ * to CreateKernel but allows multiple shaders to be in the same command buffer.
+ *
+ * Note - this interface is experimental and likely to change in the future.
+ *
+ * @param[in] ctx Context instance to manage the multiKernel
+ * @param[in] desc A description / specification of the multiKernel to be
+ * instantiated. This is analogous to the input parameters of CreateKernel, but
+ * since there are more complex data structures involved, it is more convenient
+ * to pass a struct.
+ * @return MultiKernel instance representing the created
+ * multiKernel
+ * @example MultiKernel multiKernel = CreateMultiKernel(ctx, desc);
+ */
 MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
@@ -1063,7 +1118,6 @@ MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
         .entries = bgLayoutEntries.data()};
     WGPUBindGroupLayout bgLayout =
         wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
-
     log(kDefLog, kInfo, "Create input and output buffers");
     for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIdx];
          ++inputIndex) {
@@ -1143,10 +1197,7 @@ MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
     };
   }
   ResetMultiCommandBuffer(device, multiKernel);
-
   check(multiKernel.commandBuffer, "Create command buffer", __FILE__, __LINE__);
-
-  log(kDefLog, kInfo, "Create the readback buffer");
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
@@ -1155,37 +1206,26 @@ MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
     multiKernel.readbackBuffer =
         wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
   }
-
-  // Set up promise and future for asynchronous handling
   multiKernel.promise = std::promise<void>();
   multiKernel.future = multiKernel.promise.get_future();
-
   multiKernel.callbackData =
       CallbackDataDyn{multiKernel.readbackBuffer,
                       multiKernel.outputSize[multiKernel.numShaders - 1],
                       nullptr, &multiKernel.promise};
-
   ctx.kernelPool.multiData.insert(&multiKernel);
-
   return multiKernel;
 }
 
-void DispatchKernel(Context &ctx, Kernel &op) {
-  // Submit the command buffer
-  wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
-  wgpuQueueOnSubmittedWorkDone(
-      ctx.queue,
-      [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status success ? %d",
-            WGPUQueueWorkDoneStatus_Success == status);
-        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-              __FILE__, __LINE__);
-        const auto *data = static_cast<CallbackDataDyn *>(callbackData);
-        data->promise->set_value();
-      },
-      &op.callbackData);
-}
-
+/**
+ * @brief Asynchronously submits a multi-kernel to the GPU queue for execution.
+ *
+ * Note - as with CreateMultiKernel, this interface is experimental and likely
+ * to change in the future.
+ *
+ * @param[in] ctx Context instance to manage the multiKernel
+ * @param[in] multiKernel MultiKernel instance to dispatch
+ * @example DispatchMultiKernel(ctx, multiKernel);
+ */
 void DispatchMultiKernel(Context &ctx, MultiKernel &multiKernel) {
   wgpuQueueSubmit(ctx.queue, 1, &multiKernel.commandBuffer);
   wgpuQueueOnSubmittedWorkDone(

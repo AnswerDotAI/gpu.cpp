@@ -1,14 +1,21 @@
-name: build
+name: gpucpp-ci
 
-on:
+on: 
   push:
+    branches:
+      - main
   pull_request:
     types: [opened, reopened, labeled, unlabeled, synchronize]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build:
-    - name: Build
-      run: 
-        echo "Hello, ${{ github.actor }}"
-      
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: No-op Step
+      run: echo "This is a no-op action"
