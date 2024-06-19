@@ -366,7 +366,7 @@ void TestMultiKernel2(Context &ctx) {
 }
 
 int main(int argc, char **argv) {
-  Context ctx = CreateContext(/* verbose logging */ false);
+  Context ctx = CreateContext();
 
   TestTensorPool(ctx);
   TestResidual(ctx);
