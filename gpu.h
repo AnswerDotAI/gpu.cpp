@@ -206,13 +206,11 @@ struct KernelPool {
   KernelPool(Context *ctx) : ctx(ctx), data() {}
   Context *ctx;
   std::set<Kernel *> data;
-  // std::set<MultiKernel *> multiData;
   ~KernelPool() {
     // Note : Some kernel resources such as commandBuffer are harvested by
     // queue submission, explicitly destroying readback and callback buffers
     // produces runtime errors.
     data.clear();
-    // multiData.clear();
   }
 };
 
@@ -664,8 +662,6 @@ void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
-  // op.promise = std::promise<void>();
-  // op.future = op.promise.get_future();
 }
 
 /**
@@ -800,7 +796,6 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
       .entries = bindGroupEntries.data(),
   };
   op.bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
-
   {
     WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
         .bindGroupLayoutCount = 1,
@@ -835,42 +830,6 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
 
 /**
  * @brief Overload which wraps the CreateKernel factory function to create a
- * kernel on the GPU with a statically determined ParamsType instead of casting
- * params to a void pointer. paramSize is then determined by the size of the
- * ParamsType.
- *
- * @param[in] ctx Context instance to manage the kernel
- * @param[in] shader Shader code for the kernel
- * @param[in] inputs A span of input tensors as a pointer
- * @param[in] numInputs Number of input tensors, effectively the size of the
- * *inputs span.
- * @param[in] output Output tensor for the kernel
- * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
- * rank 3.
- * @param[in] params Optional parameters for the kernel. If the kernel does not
- * have any parameters, use NoParam.
- * @example Kernel kernel = CreateKernel(ctx, shader, inputs, numInputs, output,
- * nThreads, params);
- */
-template <typename ParamsType = NoParam>
-Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
-                    const Tensor *inputs, size_t numInputs,
-                    const Shape &nThreads,
-                    const ParamsType &params = ParamsType{}) {
-  if constexpr (!IsNoParam<ParamsType>) {
-    log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
-    return CreateKernel(ctx, shader, inputs, numInputs, nThreads,
-                        reinterpret_cast<const void *>(&params),
-                        sizeof(ParamsType));
-  } else {
-    log(kDefLog, kInfo, "No params");
-    return CreateKernel(ctx, shader, inputs, numInputs, nThreads,
-                        nullptr, 0);
-  }
-}
-
-/**
- * @brief Overload which wraps the CreateKernel factory function to create a
  * kernel on the GPU. This overload uses takes a static collection of input
  * tensors instead of a pointer and a statically determined ParamsType instead
  * of casting params to a void pointer.
@@ -892,17 +851,16 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
                     const TensorList<numInputs> &inputs, 
                     const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
-  // first .data gets the array, second .data() gets the pointer
-  return CreateKernel<ParamsType>(ctx, shader, inputs.data.data(), numInputs,
-                                  nThreads, params);
-}
-
-// Convenience wrapper: specialization for single input passed by reference
-template <typename ParamsType = NoParam>
-Kernel CreateKernel(Context &ctx, const ShaderCode &shader, const Tensor &input,
-                    const Shape &nThreads,
-                    const ParamsType &params = ParamsType{}) {
-  return CreateKernel(ctx, shader, &input, 1, nThreads, params);
+  if constexpr (!IsNoParam<ParamsType>) {
+    log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
+    return CreateKernel(ctx, shader, inputs.data.data(), numInputs, nThreads,
+                        reinterpret_cast<const void *>(&params),
+                        sizeof(ParamsType));
+  } else {
+    log(kDefLog, kInfo, "No params");
+    return CreateKernel(ctx, shader, inputs.data.data(), numInputs, nThreads,
+                        nullptr, 0);
+  }
 }
 
 /**

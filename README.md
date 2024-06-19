@@ -30,9 +30,10 @@ Here's an GELU kernel implemented (based on the CUDA implementation of
 invoked from the host using this library.
 
 ```
+#include "gpu.h"
 #include <array>
 #include <cstdio>
-#include "gpu.h"
+#include <future>
 
 using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
                      // CreateShader, DispatchKernel, Wait, ToCPU
@@ -42,20 +43,22 @@ static const char *kGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
 @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> dummy: array<{{precision}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
     @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let i: u32 = GlobalInvocationID.x;
     if (i < arrayLength(&inp)) {
         let x: f32 = inp[i];
-        // select is more stable for larger values of x
+        // select is more stable than tanh for large x
         out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
-                  * (x + .044715 * x * x * x))), x, x > 10.0);
+               * (x + .044715 * x * x * x))), x, x > 10.0);
     }
 }
 )";
 
 int main(int argc, char **argv) {
+  printf("\nHello, gpu.cpp\n\n");
   Context ctx = CreateContext();
   static constexpr size_t N = 3072;
   std::array<float, N> inputArr, outputArr;
@@ -64,11 +67,14 @@ int main(int argc, char **argv) {
   }
   Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = CreateTensor(ctx, Shape{N}, kf32);
-  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), input, output);
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), TensorList{input, output},
+                           /* nthreads */ {N, 1, 1});
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 10; ++i) {
+  for (int i = 0; i < 32; ++i) {
     printf("out[%d] : gelu(%.2f) = %.2f\n", i, inputArr[i], outputArr[i]);
   }
   printf("...\n\n");
@@ -76,13 +82,13 @@ int main(int argc, char **argv) {
 }
 ```
 
+This example is available in `examples/hello_world/run.cpp`. 
+
 For those curious about what happens under the hood with the raw WebGPU API,
 the equivalent functionality is implemented using the WebGPU C API in
 `examples/webgpu_intro/run.cpp`.
 
-## Quick Start: Building and Running
-
-*Tutorial App*
+## Quick Start: Dependencies and Installation
 
 The only dependency of this library is a WebGPU implementation. Currently we
 recommend using the Dawn backend until further testing, but we plan to support
@@ -93,32 +99,11 @@ you can install cmake using [homebrew](https://brew.sh/) with: `brew install
 cmake`. On Ubuntu, you can install cmake using `apt-get` with: `sudo apt-get
 install cmake`.
 
+## Quick Start: Building and Running
+
+
 The build is handled by cmake. Some useful common cmake invocations are wrapped
-in the convenience Makefile. To start you can try building a terminal demo
-tutorial which also tests the functionality of the library, this builds the
-demo tutorial in `run.cpp`:
-
-```
-make demo
-```
-
-You should see an introductory message:
-```
-   ____ _____  __  __ _________  ____ 
-  / __ `/ __ \/ / / // ___/ __ \/ __ \
- / /_/ / /_/ / /_/ // /__/ /_/ / /_/ /
- \__, / .___/\__,_(_)___/ .___/ .___/ 
-/____/_/               /_/   /_/
-
-================================================================================
-
-Welcome!
---------
-
-This program is a brief intro to the gpu.cpp library.
-...
-
-```
+in the convenience Makefile. 
 
 The first time you build and run the project, it will download the WebGPU
 backend implementation (Dawn by default) and build it which may take a few

@@ -72,7 +72,7 @@ endif()
 # Build the library target (libgpu)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(SRC_LIB gpu.h nn/shaders.h utils/array_utils.h utils/logging.h)
+set(SRC_LIB gpu.h utils/shaders.h utils/array_utils.h utils/logging.h)
 add_library(gpu SHARED ${SRC_LIB})
 set_target_properties(gpu PROPERTIES LINKER_LANGUAGE CXX)
 
@@ -80,7 +80,7 @@ set_target_properties(gpu PROPERTIES LINKER_LANGUAGE CXX)
 
 # Test of basic kernels
 
-set(SRC_TESTS utils/test_kernels.cpp gpu.h nn/shaders.h utils/array_utils.h utils/logging.h)
+set(SRC_TESTS utils/test_kernels.cpp gpu.h utils/shaders.h utils/array_utils.h utils/logging.h)
 add_executable(run_tests ${SRC_TESTS})
 target_link_libraries(run_tests PRIVATE ${LIBDL} ${CMAKE_DL_LIBS} webgpu)
 target_include_directories(run_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -3,11 +3,11 @@
 #include <memory>
 #include <random>
 
-#include "array_utils.h"
 #include "gpu.h"
-#include "nn/shaders.h"
-#include "reference_impls.h"
+#include "utils/array_utils.h"
+#include "utils/reference_impls.h"
 #include "utils/logging.h"
+#include "utils/shaders.h"
 
 using namespace gpu;
 
