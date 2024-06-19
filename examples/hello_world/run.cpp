@@ -1,6 +1,7 @@
 #include "gpu.h"
 #include <array>
 #include <cstdio>
+#include <future>
 
 using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
                      // CreateShader, DispatchKernel, Wait, ToCPU
@@ -10,6 +11,7 @@ static const char *kGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
 @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> dummy: array<{{precision}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
     @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
@@ -33,10 +35,12 @@ int main(int argc, char **argv) {
   }
   Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = CreateTensor(ctx, Shape{N}, kf32);
-  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), input, output,
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), TensorList{input, output},
                            /* nthreads */ {N, 1, 1});
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 32; ++i) {
     printf("out[%d] : gelu(%.2f) = %.2f\n", i, inputArr[i], outputArr[i]);

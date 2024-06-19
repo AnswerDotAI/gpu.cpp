@@ -1,6 +1,7 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <future>
 
 #include "gpu.h"
 #include "utils/array_utils.h"
@@ -119,16 +120,18 @@ int main(int argc, char **argv) {
 
   ShaderCode shader = CreateShader(kSDF, Shape{16, 16, 1});
   Kernel renderKernel =
-      CreateKernel(ctx, shader, {}, 0, devScreen, {NCOLS, NROWS, 1}, params);
+      CreateKernel(ctx, shader, TensorList{devScreen}, {NCOLS, NROWS, 1}, params);
   while (true) {
-    DispatchKernel(ctx, renderKernel);
-    Wait(ctx, renderKernel.future);
+    std::promise<void> promise;
+    std::future<void> future = promise.get_future();
+    DispatchKernel(ctx, renderKernel, promise);
+    Wait(ctx, future);
     ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
-    // Update the time field, write pparams to GPU, and create a new command
-    // buffer
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
+
+    // write params to the last buffer
     wgpuQueueWriteBuffer(ctx.queue,
-                         renderKernel.buffers[renderKernel.numBuffers - 1], 0,
+                         renderKernel.buffers[renderKernel.numBindings - 1], 0,
                          static_cast<void *>(&params), sizeof(params));
     ResetCommandBuffer(ctx.device, /*nthreads*/ {NCOLS, NROWS, 1},
                        renderKernel);
@@ -137,7 +140,7 @@ int main(int argc, char **argv) {
                                     "\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
     // static const char intensity[] = "@%#8$X71x*+=-:^~'.` ";
 
-    // normalize values
+    // Intensity = depth map, focus on depth of the objects
     float min = 0.0;
     float max = params.sphereRadius * 3;
 
@@ -145,7 +148,6 @@ int main(int argc, char **argv) {
       screen[i] = (screen[i] - min) / (max - min);
     }
 
-    // index into intensity array
     std::array<char, screen.size()> raster;
     for (size_t i = 0; i < screen.size(); ++i) {
       size_t index =
@@ -155,7 +157,6 @@ int main(int argc, char **argv) {
       raster[i] = intensity[index];
     }
 
-    // Draw the raster
     char buffer[(NROWS + 2) * (NCOLS + 2)];
     char *offset = buffer;
     sprintf(offset, "+");

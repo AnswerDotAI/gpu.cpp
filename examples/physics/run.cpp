@@ -2,6 +2,7 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <future>
 
 using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
                      // CreateShader, DispatchKernel, Wait, ToCPU
@@ -43,21 +44,19 @@ int main() {
   Tensor length = CreateTensor(ctx, Shape{N}, kf32, lengthArr.data());
   Tensor mass = CreateTensor(ctx, Shape{N}, kf32, massArr.data());
 
-  // TODO: no need to have output
-  Tensor output = CreateTensor(ctx, Shape{N}, kf32);
-
   Shape nThreads{N, 1, 1};
   Kernel update = CreateKernel(
       ctx, CreateShader(kShaderSimulation, 256, kf32),
       TensorList{pos1, vel1, pos2, vel2,
-       length, mass}, output,
+       length, mass}, 
       nThreads);
   while (true) {
     auto start = std::chrono::high_resolution_clock::now();
     ResetCommandBuffer(ctx.device, nThreads, update);
-
-    DispatchKernel(ctx, update);
-    Wait(ctx, update.future);
+    std::promise<void> promise;
+    std::future<void> future = promise.get_future();
+    DispatchKernel(ctx, update, promise);
+    Wait(ctx, future);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     std::this_thread::sleep_for(std::chrono::milliseconds(16) - elapsed);

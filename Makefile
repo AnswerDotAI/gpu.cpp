@@ -38,7 +38,7 @@ watch-tests: check-entr check-dependencies
 all: build
 	cd examples/gpu_puzzles && make
 	cd examples/hello_world && make
-	cd examples/raymarch && make
+	cd examples/render && make
 	cd examples/webgpu_intro && make
 
 clean-build:

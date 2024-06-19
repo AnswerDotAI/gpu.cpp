@@ -28,7 +28,6 @@ void section(const char *content) {
                   "====================\n");
   fprintf(stdout, "%s\n", content);
   wait();
-  // fprintf(stdout, "\033[4A\033[0J"); // clear lines
 }
 
 void runHelloGELU(Context &ctx) {
@@ -57,16 +56,19 @@ void runHelloGELU(Context &ctx) {
   }
   Tensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
   Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
-  Kernel op = CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output,
-                           /*nthreads*/ {N, 1, 1});
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+  Kernel op = CreateKernel(ctx, ShaderCode{kGELU, 256}, TensorList{input, output}, 
+                           {N, 1, 1});
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 10; ++i) {
     fprintf(stdout, "%d : %f\n", i, outputArr[i]);
   }
   fprintf(stdout, "...\n\n");
   wait();
+
 }
 
 int main(int argc, char **argv) {
@@ -162,7 +164,7 @@ Design Objectives of gpu.cpp
    library is useful for with the least amount of implementation complexity.
    Implementation complexity. 
 
-2. Minimize integration complexity. Whereas the integration pattern for custom
+2. Minimize integration complexity. Whereas the common pattern for custom
    low-level GPU algorithm code is to integrate it into an existing engine (eg
    an inference runtime, or a compiler), the objective of gpu.cpp is to enable
    adding GPU computation code inside your own project with a minimal amount of

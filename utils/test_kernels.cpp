@@ -32,13 +32,15 @@ void TestResidual(Context &ctx) {
   Tensor input1 = CreateTensor(ctx, {N}, kf32, input1Arr.data());
   Tensor input2 = CreateTensor(ctx, {N}, kf32, input2Arr.data());
   Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
   ShaderCode shaderCode = CreateShader(kShaderResidual, workgroupSize, kf32);
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
   Kernel op =
       CreateKernel(ctx, CreateShader(kShaderResidual, workgroupSize, kf32),
-                   Tensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+                   TensorList{input1, input2, output}, /* nthreads */ {N, 1, 1});
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Residual Output").c_str());
   std::array<float, N> outputRef;
@@ -61,11 +63,13 @@ void TestHadamard(Context &ctx) {
   Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
   ShaderCode shaderCode = CreateShader(kShaderHadamard, workgroupSize, kf32);
   log(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
   Kernel op =
       CreateKernel(ctx, CreateShader(kShaderHadamard, workgroupSize, kf32),
-                   Tensors{input1, input2}, output, /* nthreads */ {N, 1, 1});
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+                   TensorList{input1, input2, output}, /* nthreads */ {N, 1, 1});
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   log(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Hadamard Output").c_str());
 }
 
@@ -84,9 +88,11 @@ void TestMatmul(Context &ctx) {
   Tensor output = CreateTensor(ctx, {M, N}, kf32, outputArr.data());
   Kernel op =
       CreateKernel(ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
-                   Tensors{input1, input2}, output, /* nthreads */ {M * N, 1, 1});
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+                   TensorList{input1, input2, output}, /* nthreads */ {M * N, 1, 1});
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s", show<float, M, K>(input1Arr, "A").c_str());
   log(kDefLog, kInfo, "%s", show<float, K, N>(input2Arr, "B").c_str());
@@ -141,11 +147,13 @@ void TestGelu(Context &ctx) {
   Tensor geluOut = CreateTensor(ctx, {N}, kf32, outputArr.data());
   log(kDefLog, kInfo, "Creating GELU Shader");
   ShaderCode shader = CreateShader(kShaderGelu, 256, kf32);
-  Kernel op = CreateKernel(ctx, shader, geluIn, geluOut, /* nthreads */ {N, 1, 1});
+  Kernel op = CreateKernel(ctx, shader, TensorList{geluIn, geluOut}, /* nthreads */ {N, 1, 1});
   log(kDefLog, kInfo, "Workgroup size: %s", ToString(shader.workgroupSize).c_str());
   log(kDefLog, kInfo, "Dispatching GELU Shader");
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, geluOut, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s", show<float, N, 1>(inputArr, "GELU Input").c_str());
   log(kDefLog, kInfo, "%s",
@@ -181,10 +189,12 @@ void TestLayerNorm(Context &ctx) {
   Tensor weight = CreateTensor(ctx, {C}, kf32, weightArr.data());
   Tensor bias = CreateTensor(ctx, {C}, kf32, biasArr.data());
   Tensor output = CreateTensor(ctx, {N, C}, kf32, outputArr.data());
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
   Kernel op = CreateKernel(ctx, CreateShader(kShaderLayerNorm1, 256, kf32),
-                           Tensors{input, weight, bias}, output, /* n threads */{N, 1, 1}, params);
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+                           TensorList{input, weight, bias, output}, /* n threads */{N, 1, 1}, params);
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s",
       show<float, N, C>(inputArr, "LayerNorm Input").c_str());
@@ -223,12 +233,12 @@ void TestSoftmax(Context &ctx) {
   Tensor input = CreateTensor(ctx, {B * T, C}, kf32, inputArr.data());
   Tensor output = CreateTensor(ctx, {B * T, C}, kf32, outputArr.data());
   log(kDefLog, kInfo, "num threads: %d", B * T);
-  Kernel op = CreateKernel(ctx, CreateShader(kShaderSoftmax1, 256, kf32), input,
-                           output, /* nthreads */ Shape{B * T, 1, 1}, SoftmaxParam{B * T, C});
-  DispatchKernel(ctx, op);
-
-
-  Wait(ctx, op.future);
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = CreateKernel(ctx, CreateShader(kShaderSoftmax1, 256, kf32), TensorList{input,
+                           output}, /* nthreads */ Shape{B * T, 1, 1}, SoftmaxParam{B * T, C});
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   log(kDefLog, kInfo, "%s",
       show<float, B * T, C>(inputArr, "Softmax Input").c_str());
@@ -259,112 +269,6 @@ void TestAttention(Context &ctx) {
   std::array<float, C * OC> weightArr;
 }
 
-void TestMultiKernel1(Context &ctx) {
-
-  struct SoftmaxParam {
-    uint32_t N;
-    uint32_t C;
-  };
-  static constexpr size_t B = 6;    // batch size
-  static constexpr size_t T = 8;    // token index
-  static constexpr size_t C = 3072; // input channels
-  std::array<float, B * T * C> inputArr;
-  std::array<float, B * T * C> outputArr;
-  std::mt19937 gen(31415);
-  randint(inputArr, gen, 0, 3);
-  Tensor input = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
-  Tensor output = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
-  auto shader = CreateShader(kShaderSoftmax1, 256, kf32);
-  constexpr size_t size = sizeof(SoftmaxParam);
-  auto param = SoftmaxParam{B * T, C};
-  std::array<size_t, 1> numInputs = {1};
-  // First test with the degenerate case of a 1-shader multi kernel
-  std::unique_ptr<Shape[]> nThreads(new Shape[1]);
-  nThreads[0] = {B * T, 1, 1};
-  MultiKernelDesc desc{
-      .numShaders = 1,
-      .shader = &shader,
-      .inputs = &input,
-      .numInputs = numInputs.data(),
-      .output = &output,
-      .params = &param,
-      .paramSizes = &size,
-      .nThreads = nThreads.get(),
-  };
-  MultiKernel pipeline = CreateMultiKernel(ctx, desc);
-  DispatchMultiKernel(ctx, pipeline);
-  Wait(ctx, pipeline.future);
-  ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s",
-      show<float, B * T, C>(inputArr, "Softmax Input").c_str());
-  log(kDefLog, kInfo, "%s",
-      show<float, B * T, C>(outputArr, "Softmax Output").c_str());
-  log(kDefLog, kInfo, "Done with MultiKernel Test 1");
-}
-
-void TestMultiKernel2(Context &ctx) {
-
-  struct SoftmaxParam {
-    uint32_t N;
-    uint32_t C;
-  };
-  static constexpr size_t B = 6;    // batch size
-  static constexpr size_t T = 8;    // token index
-  static constexpr size_t C = 3072; // input channels
-  std::array<float, B * T * C> inputArr;
-  std::array<float, B * T * C> outputArr;
-  std::mt19937 gen(31415);
-  randint(inputArr, gen, 0, 3);
-
-  std::array<Tensor, 2> inputs;
-  std::array<Tensor, 2> outputs;
-  std::array<SoftmaxParam, 2> params;
-
-  inputs[0] = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
-  outputs[0] = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
-  params[0] = SoftmaxParam{B * T, C};
-
-  inputs[1] = CreateTensor(ctx, {B, T, C}, kf32, inputArr.data());
-  outputs[1] = CreateTensor(ctx, {B, T, C}, kf32, outputArr.data());
-  params[1] = SoftmaxParam{B * T, C};
-
-  std::array<ShaderCode, 2> shaders = {
-      CreateShader(kShaderSoftmax1, 256, kf32),
-      CreateShader(kShaderSoftmax1, 256, kf32)};
-
-  std::array<size_t, 2> numInputs = {1, 1};
-  std::array<size_t, 2> paramSizes = {sizeof(SoftmaxParam),
-                                      sizeof(SoftmaxParam)};
-
-  // First test with the degenerate case of a 1-shader multi kernel
-  std::unique_ptr<Shape[]> nThreads(new Shape[2]);
-  nThreads[0] = {B * T, 1, 1};
-  nThreads[1] = {B * T, 1, 1};
-  MultiKernelDesc desc{
-      .numShaders = 2,
-      .shader = shaders.data(),
-      .inputs = inputs.data(),
-      .numInputs = numInputs.data(),
-      .output = outputs.data(),
-      .params = params.data(),
-      .paramSizes = paramSizes.data(),
-      .nThreads = nThreads.get(),
-  };
-  MultiKernel pipeline = CreateMultiKernel(ctx, desc);
-  DispatchMultiKernel(ctx, pipeline);
-  Wait(ctx, pipeline.future);
-
-  log(kDefLog, kInfo, "%s",
-      show<float, B * T, C>(inputArr, "Softmax Input").c_str());
-  ToCPU(ctx, outputs[0], outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s",
-      show<float, B * T, C>(outputArr, "Softmax Output 0").c_str());
-  ToCPU(ctx, outputs[1], outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s",
-      show<float, B * T, C>(outputArr, "Softmax Output 1").c_str());
-  log(kDefLog, kInfo, "Done with MultiKernel Test 2");
-}
-
 int main(int argc, char **argv) {
   Context ctx = CreateContext();
 
@@ -375,8 +279,6 @@ int main(int argc, char **argv) {
   TestGelu(ctx);
   TestLayerNorm(ctx);
   TestSoftmax(ctx);
-  TestMultiKernel1(ctx);
-  TestMultiKernel2(ctx);
 
   log(kDefLog, kInfo, "Done with all tests");
 }

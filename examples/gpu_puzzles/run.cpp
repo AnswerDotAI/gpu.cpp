@@ -7,6 +7,7 @@
 #include "utils/array_utils.h"
 #include <array>
 #include <cstdio>
+#include <future>
 
 using namespace gpu;
 
@@ -21,9 +22,12 @@ template <size_t N> std::array<float, N> makeData() {
 }
 
 template <size_t N, size_t R = N, size_t C = 1> void showResult(Context &ctx, Kernel &op, Tensor &output) {
-  DispatchKernel(ctx, op);
+
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  DispatchKernel(ctx, op, promise);
   std::array<float, R * C> outputArr;
-  Wait(ctx, op.future);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   printf("%s", show<float, R, C>(outputArr, "output").c_str());
 }
@@ -48,7 +52,7 @@ void puzzle1(Context &ctx) {
   printf("\n\nPuzzle 1\n\n");
   Tensor input = CreateTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = CreateTensor(ctx, {N}, kf32);
-  Kernel op = CreateKernel(ctx, CreateShader(kPuzzle1, N), input, output,
+  Kernel op = CreateKernel(ctx, CreateShader(kPuzzle1, N), TensorList{input, output},
                            /*nthreads*/ {N, 1, 1});
   showResult<N>(ctx, op, output);
 }
@@ -75,8 +79,8 @@ void puzzle2(Context &ctx) {
   Tensor a = CreateTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor b = CreateTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = CreateTensor(ctx, {N}, kf32);
-  Kernel op = CreateKernel(ctx, CreateShader(kPuzzle2, 256), Tensors{a, b},
-                           output, {N, 1, 1});
+  Kernel op = CreateKernel(ctx, CreateShader(kPuzzle2, 256), TensorList{a, b, output},
+                           {N, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -101,7 +105,7 @@ void puzzle3(Context &ctx) {
   Tensor input = CreateTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = CreateTensor(ctx, {N}, kf32);
   Kernel op =
-      CreateKernel(ctx, CreateShader(kPuzzle3, 4), input, output, {N, 1, 1});
+      CreateKernel(ctx, CreateShader(kPuzzle3, 4), TensorList{input, output}, {N, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -135,7 +139,7 @@ void puzzle4(Context &ctx) {
   };
   Kernel op =
       CreateKernel(ctx, CreateShader(kPuzzle4, /*workgroup size*/ {N, N, 1}),
-                   input, output, {N, N, 1}, Params{N});
+                   TensorList{input, output}, {N, N, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 
