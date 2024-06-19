@@ -19,3 +19,9 @@ jobs:
 
     - name: No-op Step
       run: echo "This is a no-op action"
+
+    - name: Install CMake
+      run: sudo apt-get install cmake
+
+    - name: Build project
+      run: make all

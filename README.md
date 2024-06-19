@@ -206,27 +206,26 @@ become computable objects over which custom algorithms are implemented.
 Performing custom computations over compute-intensive foundation models
 benefits from low-level control of the GPU. 
 
-Many important foundation model
-advances today take this form, for example:
-
-- Approximate Computation - quantization, sparsification, model compression, distillation
-- Conditional/Branching Computation - Mixture-of-experts, Hydranets, Fast feed-forward, Early Exit
-- Auxillary Computation - Q[X]oRA variants, Speculative Decoding, Constrained Decoding
-
-
 At this time, tooling for implementing low-level GPU computation is heavily
-focused on CUDA as a first class citizen.
-
-This leaves a gap in portability, meaning R&D algorithms that work in a
-research environment are difficult to operationalize for everyday use to run on
-personal computing hardware that's broadly accessible (personal workstations,
-laptops, mobile devices).
+focused on CUDA as a first class citizen. This leaves a gap in portability,
+meaning R&D algorithms that work in a research environment are difficult to
+operationalize for everyday use to run on personal computing hardware that's
+broadly accessible (personal workstations, laptops, mobile devices).
 
 We created gpu.cpp as a lightweight C++ library that allows us to easily and
 directly implement native low-level GPU algorithms as part of R&D and drop
 implementations into code running on personal computing devices either as
 native applications or in the browser without impediment by hardware, tooling,
 or runtime support.
+
+## What gpu.cpp is for
+
+- Hybrid CPU + GPU computation
+- Simple Integration of Low-level GPU computation into C++ projects
+- Fine-grained control of GPU computation for ML inference
+- Bespoke GPU computation for emerging neural network architectures
+- Portable GPU computation
+- Custom parallel algorithms
 
 ## What gpu.cpp is not
 
