@@ -1,12 +1,11 @@
 NUM_JOBS=$(shell nproc)
 CXX=clang++
-TARGET_DEMO=run_demo
 TARGET_TESTS=run_tests
 TARGET_LIB=gpu
 TARGET_ALL=$(TARGET_DEMO) $(TARGET_TESTS) $(TARGET_LIB)
 USE_LOCAL=-DUSE_LOCAL_LIBS=ON
 
-.PHONY: demo tests libgpu debug build check-entr watch-demo watch-tests clean
+.PHONY: tests libgpu debug build check-entr watch-tests clean
 
 # Add --trace to see the cmake commands
 FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX) -DABSL_INTERNAL_AT_LEAST_CXX20=OFF
@@ -16,9 +15,6 @@ DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
 RELEASE_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=OFF
 LOCAL_FLAGS = -DUSE_LOCAL_LIBS=ON 
 CMAKE_CMD = mkdir -p build && cd build && cmake ..
-
-demo: check-dependencies
-	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_DEMO) && ./$(TARGET_DEMO)
 
 tests: check-dependencies
 	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)

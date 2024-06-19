@@ -1,88 +1,13 @@
-#include "gpu.h"
-#include <array>
-#include <cassert>
-#include <chrono>
-#include <cstdio>
-
-using namespace gpu;
-
-static const char *kAsciiBanner = R"(
    ____ _____  __  __ _________  ____ 
   / __ `/ __ \/ / / // ___/ __ \/ __ \
  / /_/ / /_/ / /_/ // /__/ /_/ / /_/ /
  \__, / .___/\__,_(_)___/ .___/ .___/ 
 /____/_/               /_/   /_/
-)";
 
-void wait() {
-  fprintf(stdout, "┌──────────────────────────────┐\n");
-  fprintf(stdout, "│ Press Enter to Continue...   │\n");
-  fprintf(stdout, "└──────────────────────────────┘\n");
-  getchar();
-}
+Intro
+-------
 
-void section(const char *content) {
-  fprintf(stdout, "\033[2J\033[1;1H"); // clear screen
-  fprintf(stdout, "%s\n", kAsciiBanner);
-  fprintf(stdout, "============================================================"
-                  "====================\n");
-  fprintf(stdout, "%s\n", content);
-  wait();
-}
-
-void runHelloGELU(Context &ctx) {
-  // Device code (runs on the GPU) using WGSL (WebGPU Shading Language)
-  const char *kGELU = R"(
-  const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
-  @group(0) @binding(0) var<storage, read_write> inp: array<f32>;
-  @group(0) @binding(1) var<storage, read_write> out: array<f32>;
-  @compute @workgroup_size(256, 1, 1)
-  fn main(
-      @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-      let i: u32 = GlobalInvocationID.x;
-      if (i < arrayLength(&inp)) {
-          let x: f32 = inp[i];
-          // select is more stable for larger values of x
-          out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
-                    * (x + .044715 * x * x * x))), x, x > 10.0);
-      }
-  }
-  )";
-
-  static constexpr size_t N = 3072;
-  std::array<float, N> inputArr, outputArr;
-  for (int i = 0; i < N; ++i) {
-    inputArr[i] = static_cast<float>(i); // dummy input data
-  }
-  Tensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
-  Kernel op = CreateKernel(ctx, ShaderCode{kGELU, 256}, TensorList{input, output}, 
-                           {N, 1, 1});
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  DispatchKernel(ctx, op, promise);
-  Wait(ctx, future);
-  ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 10; ++i) {
-    fprintf(stdout, "%d : %f\n", i, outputArr[i]);
-  }
-  fprintf(stdout, "...\n\n");
-  wait();
-
-}
-
-int main(int argc, char **argv) {
-
-  // Clear screen and print banner
-  fprintf(stdout, "\033[2J\033[1;1H");
-
-  // Creating a Context
-
-  section(R"(
-Welcome!
---------
-
-This program is a brief intro to the gpu.cpp library.
+This is a brief intro to the gpu.cpp library.
 
 You can use the library by simply including the gpu.h header:
 
@@ -90,9 +15,9 @@ You can use the library by simply including the gpu.h header:
 
 and starting with a build template (see examples/hello_gpu/ for a template
 project that builds the library).
-)");
 
-  section(R"(
+# First Program
+
 Before diving into the details of the library, let's test out some code to
 perform a simple GPU computation - a GELU activation function. These activation
 functions are common in deep learning large language models.
@@ -112,51 +37,45 @@ a CUDA kernel.
 
 We'll see a WGSL example later, for now let's see the host CPU C++ code that
 uses the gpu.cpp to run the GELU activation function.
-)");
 
-  section(R"(
 Here is the host CPU C++ code that uses the gpu.cpp to run the GELU activation
 function:
 
 ```
-#include <array>
-#include <cstdio>
-#include "gpu.h"
-
-using namespace gpu;
-
-// Device code (runs on the GPU) using WGSL (WebGPU Shading Language)
-const char *kGELU = ... // we'll look at the WGSL shader code later
-
 int main(int argc, char **argv) {
+  printf("\nHello, gpu.cpp\n\n");
   Context ctx = CreateContext();
   static constexpr size_t N = 3072;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
-    inputArr[i] = static_cast<float>(i); // dummy input data
+    inputArr[i] = static_cast<float>(i) / 2.0; // dummy input data
   }
-  Tensor input = CreateTensor(ctx, {N}, kf32, inputArr.data());
-  Tensor output = CreateTensor(ctx, {N}, kf32, outputArr.data());
-  Kernel op =
-      CreateKernel(ctx, ShaderCode{kGELU, 256}, input, output, {N, 1, 1});
-  DispatchKernel(ctx, op);
-  Wait(ctx, op.future);
+  Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
+  Tensor output = CreateTensor(ctx, Shape{N}, kf32);
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), TensorList{input, output},
+                           /* nthreads */ {N, 1, 1});
+  DispatchKernel(ctx, op, promise);
+  Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 10; ++i) {
-    fprintf(stdout, "%d : %f\n", i, outputArr[i]);
+  for (int i = 0; i < 32; ++i) {
+    printf("out[%d] : gelu(%.2f) = %.2f\n", i, inputArr[i], outputArr[i]);
   }
-  fprintf(stdout, "...\n\n");
+  printf("...\n\n");
   return 0;
 }
 ```
 
-Let's try running this.
-)");
+gpu.cpp vs. the raw WebGPU API
+------------------------------
 
-  Context ctx = CreateContext();
-  runHelloGELU(ctx);
+The main responsibility of the types and functions of the library is to make it
+simple to represent these common building blocks of computation.
 
-  section(R"(
+If you look at `examples/webgpu_intro/run.cpp` you can learn more about what
+it's like to interact directly with the WebGPU API.
+
 Design Objectives of gpu.cpp
 ----------------------------
 
@@ -170,12 +89,11 @@ Design Objectives of gpu.cpp
    adding GPU computation code inside your own project with a minimal amount of
    integration complexity.
 
-2. High ceiling on low-level control.
+3. High ceiling on low-level control.
     - Direct control of on-device GPU code unconstrained by fixed set of ops
     - Direct control of on-device GPU memory management
-)");
 
-  section(R"(
+
 Separating Resource Acquisition and Dispatch
 --------------------------------------------
 
@@ -196,9 +114,6 @@ when the GPU computation occurs:
 2) Performance critical dispatch of GPU computation: these are functions that
    dispatch GPU computation to the GPU, usually in a tight hot-path loop. 
 
-)");
-
-  section(R"(
 Ahead-of-time GPU Resource Preparation
 --------------------------------------
 
@@ -207,9 +122,7 @@ In the next sections, we'll look at the ahead-of-time GPU resource preparation
 These are functions that acquire resources and prepare state for GPU
 computation. These are assumed to be less performance critical and not on hot
 code paths.
-)");
 
-  section(R"(
 Preparing GPU Resources I: Resource Type Definitions
 ----------------------------------------------------
 
@@ -223,11 +136,7 @@ The main resources are:
 - `Kernel` - a GPU program that can be dispatched to the GPU. This accepts a
   `ShaderCode` and a list of `Tensor` resources to bind for the dispatch
   computation.
-- `MultiKernel` - a collection of kernels that can be dispatched to the GPU.
 
-)");
-
-  section(R"(
 Preparing GPU Resources II: Acquiring GPU Resources with `Create*()` Functions
 ------------------------------------------------------------------------------
 
@@ -249,9 +158,6 @@ effectively. `TensorPool` manages `Tensor` resources and is used as context
 for allocating and deallocating tensors data on the GPU. In practice
 `TensorPool` is managed as a member variable of `Context`.
 
-)");
-
-  section(R"(
 `CreateContext()` creates a Context
 --------------------------------------
 
@@ -265,9 +171,7 @@ kernels.
 In your program, you can create a Context like this:
 
   Context ctx = CreateContext();
-)");
 
-  section(R"(
 `CreateTensor()` allocates Tensor on the GPU
 -----------------------------------------------
 
@@ -291,8 +195,7 @@ chunks on the CPU (eg for model weights or input data), and then
 
 Let's try creating some data on the GPU now.
 
-)");
-
+```
   std::array<float, 3072> inputArr;
   std::array<float, 3072> outputArr;
   for (int i = 0; i < 3072; ++i) {
@@ -300,11 +203,10 @@ Let's try creating some data on the GPU now.
   }
   Tensor input = CreateTensor(ctx, {3072}, kf32, inputArr.data());
   Tensor output = CreateTensor(ctx, {3072}, kf32, outputArr.data());
-
   fprintf(stdout, "\nSuccessfully created input and output tensors.\n\n");
   wait();
+```
 
-  section(R"(
 Create a Kernel with `CreateKernel()`
 -------------------------------------
 
@@ -340,9 +242,7 @@ the output data.
 
 The kGELU string that goes into ShaderCode is the WGSL shader code for the
 kernel. We'll look at this next.
-)");
 
-  section(R"(
 WGSL Compute Kernels are Programs that run Computation on the GPU
 ------------------------------------------------------------------
 
@@ -377,9 +277,7 @@ The `@group(0)` and `@binding(0)` annotations are used to specify the binding
 points for the input and output buffers. The `@compute` annotation specifies
 that this is a compute kernel. The `@workgroup_size(256, 1, 1)` annotation
 specifies the workgroup size for the kernel.
-)");
 
-  section(R"(
 Performance critical dispatch of GPU computation
 ------------------------------------------------
 
@@ -390,9 +288,7 @@ None of these actually execute computation on the GPU yet.
 
 Next we'll look at the dispatch functions which asynchronously dispatches the
 kernel for execution.
-)");
 
-  section(R"(
 Dispatch a kernel for execution with `DispatchKernel()`
 ------------------------------------------------------
 
@@ -424,46 +320,9 @@ the data back to the CPU.
 
 This is intentional to allow for efficient pipelining of GPU computation and
 reusing GPU resources without copying data back and forth unless it's specified.
-)");
 
-  section(R"(
-Dispatch multiple kernels for execution with `DispatchMultiKernel()`
----------------------------------------------------------------------
+Resetting the Command Buffer
+-----------------------------
 
-If you have multiple kernels to dispatch, you can use `CreateMultiKernel()` and
-`DispatchMultiKernel()`.
+(( TODO ))
 
-These create and dispatch multiple kernels together and are similar to
-`CreateKernel()` and `DispatchKernel()`, but with multiple kernels and multiple
-inputs per kernel.
-
-With a more complex input signature, `CreateMultiKernel()` takes a structured
-input type `MultiKernelDesc` that specifies the kernels and their inputs. But
-otherwise usage is similar.
-
-Note that inputs can even be shared between kernels, allowing for building a
-complex computation graphs with shared inputs between them.
-)");
-
-  section(R"(
-gpu.cpp vs. the raw WebGPU API
-------------------------------
-
-The main responsibility of the types and functions of the library is to make it
-simple to represent these common building blocks of computation.
-
-If you look at `examples/webgpu_intro/run.cpp` you can learn more about what
-it's like to interact directly with the WebGPU API.
-)");
-
-  section(R"(
-That's it for the introduction to gpu.cpp.
-
-Have fun and let us know if you have any questions or feedback!
-
-We're happy to collaborate with contributors or hear what you're building with
-gpu.cpp.
-)");
-
-  return 0;
-}
