@@ -280,7 +280,7 @@ Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
                     WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
                                                  WGPUBufferUsage_CopyDst |
                                                  WGPUBufferUsage_CopySrc) {
-  log(kDefLog, kInfo, "Creating tensor");
+  log(kDefLog, kTrace, "Creating tensor");
   size_t numElements = 1;
   for (size_t dim = 0; dim < shape.rank; dim++) {
     numElements *= shape.data[dim];

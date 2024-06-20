@@ -23,6 +23,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(gpu)
 
+option(DEBUG "Option to enable debug flags" OFF)
+if(DEBUG)
+  set(CMAKE_BUILD_TYPE Debug)
+  set(CMAKE_CXX_FLAGS "-O0 -g")
+endif()
+
 add_executable(physics run.cpp)
 target_link_libraries(physics gpu webgpu)
 target_include_directories(physics PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../ )

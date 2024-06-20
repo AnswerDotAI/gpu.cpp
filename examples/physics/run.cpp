@@ -8,9 +8,9 @@ using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
                      // CreateShader, DispatchKernel, Wait, ToCPU
                      // Tensor, TensorList Kernel, Context, Shape, kf32
 
-const char *kShaderSimulation = R"(
+const char *kShaderUpdateSim = R"(
 const G: f32 = 9.81;
-const dt: f32 = 0.04;
+const dt: f32 = 0.03;
 @group(0) @binding(0) var<storage, read_write> theta1: array<f32>;
 @group(0) @binding(1) var<storage, read_write> theta2: array<f32>;
 @group(0) @binding(2) var<storage, read_write> thetaVel1: array<f32>;
@@ -47,13 +47,13 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 }
 )";
 
-void render(float *pos, size_t n, float maxX, float maxY, size_t screenWidth,
-            size_t screenHeight) {
-  static const char reverse_intensity[] = " .`'^-+=*x17X$8#%@";
-  const size_t eps = 2;
+void rasterize(float *pos, size_t n, float maxX, float maxY, std::string &screen,
+            size_t screenWidth, size_t screenHeight) {
+  static const char intensity[] = " .`'^-+=*x17X$8#%@";
+  const size_t eps = 1;
   // iterate over screen
   for (size_t i = 0; i < screenHeight; ++i) {
-    for (size_t j = 0; j < screenWidth; ++j) {
+    for (size_t j = 0; j < screenWidth - 2; ++j) {
       int count = 0;
       for (size_t k = 0; k < 2 * n; k += 2) {
         float nx =
@@ -67,21 +67,22 @@ void render(float *pos, size_t n, float maxX, float maxY, size_t screenWidth,
           count++;
         }
       }
-      count = std::min(count, 17);
-      // printf("%d", n);
-      printf("%c", reverse_intensity[count]);
+      count = std::min(count / 2, 17); // Need to adjust this for N
+      screen[i * screenWidth + j] = intensity[count];
     }
-    printf("|\n");
+    screen[i * screenWidth + screenWidth - 1] = '\n';
   }
-  for(size_t i = 0; i < screenWidth + 1; ++i) {
-    printf("-");
-  }
+  // clear screen
+  printf("\033[2J\033[1;1H");
+  printf("# simulations: %d\n%s", n / 2, screen.c_str());
 }
 
 int main() {
   Context ctx = CreateContext();
 
   // N can be quite a bit larger than this on most GPUs
+  // At some point the inefficient rasterization code above will probably be
+  // the bottleneck
   static constexpr size_t N = 1000;
 
   // Since m1 = m2, no mass in the update equation
@@ -90,8 +91,8 @@ int main() {
   std::fill(v1Arr.begin(), v1Arr.end(), 0.0);
   std::fill(v2Arr.begin(), v2Arr.end(), 0.0);
   for (size_t i = 0; i < N; ++i) {
-    theta1Arr[i] = 3.14159 / 2 + i * 3.14159 / N;
-    theta2Arr[i] = 3.14159 / 2 + i * 3.14159 / N;
+    theta1Arr[i] = 3.14159 / 2 + i * 3.14159 / 16 / N;
+    theta2Arr[i] = 3.14159 / 2 + i * 3.14159 / 16 / N - 0.1;
     lengthArr[i] = 1.0 - i * 0.5 / N;
   }
   Tensor theta1 = CreateTensor(ctx, Shape{N}, kf32, theta1Arr.data());
@@ -103,12 +104,13 @@ int main() {
   std::array<float, 2 * 2 * N> posArr;
   Tensor pos = CreateTensor(ctx, Shape{N * 4}, kf32);
   Shape nThreads{N, 1, 1};
-  ShaderCode shader = CreateShader(kShaderSimulation, 256, kf32);
+  ShaderCode shader = CreateShader(kShaderUpdateSim, 256, kf32);
   printf("Shader code: %s\n", shader.data.c_str());
   Kernel update = CreateKernel(
       ctx, shader, TensorList{theta1, theta2, vel1, vel2, length, pos},
       nThreads);
 
+  std::string screen(80 * 40, ' ');
   while (true) {
     auto start = std::chrono::high_resolution_clock::now();
     std::promise<void> promise;
@@ -116,15 +118,11 @@ int main() {
     DispatchKernel(ctx, update, promise);
     ResetCommandBuffer(ctx.device, nThreads, update);
     Wait(ctx, future);
-
-    ToCPU(ctx, pos, posArr.data(), sizeof(pos));
+    ToCPU(ctx, pos, posArr.data(), sizeof(posArr));
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
-    // printf("x1: %.2f, y1: %.2f\nx2: %.2f, y2: %.2f\n", pos1Arr[0],
-    // pos1Arr[1],pos2Arr[0], pos2Arr[1]);
-    printf("\033[2J\033[1;1H");
-    // render(posArr.data(), N * 2, 2.0, 2.0, 40, 40);
-    render(posArr.data(), N, 2.0, 2.0, 80, 40);
-    std::this_thread::sleep_for(std::chrono::milliseconds(16) - elapsed);
+    // N * 2 because there's two objects per pendulum
+    rasterize(posArr.data(), N * 2, 2.0, 2.0, screen, 80, 40);
+    std::this_thread::sleep_for(std::chrono::milliseconds(8) - elapsed);
   }
 }
