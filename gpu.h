@@ -554,6 +554,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
         context.device,
         [](WGPUErrorType type, char const *message, void *devData) {
           log(kDefLog, kError, "Device uncaptured error: %s", message);
+          throw std::runtime_error("Device uncaptured exception.");
         },
         nullptr);
   }
@@ -607,8 +608,6 @@ void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status == success ? %d",
-            WGPUQueueWorkDoneStatus_Success == status);
         check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
               __FILE__, __LINE__);
         const auto *data = static_cast<CallbackDataDyn *>(callbackData);
@@ -644,16 +643,17 @@ void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
 }
 // Separate this out since WGPUCommandBuffer is destroyed upon submission
 void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
-  log(kDefLog, kInfo, "Create command buffer 0x%x", op.commandBuffer);
+  log(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
         wgpuDeviceCreateCommandEncoder(device, nullptr);
     WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
+    log(kDefLog, kTrace, "Set pipeline %x", op.computePipeline);
     wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
                                        nullptr);
-    log(kDefLog, kInfo, "Dispatching workgroups for number of threads = %s",
+    log(kDefLog, kTrace, "Dispatching workgroups for number of threads = %s",
         ToString(nThreads).c_str());
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder, op.nWorkgroups[0], op.nWorkgroups[1],
@@ -815,6 +815,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
     computePipelineDesc.compute.module =
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
     computePipelineDesc.compute.entryPoint = "main";
+    computePipelineDesc.label = "compute pipeline";
     op.computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
   }
@@ -883,8 +884,6 @@ void DispatchKernel(Context &ctx, Kernel &kernel, std::promise<void>& promise) {
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *data) {
-        log(kDefLog, kTrace, "QueueOnSubmittedWorkDone status success ? %d",
-            WGPUQueueWorkDoneStatus_Success == status);
         check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
               __FILE__, __LINE__);
         auto *promise = static_cast<std::promise<void>*>(data);

@@ -234,6 +234,10 @@ rendering/graphics on the GPU, although it might be useful for compute shaders
 in graphics projects - one of the examples is a small compute renderer,
 rendered to the terminal.
 
+## Limitations
+
+(TODO)
+
 ## Contributing and Work-in-Progress
 
 We welcome contributions! There's a lot of low hanging fruit - fleshing out
