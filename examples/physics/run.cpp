@@ -6,9 +6,7 @@
 #include "gpu.h"
 #include "utils/tui.h" // rasterize
 
-using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
-                     // CreateShader, DispatchKernel, Wait, ToCPU
-                     // Tensor, TensorList Kernel, Context, Shape, kf32
+using namespace gpu;
 
 const char *kShaderUpdateSim = R"(
 const G: f32 = 9.81;
@@ -50,16 +48,12 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 )";
 
 int main() {
+  // N can be quite a bit larger than this on most GPUs (~ 1M on MBP M1)
+  static constexpr size_t N = 1000;
   Context ctx = CreateContext();
 
-  // N can be quite a bit larger than this on most GPUs
-  // At some point the inefficient rasterization code above will probably be
-  // the bottleneck
-  static constexpr size_t N = 1000;
-
-  // Since m1 = m2, no mass in the update equation
+  // Host-side data
   std::array<float, N> theta1Arr, theta2Arr, v1Arr, v2Arr, lengthArr;
-
   std::fill(v1Arr.begin(), v1Arr.end(), 0.0);
   std::fill(v2Arr.begin(), v2Arr.end(), 0.0);
   for (size_t i = 0; i < N; ++i) {
@@ -67,35 +61,42 @@ int main() {
     theta2Arr[i] = 3.14159 / 2 + i * 3.14159 / 16 / N - 0.1;
     lengthArr[i] = 1.0 - i * 0.5 / N;
   }
+
+  // GPU buffers
   Tensor theta1 = CreateTensor(ctx, Shape{N}, kf32, theta1Arr.data());
   Tensor theta2 = CreateTensor(ctx, Shape{N}, kf32, theta2Arr.data());
   Tensor vel1 = CreateTensor(ctx, Shape{N}, kf32, v1Arr.data());
   Tensor vel2 = CreateTensor(ctx, Shape{N}, kf32, v2Arr.data());
   Tensor length = CreateTensor(ctx, Shape{N}, kf32, lengthArr.data());
-
-  std::array<float, 2 * 2 * N> posArr;
+  std::array<float, 2 * 2 * N> posArr; // x, y outputs for each pendulum
+  std::string screen(80 * 40, ' ');
   Tensor pos = CreateTensor(ctx, Shape{N * 4}, kf32);
   Shape nThreads{N, 1, 1};
+
+  // Prepare computation
   ShaderCode shader = CreateShader(kShaderUpdateSim, 256, kf32);
   printf("Shader code: %s\n", shader.data.c_str());
   Kernel update = CreateKernel(
       ctx, shader, TensorList{theta1, theta2, vel1, vel2, length, pos},
       nThreads);
 
-  std::string screen(80 * 40, ' ');
+  // Main simulation update loop
   while (true) {
     auto start = std::chrono::high_resolution_clock::now();
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
     DispatchKernel(ctx, update, promise);
-    ResetCommandBuffer(ctx.device, nThreads, update);
     Wait(ctx, future);
     ToCPU(ctx, pos, posArr.data(), sizeof(posArr));
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     // N * 2 because there's two objects per pendulum
     rasterize(posArr.data(), N * 2, 2.0, 2.0, screen, 80, 40);
-    printf("\033[2J\033[1;1H""# simulations: %lu\n%s", N, screen.c_str());
+    printf("\033[2J\033[1;1H" // clear screen and move cursor to top-left
+           "# simulations: %lu\n%s",
+           N, screen.c_str());
+    ResetCommandBuffer(ctx.device, nThreads, update); // Prepare kernel command
+                                                      // buffer for nxt iteration
     std::this_thread::sleep_for(std::chrono::milliseconds(8) - elapsed);
   }
 }
