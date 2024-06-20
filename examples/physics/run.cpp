@@ -1,8 +1,10 @@
-#include "gpu.h"
 #include <array>
 #include <chrono>
 #include <cstdio>
 #include <future>
+
+#include "gpu.h"
+#include "utils/tui.h" // rasterize
 
 using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
                      // CreateShader, DispatchKernel, Wait, ToCPU
@@ -46,36 +48,6 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 
 }
 )";
-
-void rasterize(float *pos, size_t n, float maxX, float maxY, std::string &screen,
-            size_t screenWidth, size_t screenHeight) {
-  static const char intensity[] = " .`'^-+=*x17X$8#%@";
-  const size_t eps = 1;
-  // iterate over screen
-  for (size_t i = 0; i < screenHeight; ++i) {
-    for (size_t j = 0; j < screenWidth - 2; ++j) {
-      int count = 0;
-      for (size_t k = 0; k < 2 * n; k += 2) {
-        float nx =
-            (1.0 + pos[k] / maxX) / 2.0 * static_cast<float>(screenWidth);
-        // negate y since it extends from top to bottom
-        float ny = (1.0 - (pos[k + 1] / maxY)) / 2.0 *
-                   static_cast<float>(screenHeight);
-        // printf("x: %.2f, y: %.2f\n", nx, ny);
-        float length = std::sqrt((nx - j) * (nx - j) + (ny - i) * (ny - i));
-        if (length < eps) {
-          count++;
-        }
-      }
-      count = std::min(count / 2, 17); // Need to adjust this for N
-      screen[i * screenWidth + j] = intensity[count];
-    }
-    screen[i * screenWidth + screenWidth - 1] = '\n';
-  }
-  // clear screen
-  printf("\033[2J\033[1;1H");
-  printf("# simulations: %d\n%s", n / 2, screen.c_str());
-}
 
 int main() {
   Context ctx = CreateContext();
@@ -123,6 +95,7 @@ int main() {
     std::chrono::duration<double> elapsed = end - start;
     // N * 2 because there's two objects per pendulum
     rasterize(posArr.data(), N * 2, 2.0, 2.0, screen, 80, 40);
+    printf("\033[2J\033[1;1H""# simulations: %lu\n%s", N, screen.c_str());
     std::this_thread::sleep_for(std::chrono::milliseconds(8) - elapsed);
   }
 }

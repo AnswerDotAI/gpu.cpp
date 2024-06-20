@@ -7,7 +7,7 @@ FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON
 DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
 
 run:
-	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET) && ./$(TARGET)
+	mkdir -p build && cd build && cmake .. $(FLAGS) && make -j$(NUM_JOBS) $(TARGET) && ./$(TARGET)
 
 debug :
 	mkdir -p build && cd build && cmake .. $(DEBUG_FLAGS) && make -j$(NUM_JOBS) $(TARGET) && ./$(TARGET)
