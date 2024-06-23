@@ -5,20 +5,6 @@
 
 namespace gpu {
 
-// test function - multiply by constant
-static const char *kShaderCMul = R"(
-@group(0) @binding(0) var<storage, read_write> input: array<f32>;
-@group(0) @binding(1) var<storage, read_write> output : array<f32>;
-@compute @workgroup_size(64)
-fn main(
-  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    let idx = GlobalInvocationID.x;
-    if (idx < arrayLength(&input)) {
-      output[idx] = input[idx] * 2.0;
-    }
-  }
-)";
-
 
 static const char *kShaderGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -134,56 +120,6 @@ fn main(
         }
         C[i * {{N}} + j] = sum;
     }
-}
-)";
-
-static const char *kShaderMatMul2 = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<f32>;
-@group(0) @binding(1) var<storage, read_write> B: array<f32>;
-@group(0) @binding(2) var<storage, read_write> C: array<f32>;
-
-// Shared memory for tiling - TODO(avh): fix
-var<workgroup> tileA: array<f32, workgroupSizeY * workgroupSizeX>;
-var<workgroup> tileB: array<f32, workgroupSizeY * workgroupSizeX>;
-
-@compute @workgroup_size(workgroupSizeX, workgroupSizeY, 1)
-fn matmul(
-    @builtin(global_invocation_id) global_id : vec3<u32>,
-    @builtin(local_invocation_id) local_id : vec3<u32>,
-    @builtin(workgroup_id) workgroup_id : vec3<u32>
-) {
-    let row = global_id.x;
-    let col = global_id.y;
-
-    if (row >= M || col >= N) {
-        return;
-    }
-
-    var result: f32 = 0.0;
-
-    for (var i = 0u; i < K; i = i + workgroupSizeX) {
-        // Load tiles into shared memory
-        /*
-        tileA[local_id.y][local_id.x] = A[row][i + local_id.x];
-        tileB[local_id.y][local_id.x] = B[i + local_id.y][col];
-        */
-
-        // Synchronize to make sure the tile is loaded
-        workgroupBarrier();
-
-        /*
-        // Perform partial dot product for the current tile
-        for (var k = 0u; k < workgroupSizeX; k = k + 1u) {
-            result = result + tileA[local_id.y][k] * tileB[k][local_id.x];
-        }
-        */
-
-        // Synchronize before loading the next tile
-        workgroupBarrier();
-    }
-
-    // Write the result to the output matrix
-    // C[row][col] = result;
 }
 )";
 

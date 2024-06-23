@@ -15,3 +15,7 @@ watch:
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
 
+# TODO(avh): Testing build against shared lib
+# simple-build:
+#	clang++ -std=c++17 -I`pwd`/../.. -I`pwd`/../../utils -I`pwd`/lib/gen/include -I`pwd`/lib/dawn-src/include -L`pwd`/lib -ldawn run.cpp -o hello_gpu
+

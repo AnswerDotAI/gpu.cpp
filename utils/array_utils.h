@@ -1,3 +1,13 @@
+/*
+ * array_utils.h
+ *
+ * This file contains utility functions for working with arrays. These are
+ * mostly convenience functions for setting up and inspecting data for testing.
+ * They are not optimized and are not intended for use in performance-critical
+ * code.
+ *
+ */
+
 #ifndef ARRAY_UTILS_H
 #define ARRAY_UTILS_H
 
@@ -89,10 +99,36 @@ void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min,
   }
 }
 
+template <size_t size>
+void randn(std::array<float, size> &a, std::mt19937 &gen, float mean = 0.0,
+             float std=1.0) {
+  std::normal_distribution<float> dist(mean, std);
+  for (int i = 0; i < size; i++) {
+    a[i] = static_cast<float>(dist(gen));
+  }
+}
+
+
 void eye(float* a, size_t N) {
   for (size_t i = 0; i < N; i++) {
     for (size_t j = 0; j < N; j++) {
       a[i * N + j] = (i == j) ? 1.0 : 0.0;
+    }
+  }
+}
+
+void flip(float* a, size_t R, size_t C, bool horizontal = true) {
+  if (horizontal) {
+    for (size_t i = 0; i < R; i++) {
+      for (size_t j = 0; j < C / 2; j++) {
+        std::swap(a[i * C + j], a[i * C + C - j - 1]);
+      }
+    }
+  } else {
+    for (size_t i = 0; i < R / 2; i++) {
+      for (size_t j = 0; j < C; j++) {
+        std::swap(a[i * C + j], a[(R - i - 1) * C + j]);
+      }
     }
   }
 }

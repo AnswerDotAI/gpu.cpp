@@ -52,7 +52,7 @@ void puzzle1(Context &ctx) {
   printf("\n\nPuzzle 1\n\n");
   Tensor input = CreateTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = CreateTensor(ctx, {N}, kf32);
-  Kernel op = CreateKernel(ctx, CreateShader(kPuzzle1, N), TensorList{input, output},
+  Kernel op = CreateKernel(ctx, CreateShader(kPuzzle1, 256), TensorList{input, output},
                            /*nthreads*/ {N, 1, 1});
   showResult<N>(ctx, op, output);
 }

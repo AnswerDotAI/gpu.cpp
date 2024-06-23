@@ -16,7 +16,8 @@ struct Logger {
   int level;
 };
 
-void log(Logger& logger, int level, const char *message, ...) {
+#ifndef NDEBUG
+inline void log(Logger& logger, int level, const char *message, ...) {
   static const char *orange = "\033[0;33m";
   static const char *red = "\033[0;31m";
   static const char *white = "\033[0;37m";
@@ -33,6 +34,9 @@ void log(Logger& logger, int level, const char *message, ...) {
     va_end(args);
   }
 }
+#else
+#define log(logger, level, message, ...) ((void)0)
+#endif
 
 static Logger kDefLog = {stdout, "", kInfo};
 

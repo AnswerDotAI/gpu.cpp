@@ -146,12 +146,11 @@ std::string ToString(const Shape &shape) {
  * consistent.
  */
 struct ShaderCode {
-  ShaderCode(const std::string &data, size_t workgroupSize = 256,
+  ShaderCode(const std::string &data = "", size_t workgroupSize = 256,
              NumType precision = kf32)
       : data(data), workgroupSize({workgroupSize, 1, 1}), precision(precision) {
   }
-
-  ShaderCode(const std::string &data, const Shape &workgroupSize,
+  ShaderCode(const std::string &data, const Shape &workgroupSize = {256, 1, 1},
              NumType precision = kf32)
       : data(data), workgroupSize(workgroupSize), precision(precision) {}
   std::string data;
@@ -525,7 +524,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
       DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
       check(status == WGPURequestDeviceStatus_Success,
             "Could not get WebGPU device.", __FILE__, __LINE__);
-      log(kDefLog, kInfo, "Device Request succeeded %s",
+      log(kDefLog, kTrace, "Device Request succeeded %x",
           static_cast<void *>(device));
       devData.device = device;
       devData.requestEnded = true;

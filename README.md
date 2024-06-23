@@ -1,27 +1,33 @@
 # gpu.cpp
 
-gpu.cpp is a lightweight library for portable low-level GPU computation using
-WebGPU. 
+gpu.cpp is a lightweight C++ library to write portable low-level GPU code that
+runs everywhere.
 
-*Work-in-Progress* See [release
-tasks](https://github.com/AnswerDotAI/gpu.cpp/wiki/Release-Tasks) for the
-current status.
+*Work-in-Progress*
 
 ## Who is gpu.cpp for?
 
-gpu.cpp is a lightweight library for R&D projects and products prioritizing
-both low-level control of GPU computation and portability.  
+For exploring the space of GPU algorithms with the ability to portably just
+work on a wide range of hardware, without any intermediaries of model export,
+compilation, or runtime support, gpu.cpp is a lightweight library that makes it
+simple to write low-level GPU code that runs on any device with almost any GPU.
 
-To this end, gpu.cpp leverages the WebGPU API spec to provide a portable
-interface to the GPU. In spite of the name, WebGPU has both native (e.g.
-[Dawn](https://github.com/google/dawn/) and
-[wgpu](https://github.com/gfx-rs/wgpu)) as well as [browser
-implementations](https://github.com/gpuweb/gpuweb/wiki/Implementation-Status),
-it does not necessitate programs to be running on the web in a browser.
+gpu.cpp is implemented using the WebGPU API specification, which is designed
+for cross-platform GPU interactions. In spite of the name, WebGPU has native
+(Dawn and wgpu) implementations decoupled from the web and the browser (
+for additional background - see [WebGPU is
+Not Just about the Web](https://www.youtube.com/watch?v=qHrx41aOTUQ))
 
-gpu.cpp provides a minimal set of composable functions and types that make
-WebGPU compute simple and concise to work with for GPU compute R&D use cases,
-while keeping abstractions minimal and transparent.
+By leveraging the WebGPU API specification as simply a portable interface to
+any GPU supported by native implementations that conform to major GPU
+interfaces like Metal, DirectX, and Vulkan. This means we can drop-in simple,
+low-level GPU code in our C++ projects and have it run on Nvidia, Intel, AMD
+GPUs, and even on Apple and Android mobile devices.
+
+gpu.cpp provides a small but powerful set of core functions and types that make
+WebGPU compute simple and concise to work with R&D and application use cases.
+It keeps abstractions minimal and transparent. It has no dependencies other
+than the WebGPU API implementation itself (Dawn for native).
 
 ## Hello World: A GELU Kernel
 
@@ -100,7 +106,6 @@ cmake`. On Ubuntu, you can install cmake using `apt-get` with: `sudo apt-get
 install cmake`.
 
 ## Quick Start: Building and Running
-
 
 The build is handled by cmake. Some useful common cmake invocations are wrapped
 in the convenience Makefile. 
@@ -205,12 +210,7 @@ or runtime support.
 
 ## What gpu.cpp is for
 
-- Hybrid CPU + GPU computation
-- Simple Integration of Low-level GPU computation into C++ projects
-- Fine-grained control of GPU computation for ML inference
-- Bespoke GPU computation for emerging neural network architectures
-- Portable GPU computation
-- Custom parallel algorithms
+(TODO(avh))
 
 ## What gpu.cpp is not
 
@@ -236,7 +236,7 @@ rendered to the terminal.
 
 ## Limitations
 
-(TODO)
+(TODO(avh))
 
 ## Contributing and Work-in-Progress
 
