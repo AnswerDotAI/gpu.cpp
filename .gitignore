@@ -2,3 +2,6 @@ build/*
 examples/hello_gpu/build/*
 examples/raymarch/build/*
 docs/html
+source
+.DS_Store
+third_party/lib/libdawn.*

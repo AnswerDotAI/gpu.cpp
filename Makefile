@@ -15,9 +15,24 @@ DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
 RELEASE_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=OFF
 LOCAL_FLAGS = -DUSE_LOCAL_LIBS=ON 
 CMAKE_CMD = mkdir -p build && cd build && cmake ..
+GPUCPP ?= $(PWD)
+LIBDIR ?= $(GPUCPP)/third_party/lib
+LIBSPEC ?= export DYLD_LIBRARY_PATH=$(LIBDIR)
 
-tests: check-dependencies
+default: build/run_tests
+
+build/setup:
+	$(CXX) -std=c++17 -lcurl setup.cpp -o build/setup
+
+build/run_tests: check-dependencies build/setup
+	$(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldawn utils/test_kernels.cpp -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
+
+tests-cmake: check-dependencies
 	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)
+
+#TODO(avh): linux, windows support
+third_party/lib/libdawn.dylib:build/setup
+	./build/setup
 
 libgpu: check-dependencies
 	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) gpu

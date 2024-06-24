@@ -7,16 +7,16 @@ runs everywhere.
 
 ## Who is gpu.cpp for?
 
-For exploring the space of GPU algorithms with the ability to portably just
+For exploring this space of GPU algorithms with the ability to portably just
 work on a wide range of hardware, without any intermediaries of model export,
 compilation, or runtime support, gpu.cpp is a lightweight library that makes it
 simple to write low-level GPU code that runs on any device with almost any GPU.
 
 gpu.cpp is implemented using the WebGPU API specification, which is designed
 for cross-platform GPU interactions. In spite of the name, WebGPU has native
-(Dawn and wgpu) implementations decoupled from the web and the browser (
-for additional background - see [WebGPU is
-Not Just about the Web](https://www.youtube.com/watch?v=qHrx41aOTUQ))
+(Dawn and wgpu) implementations decoupled from the web and the browser. For
+additional background - see [WebGPU is Not Just about the
+Web](https://www.youtube.com/watch?v=qHrx41aOTUQ))
 
 By leveraging the WebGPU API specification as simply a portable interface to
 any GPU supported by native implementations that conform to major GPU
@@ -90,10 +90,6 @@ int main(int argc, char **argv) {
 
 This example is available in `examples/hello_world/run.cpp`. 
 
-For those curious about what happens under the hood with the raw WebGPU API,
-the equivalent functionality is implemented using the WebGPU C API in
-`examples/webgpu_intro/run.cpp`.
-
 ## Quick Start: Dependencies and Installation
 
 The only dependency of this library is a WebGPU implementation. Currently we
@@ -106,6 +102,8 @@ cmake`. On Ubuntu, you can install cmake using `apt-get` with: `sudo apt-get
 install cmake`.
 
 ## Quick Start: Building and Running
+
+(( TODO(avh): Change this to use pre-built binaries ))
 
 The build is handled by cmake. Some useful common cmake invocations are wrapped
 in the convenience Makefile. 
@@ -210,7 +208,7 @@ or runtime support.
 
 ## What gpu.cpp is for
 
-(TODO(avh))
+(( TODO(avh) ))
 
 ## What gpu.cpp is not
 
@@ -236,7 +234,11 @@ rendered to the terminal.
 
 ## Limitations
 
-(TODO(avh))
+(( TODO(avh) ))
+
+## Acknowledgements
+
+(( TODO(avh) ))
 
 ## Contributing and Work-in-Progress
 
