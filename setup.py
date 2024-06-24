@@ -40,7 +40,7 @@ def check_os(os_name):
     print("\nChecking System")
     print("===============\n")
     print(f"  Operating System : {os_name}")
-    supported = {"macOS"}
+    supported = {"macOS", "Linux"}
     if os_name not in supported:
         print("Unsupported operating system")
         sys.exit(1)
@@ -51,9 +51,11 @@ def download_dawn(os_name):
 
     outfile_map = {
         "macOS": "third_party/lib/libdawn.dylib"
+        "Linux": "third_party/lib/libdawn.so",
     }
     url_map = {
         "macOS": "https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib"
+        "Linux": "https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.so",
     }
 
     outfile = outfile_map.get(os_name)
@@ -87,6 +89,12 @@ def setup_env(os_name):
         
         with open("source", "w") as f:
             f.write(f"export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:{lib_dir}\n")
+    if os_name == "Linux":
+        print("  Before running the program, run the following command or add it to your shell profile:")
+        print(f"  export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{lib_dir}")
+        
+        with open("source", "w") as f:
+            f.write(f"export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{lib_dir}\n")
 
 def main():
     os_name = get_os_name()
