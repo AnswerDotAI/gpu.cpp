@@ -50,11 +50,11 @@ def download_dawn(os_name):
     print("=====================\n")
 
     outfile_map = {
-        "macOS": "third_party/lib/libdawn.dylib"
+        "macOS": "third_party/lib/libdawn.dylib",
         "Linux": "third_party/lib/libdawn.so",
     }
     url_map = {
-        "macOS": "https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib"
+        "macOS": "https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib",
         "Linux": "https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.so",
     }
 
