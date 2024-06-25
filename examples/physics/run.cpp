@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdio>
 #include <future>
+#include <thread>
 
 #include "gpu.h"
 #include "utils/tui.h" // rasterize

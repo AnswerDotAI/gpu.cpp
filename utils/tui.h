@@ -2,6 +2,7 @@
 #define TUI_H
 
 #include <array>
+#include <cmath>
 #include <cstdio>
 
 // Work-in-progress - various terminal UI visualization functions

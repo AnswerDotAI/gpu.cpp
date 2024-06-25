@@ -17,21 +17,21 @@ LOCAL_FLAGS = -DUSE_LOCAL_LIBS=ON
 CMAKE_CMD = mkdir -p build && cd build && cmake ..
 GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
-LIBSPEC ?= export DYLD_LIBRARY_PATH=$(LIBDIR)
+LIBSPEC ?= . $(GPUCPP)/source
 
 default: build/run_tests
 
-#build/setup:
-#	$(CXX) -std=c++17 -lcurl setup.cpp -o build/setup
-
 build/run_tests: check-dependencies
-	$(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldawn utils/test_kernels.cpp -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
+	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib utils/test_kernels.cpp -ldawn -ldl -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
 
 tests-cmake: check-dependencies
 	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)
 
+third_party/lib/libdawn.so: build/setup
+	./build/setup
+
 #TODO(avh): linux, windows support
-third_party/lib/libdawn.dylib:build/setup
+third_party/lib/libdawn.dylib: build/setup
 	./build/setup
 
 libgpu: check-dependencies
@@ -40,7 +40,7 @@ libgpu: check-dependencies
 debug: check-dependencies
 	$(CMAKE_CMD) $(DEBUG_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
-build: check-dependencies
+build-cmake: check-dependencies
 	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
 watch-tests: check-entr check-dependencies
@@ -71,19 +71,11 @@ check-entr:
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
 
 ################################################################################
-# Experimental targets (not tested / not working)
+# Experimental targets (not tested)
 ################################################################################
 
-USE_WGPU=-DWEBGPU_TAG=wgpu
 # EMSCRIPTEN_FLAGS = -DIMPLEMENTATION=emscripten -DCMAKE_TOOLCHAIN_FILE=../cmake/emscripten.cmake -DCMAKE_CXX_COMPILER=em++
 EMSCRIPTEN_FLAGS = -DIMPLEMENTATION=emscripten -DCMAKE_CXX_COMPILER=em++
-
-debug-wgpu: check-dependencies
-	$(CMAKE_CMD) $(DEBUG_FLAGS) $(USE_WGPU) && make -j$(NUM_JOBS) $(TARGET_ALL)
-
-watch-tests-wgpu: check-entr check-dependencies
-	# export RUST_TRACE=1
-	$(CMAKE_CMD) $(FASTBUILD_FLAGS) $(USE_WGPU) && ls ../* ../utils/* | entr -s "rm -f $(TARGET_TESTS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)"
 
 emscripten: check-dependencies
 	$(CMAKE_CMD) $(EMSCRIPTEN_FLAGS) -DIMPLEMENTATION=emscripten && make -j$(NUM_JOBS) $(TARGET_ALL)
