@@ -18,20 +18,23 @@ fn main(
     let i: u32 = GlobalInvocationID.x;
     if (i < arrayLength(&inp)) {
         let x: f32 = inp[i];
-        // select is more stable than tanh for large x
         out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
-               * (x + .044715 * x * x * x))), x, x > 10.0);
+                 * (x + .044715 * x * x * x))), x, x > 10.0);
     }
 }
 )";
 
 int main(int argc, char **argv) {
-  printf("\nHello, gpu.cpp\n\n");
+  printf("\033[2J\033[1;1H");
+  printf("\nHello, gpu.cpp!\n");
+  printf("---------------\n\n");
+
+  printf("Creating GPU Context ...");
   Context ctx = CreateContext();
-  static constexpr size_t N = 3072;
+  static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
-    inputArr[i] = static_cast<float>(i) / 2.0; // dummy input data
+    inputArr[i] = static_cast<float>(i) / 10.0; // dummy input data
   }
   Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = CreateTensor(ctx, Shape{N}, kf32);
@@ -42,9 +45,10 @@ int main(int argc, char **argv) {
   DispatchKernel(ctx, op, promise);
   Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 32; ++i) {
-    printf("out[%d] : gelu(%.2f) = %.2f\n", i, inputArr[i], outputArr[i]);
+  for (int i = 0; i < 16; ++i) {
+    printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }
-  printf("...\n\n");
+  printf("  ...\n\n");
+  printf("Computed %zu values of GELU(x)\n\n", N);
   return 0;
 }
