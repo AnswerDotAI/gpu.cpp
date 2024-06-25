@@ -1,5 +1,5 @@
-NUM_JOBS ?= $(shell nproc)
-CXX ?= clang++
+NUM_JOBS?=$(shell nproc)
+CXX=clang++
 
 TARGET = hello_gpu
 FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER="$(CXX)"
@@ -7,12 +7,10 @@ FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON
 
 GPUCPP ?= $(PWD)/../..
 LIBDIR ?= $(GPUCPP)/third_party/lib
-LIBSPEC ?= export DYLD_LIBRARY_PATH=$(LIBDIR)
+LIBSPEC ?= . $(GPUCPP)/source
 
 run:
-	# TODO(avh): cleanup
-	#linux test
-	mkdir -p build && clang++ -v -fuse-ld=lld -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -Wl,--whole-archive run.cpp -ldawn -o ./build/$(TARGET) && ./build/$(TARGET)
+	mkdir -p build && $(CXX) -v -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn -o ./build/$(TARGET) && ./build/$(TARGET)
 	# mac
 	# mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldawn run.cpp -o ./build/$(TARGET) && $(LIBSPEC) && ./build/$(TARGET)
 
