@@ -21,10 +21,10 @@ LIBSPEC ?= export DYLD_LIBRARY_PATH=$(LIBDIR)
 
 default: build/run_tests
 
-build/setup:
-	$(CXX) -std=c++17 -lcurl setup.cpp -o build/setup
+#build/setup:
+#	$(CXX) -std=c++17 -lcurl setup.cpp -o build/setup
 
-build/run_tests: check-dependencies build/setup
+build/run_tests: check-dependencies
 	$(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldawn utils/test_kernels.cpp -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
 
 tests-cmake: check-dependencies

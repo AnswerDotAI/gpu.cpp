@@ -10,7 +10,11 @@ LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= export DYLD_LIBRARY_PATH=$(LIBDIR)
 
 run:
-	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldawn run.cpp -o ./build/$(TARGET) && $(LIBSPEC) && ./build/$(TARGET)
+	# TODO(avh): cleanup
+	#linux test
+	mkdir -p build && clang++ -v -fuse-ld=lld -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -Wl,--whole-archive run.cpp -ldawn -o ./build/$(TARGET) && ./build/$(TARGET)
+	# mac
+	# mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldawn run.cpp -o ./build/$(TARGET) && $(LIBSPEC) && ./build/$(TARGET)
 
 run-cmake:
 	mkdir -p build && cd build && cmake .. $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET) && ./$(TARGET)
