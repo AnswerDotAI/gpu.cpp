@@ -167,8 +167,8 @@ struct CallbackDataDyn {
   size_t bufferSize;
   float *output; // non-owning, only for target memory in ToCPU, not used for
                  // kernel invocations
-  std::promise<void>* promise;
-  std::future<void>* future;
+  std::promise<void> *promise;
+  std::future<void> *future;
 };
 
 /**
@@ -556,6 +556,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
           throw std::runtime_error("Device uncaptured exception.");
         },
         nullptr);
+
   }
   context.queue = wgpuDeviceGetQueue(context.device);
   return context;
@@ -568,11 +569,14 @@ void Wait(Context &ctx, std::future<void> &future) {
   }
 }
 
-/* Copy from GPU to CPU.
-  A more performant version of this would prepare the command buffer once and
-  reuse it for multiple readbacks. This version is a convenience implementation
-  for non-hot paths.
-*/
+/**
+ * @brief Copies data from a GPU buffer to CPU memory.
+ * @param[in] ctx Context instance to manage the operation
+ * @param[in] tensor Tensor instance representing the GPU buffer to copy from
+ * @param[out] data Pointer to the CPU memory to copy the data to
+ * @param[in] bufferSize Size of the data buffer in bytes
+ * @example ToCPU(ctx, tensor, data, bufferSize);
+ */
 void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;
   struct CopyOp {
@@ -628,19 +632,60 @@ void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
       &callbackData);
   Wait(ctx, op.future);
 }
-// Convenience wrapper for array outputs
+
+/**
+ * @brief Overload of the ToCPU function to copy data from a GPU buffer to CPU
+ * memory for an array of floats instead of a pointer to a float buffer.
+ * @param[in] ctx Context instance to manage the operation
+ * @param[in] tensor Tensor instance representing the GPU buffer to copy from
+ * @param[out] data Array of floats to copy the data to
+ * @example ToCPU(ctx, tensor, data);
+ */
 template <size_t N>
 void ToCPU(Context &ctx, Tensor &tensor, std::array<float, N> data) {
   ToCPU(ctx, tensor, data.data(), sizeof(data));
 }
+
+/**
+ * @brief Copies data from CPU memory to a GPU buffer. The ToGPU overloads are
+ * effectively a convenience wrapper around the WebGPU API call
+ * wgpuQueueWriteBuffer.
+ *
+ * @param[in] ctx Context instance to manage the operation
+ * @param[in] data Pointer to the CPU memory to copy from
+ * @param[in] buffer WGPUBuffer instance representing the GPU buffer to copy to
+ * @param[in] size Size of the data buffer in bytes
+ * @example ToGPU(ctx, data, buffer, size);
+ */
 void ToGPU(Context &ctx, const void *data, WGPUBuffer buffer, size_t size) {
   wgpuQueueWriteBuffer(ctx.queue, buffer, 0, data, size);
 }
+
+/**
+ * @brief Overload of the ToGPU function to copy data from CPU memory to a GPU
+ * taking a Tensor instance instead of a WGPUBuffer instance.
+ * @param[in] ctx Context instance to manage the operation
+ * @param[in] data Pointer to the CPU memory to copy from
+ * @param[in] tensor Tensor instance representing the GPU buffer to copy to
+ * @example ToGPU(ctx, data, tensor);
+ */
 void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
 }
 // Separate this out since WGPUCommandBuffer is destroyed upon submission
+
+/**
+ * @brief Resets the command buffer in preparation for a kernel dispatch.
+ * Since command buffers are consumed upon submission, this function is used
+ * both in the initial kernel creation and every time the kernel is to be
+ * reused for a dispatch.
+ * @param[in] device WGPUDevice instance to manage the operation
+ * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
+ * rank 3
+ * @param[in] op Kernel instance representing the kernel to reset
+ * @example ResetCommandBuffer(device, {256, 1, 1}, op);
+ */
 void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
   log(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
   {
@@ -681,33 +726,34 @@ template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
  *
  * @param[in] ctx Context instance to manage the kernel
  * @param[in] shader Shader code for the kernel
- * @param[in] inputs A span of input tensors as a pointer
- * @param[in] numInputs Number of input tensors, effectively the size of the
- * *inputs span.
+ * @param[in] dataBindings Pointer to a span of tensors bound to the kernel
+ * @param[in] numInputs Number of tensors pointed to by dataBindings
  * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
- * rank 3.
+ * rank 3
  * @param[in] params Optional parameters for the kernel. If the kernel does not
  * have any parameters, use NoParam. This is cast as void* to allow for
  * arbitrary types to be passed as parameters.
  * @param[in] paramsSize Size of the parameters buffer in bytes.
  * @return Kernel instance representing the created kernel
- * @example Kernel kernel = CreateKernel(ctx, shader, inputs, numInputs, output,
+ * @example Kernel kernel = CreateKernel(ctx, shader, dataBindings, numInputs, output,
  * nThreads, params, paramsSize);
  */
 Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
-                    const Tensor *inputs, size_t numTensors,
-                    const Shape &nThreads,
-                    const void *params, size_t paramsSize = 0) {
+                    const Tensor *dataBindings, size_t numTensors,
+                    const Shape &nThreads, const void *params,
+                    size_t paramsSize = 0) {
   assert(nThreads.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op;
+  // paramIndex is the index into bgLayoutEntries for the parameters buffer If
+  // there are no parameters for the kernel, paramsSize == 0 and paramIndex is
+  // effectively undefined (== -1)
   size_t paramIndex = -1;
-  // paramIndex is undefined
-  // unless ParamsType != NoParam
+  // Note: paramIndex is undefined unless paramsSize > 0
   size_t numBindings = numTensors;
   if (paramsSize > 0) {
-    numBindings++;            // parameters buffer
+    numBindings++;                // parameters buffer
     paramIndex = numBindings - 1; // index of the parameters buffer within
                                   // op.buffers, op.bufferSizes and
                                   // bgLayoutEntries
@@ -725,7 +771,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
         .buffer =
             WGPUBufferBindingLayout{
                 .type = WGPUBufferBindingType_Storage,
-                .minBindingSize = inputs[i].data.size,
+                .minBindingSize = dataBindings[i].data.size,
             },
     };
   }
@@ -750,8 +796,8 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
   WGPUBindGroupLayout bgLayout =
       wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
   for (size_t i = 0; i < numTensors; ++i) {
-    op.buffers[i] = inputs[i].data.buffer;
-    op.bufferSizes[i] = inputs[i].data.size;
+    op.buffers[i] = dataBindings[i].data.buffer;
+    op.bufferSizes[i] = dataBindings[i].data.size;
   }
   log(kDefLog, kInfo, "Create the params buffer");
   // Create a buffer for the Params struct
@@ -836,29 +882,28 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
  *
  * @param[in] ctx Context instance to manage the kernel
  * @param[in] shader Shader code for the kernel
- * @param[in] inputs A collection of input tensors
- * @param[in] output Output tensor for the kernel
+ * @param[in] dataBindings A TensorList of tensors whose GPU buffers are bound
+ * to the kernel as inputs and outputs.
  * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
  * rank 3.
  * @param[in] params Optional parameters for the kernel. If the kernel does not
  * have any parameters, use NoParam.
  * @return Kernel instance representing the created kernel
- * @example Kernel kernel = CreateKernel(ctx, shader, inputs, output, nThreads,
+ * @example Kernel kernel = CreateKernel(ctx, shader, tensorData, output, nThreads,
  * params);
  */
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
-                    const TensorList<numInputs> &inputs, 
-                    const Shape &nThreads,
+                    const TensorList<numInputs> &dataBindings, const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
-    return CreateKernel(ctx, shader, inputs.data.data(), numInputs, nThreads,
+    return CreateKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType));
   } else {
     log(kDefLog, kInfo, "No params");
-    return CreateKernel(ctx, shader, inputs.data.data(), numInputs, nThreads,
+    return CreateKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
                         nullptr, 0);
   }
 }
@@ -877,7 +922,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
  * @param[in] kernel Kernel instance to dispatch
  * @example DispatchKernel(ctx, kernel);
  */
-void DispatchKernel(Context &ctx, Kernel &kernel, std::promise<void>& promise) {
+void DispatchKernel(Context &ctx, Kernel &kernel, std::promise<void> &promise) {
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &kernel.commandBuffer);
   wgpuQueueOnSubmittedWorkDone(
@@ -885,7 +930,7 @@ void DispatchKernel(Context &ctx, Kernel &kernel, std::promise<void>& promise) {
       [](WGPUQueueWorkDoneStatus status, void *data) {
         check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
               __FILE__, __LINE__);
-        auto *promise = static_cast<std::promise<void>*>(data);
+        auto *promise = static_cast<std::promise<void> *>(data);
         promise->set_value();
       },
       &promise);

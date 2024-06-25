@@ -26,10 +26,9 @@ fn main(
 
 int main(int argc, char **argv) {
   printf("\033[2J\033[1;1H");
-  printf("\nHello, gpu.cpp!\n");
-  printf("---------------\n\n");
+  printf("\nHello gpu.cpp!\n");
+  printf("--------------\n\n");
 
-  printf("Creating GPU Context ...");
   Context ctx = CreateContext();
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;

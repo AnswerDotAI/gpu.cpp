@@ -34,6 +34,7 @@ void canvas(const std::array<char, NROWS * NCOLS> &raster) {
   printf("+\n");
 }
 
+// double pendulum rasterizer
 void rasterize(float *pos, size_t n, float maxX, float maxY, std::string &screen,
             size_t screenWidth, size_t screenHeight) {
   static const char intensity[] = " .`'^-+=*x17X$8#%@";
@@ -54,12 +55,15 @@ void rasterize(float *pos, size_t n, float maxX, float maxY, std::string &screen
           count++;
         }
       }
-      count = std::min(count / 2, 17); // Need to adjust this for N
+      count = std::min(count / 2, 17); // Need to adjust  /2 scaling for different n
       screen[i * screenWidth + j] = intensity[count];
     }
     screen[i * screenWidth + screenWidth - 1] = '\n';
   }
 }
+
+
+
 
 } // namespace gpu
 
