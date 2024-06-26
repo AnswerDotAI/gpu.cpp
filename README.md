@@ -224,6 +224,12 @@ Hello gpu.cpp!
 Computed 10000 values of GELU(x)
 ```
 
+The binary is built in the `examples/hello_world/build/` directory as
+`hello_world`. One detail if you want to run it separate from the `make` build
+process - be sure to run `. source` from the top-level directory (or add the
+content of `source` in your `.bashrc`). This makes the path to the Dawn shared
+library build available to the binary.
+
 From here you can explore the example projects in `examples/` which illustrate
 how to use gpu.cpp as a library. 
 
