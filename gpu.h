@@ -118,7 +118,7 @@ std::string ToString(NumType type) {
   case kf32:
     return "f32";
   default:
-    log(kDefLog, kError, "Invalid NumType in string conversion.");
+    LOG(kDefLog, kError, "Invalid NumType in string conversion.");
     return "unknown";
   }
 }
@@ -228,31 +228,31 @@ struct Context {
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
   ~Context() {
-    log(kDefLog, kInfo, "Destroying context");
+    LOG(kDefLog, kInfo, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
       wgpuInstanceProcessEvents(instance);
     } else {
-      log(kDefLog, kWarn, "Queue is null");
+      LOG(kDefLog, kWarn, "Queue is null");
     }
     if (device) {
       wgpuDeviceRelease(device);
       wgpuInstanceProcessEvents(instance);
     } else {
-      log(kDefLog, kWarn, "Device is null");
+      LOG(kDefLog, kWarn, "Device is null");
     }
     if (adapter) {
       wgpuAdapterRelease(adapter);
       wgpuInstanceProcessEvents(instance);
     } else {
-      log(kDefLog, kWarn, "Adapter is null");
+      LOG(kDefLog, kWarn, "Adapter is null");
     }
     if (instance) {
       wgpuInstanceRelease(instance);
     } else {
-      log(kDefLog, kWarn, "Instance is null");
+      LOG(kDefLog, kWarn, "Instance is null");
     }
-    log(kDefLog, kInfo, "Destroyed context");
+    LOG(kDefLog, kInfo, "Destroyed context");
   }
 };
 
@@ -279,7 +279,7 @@ Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
                     WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
                                                  WGPUBufferUsage_CopyDst |
                                                  WGPUBufferUsage_CopySrc) {
-  log(kDefLog, kTrace, "Creating tensor");
+  LOG(kDefLog, kTrace, "Creating tensor");
   size_t numElements = 1;
   for (size_t dim = 0; dim < shape.rank; dim++) {
     numElements *= shape.data[dim];
@@ -359,12 +359,12 @@ void FreeTensor(TensorPool &pool, Tensor tensor) {
   if (tensor.data.buffer) {
     wgpuBufferRelease(tensor.data.buffer);
   } else {
-    log(kDefLog, kWarn, "Tried to free tensor with null buffer");
+    LOG(kDefLog, kWarn, "Tried to free tensor with null buffer");
   }
   if (pool.data.find(tensor.data.buffer) != pool.data.end()) {
     pool.data.erase(tensor.data.buffer);
   } else {
-    log(kDefLog, kWarn, "Tried to free tensor that was not in pool");
+    LOG(kDefLog, kWarn, "Tried to free tensor that was not in pool");
   }
 }
 
@@ -380,7 +380,7 @@ TensorPool::~TensorPool() {
   }
   for (auto &key : keys) {
     FreeTensor(*this, data[key]);
-    log(kDefLog, kTrace, "Freed tensor");
+    LOG(kDefLog, kTrace, "Freed tensor");
   }
 }
 
@@ -429,7 +429,7 @@ ShaderCode CreateShader(const char *shaderTemplate,
   std::string codeString(shaderTemplate);
   ReplaceAll(codeString, "{{workgroupSize}}", ToString(workgroupSize));
   ReplaceAll(codeString, "{{precision}}", ToString(precision));
-  log(kDefLog, kInfo, "Shader code:\n%s", codeString.c_str());
+  LOG(kDefLog, kInfo, "Shader code:\n%s", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
 }
 
@@ -454,11 +454,11 @@ inline void check(bool condition, const char *message,
                   const char *file = "unkown", int line = -1) {
   if constexpr (kDebug) {
     if (!condition) {
-      log(kDefLog, kError, "Error in file %s line %d:\n%s", file, line,
+      LOG(kDefLog, kError, "Error in file %s line %d:\n%s", file, line,
           message);
       exit(1);
     } else {
-      log(kDefLog, kTrace, "Success in file %s line %d:\n%s", file, line,
+      LOG(kDefLog, kTrace, "Success in file %s line %d:\n%s", file, line,
           message);
     }
   }
@@ -490,7 +490,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
     context.instance = wgpuCreateInstance(&desc);
     check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
   }
-  log(kDefLog, kInfo, "Requesting adapter");
+  LOG(kDefLog, kInfo, "Requesting adapter");
   {
     struct AdapterData {
       WGPUAdapter adapter = nullptr;
@@ -511,7 +511,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
     assert(adapterData.requestEnded);
     context.adapter = adapterData.adapter;
   }
-  log(kDefLog, kInfo, "Requesting device");
+  LOG(kDefLog, kInfo, "Requesting device");
   {
     struct DeviceData {
       WGPUDevice device = nullptr;
@@ -524,7 +524,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
       DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
       check(status == WGPURequestDeviceStatus_Success,
             "Could not get WebGPU device.", __FILE__, __LINE__);
-      log(kDefLog, kTrace, "Device Request succeeded %x",
+      LOG(kDefLog, kTrace, "Device Request succeeded %x",
           static_cast<void *>(device));
       devData.device = device;
       devData.requestEnded = true;
@@ -536,10 +536,10 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
             [](WGPUDevice const *device, WGPUDeviceLostReason reason,
                char const *message, void *userdata) {
               if (reason != WGPUDeviceLostReason_Destroyed) {
-                log(kDefLog, kError, "Device lost (code %d):\n%s", reason,
+                LOG(kDefLog, kError, "Device lost (code %d):\n%s", reason,
                     message);
               } else {
-                log(kDefLog, kInfo, "Device destroyed: %s", message);
+                LOG(kDefLog, kInfo, "Device destroyed: %s", message);
               }
             },
     };
@@ -552,7 +552,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
     wgpuDeviceSetUncapturedErrorCallback(
         context.device,
         [](WGPUErrorType type, char const *message, void *devData) {
-          log(kDefLog, kError, "Device uncaptured error: %s", message);
+          LOG(kDefLog, kError, "Device uncaptured error: %s", message);
           throw std::runtime_error("Device uncaptured exception.");
         },
         nullptr);
@@ -687,17 +687,17 @@ void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
  * @example ResetCommandBuffer(device, {256, 1, 1}, op);
  */
 void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
-  log(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
+  LOG(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
         wgpuDeviceCreateCommandEncoder(device, nullptr);
     WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    log(kDefLog, kTrace, "Set pipeline %x", op.computePipeline);
+    LOG(kDefLog, kTrace, "Set pipeline %x", op.computePipeline);
     wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
                                        nullptr);
-    log(kDefLog, kTrace, "Dispatching workgroups for number of threads = %s",
+    LOG(kDefLog, kTrace, "Dispatching workgroups for number of threads = %s",
         ToString(nThreads).c_str());
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder, op.nWorkgroups[0], op.nWorkgroups[1],
@@ -761,7 +761,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
   op.buffers = std::make_unique<WGPUBuffer[]>(numBindings);
   op.bufferSizes = std::make_unique<size_t[]>(numBindings);
   op.numBindings = numBindings;
-  log(kDefLog, kInfo, "Create the bind group layout");
+  LOG(kDefLog, kInfo, "Create the bind group layout");
   std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBindings);
   // Create layout entries for input buffers
   for (size_t i = 0; i < numTensors; ++i) {
@@ -776,7 +776,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
     };
   }
   if (paramsSize > 0) {
-    log(kDefLog, kInfo, "Create layout entry for the params buffer");
+    LOG(kDefLog, kInfo, "Create layout entry for the params buffer");
     // Create layout entry for the params buffer
     bgLayoutEntries[paramIndex] = WGPUBindGroupLayoutEntry{
         .binding = static_cast<uint32_t>(paramIndex),
@@ -788,7 +788,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
             },
     };
   }
-  log(kDefLog, kInfo, "Create the bind group layout descriptor");
+  LOG(kDefLog, kInfo, "Create the bind group layout descriptor");
   WGPUBindGroupLayoutDescriptor bgLayoutDesc = {
       .entryCount = static_cast<uint32_t>(bgLayoutEntries.size()),
       .entries = bgLayoutEntries.data(),
@@ -799,7 +799,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
     op.buffers[i] = dataBindings[i].data.buffer;
     op.bufferSizes[i] = dataBindings[i].data.size;
   }
-  log(kDefLog, kInfo, "Create the params buffer");
+  LOG(kDefLog, kInfo, "Create the params buffer");
   // Create a buffer for the Params struct
   if (paramsSize > 0) {
     WGPUBufferDescriptor paramsBufferDesc = {
@@ -810,11 +810,11 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
     op.buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
     op.bufferSizes[paramIndex] = paramsSize;
     wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params, paramsSize);
-    log(kDefLog, kInfo, "Params buffer written");
+    LOG(kDefLog, kInfo, "Params buffer written");
   } else {
-    log(kDefLog, kInfo, "No params buffer needed");
+    LOG(kDefLog, kInfo, "No params buffer needed");
   }
-  log(kDefLog, kInfo, "Create the bind group");
+  LOG(kDefLog, kInfo, "Create the bind group");
   std::vector<WGPUBindGroupEntry> bindGroupEntries(numBindings);
   for (size_t i = 0; i < numTensors; ++i) {
     bindGroupEntries[i] = WGPUBindGroupEntry{
@@ -825,8 +825,8 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
     };
   }
   if (paramsSize > 0) {
-    log(kDefLog, kInfo, "Create bind group entry for the params buffer");
-    log(kDefLog, kInfo, "paramIndex: %d", paramIndex);
+    LOG(kDefLog, kInfo, "Create bind group entry for the params buffer");
+    LOG(kDefLog, kInfo, "paramIndex: %d", paramIndex);
     bindGroupEntries[paramIndex] = WGPUBindGroupEntry{
         .binding = static_cast<uint32_t>(paramIndex),
         .buffer = op.buffers[paramIndex],
@@ -834,7 +834,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
         .size = paramsSize,
     };
   }
-  log(kDefLog, kInfo, "BG Entries Size: %d", numBindings);
+  LOG(kDefLog, kInfo, "BG Entries Size: %d", numBindings);
   WGPUBindGroupDescriptor bindGroupDesc = {
       .layout = bgLayout,
       .entryCount = static_cast<uint32_t>(numBindings),
@@ -870,7 +870,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
       (nThreads[2] + (shader.workgroupSize[2] - 1)) / shader.workgroupSize[2]};
   ResetCommandBuffer(device, nThreads, op);
   ctx.kernelPool.data.insert(&op);
-  log(kDefLog, kInfo, "Exiting CreateKernel");
+  LOG(kDefLog, kInfo, "Exiting CreateKernel");
   return op;
 }
 
@@ -897,12 +897,12 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
                     const TensorList<numInputs> &dataBindings, const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
-    log(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
+    LOG(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
     return CreateKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType));
   } else {
-    log(kDefLog, kInfo, "No params");
+    LOG(kDefLog, kInfo, "No params");
     return CreateKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
                         nullptr, 0);
   }

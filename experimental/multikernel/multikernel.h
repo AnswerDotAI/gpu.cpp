@@ -76,7 +76,7 @@ void ResetMultiCommandBuffer(WGPUDevice &device, MultiKernel &multiKernel) {
         multiKernel.nWorkgroups[shaderIdx][2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
   }
-  log(kDefLog, kInfo, "Finish command encoder");
+  LOG(kDefLog, kInfo, "Finish command encoder");
   multiKernel.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
   check(multiKernel.commandBuffer, "Create command buffer", __FILE__, __LINE__);
 }
@@ -134,12 +134,12 @@ MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
     size_t paramIndex =
         desc.paramSizes[shaderIdx] > 0 ? desc.numInputs[shaderIdx] + 1 : -1;
     // Create layout entries for input buffers
-    log(kDefLog, kInfo, "Create the bind group layout");
+    LOG(kDefLog, kInfo, "Create the bind group layout");
     std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(
         multiKernel.numBuffers[shaderIdx]);
     for (size_t i = 0; i < multiKernel.numBuffers[shaderIdx]; ++i) {
-      log(kDefLog, kInfo, "Create layout entry for buffer %d", i);
-      log(kDefLog, kInfo, "i %d outputIndex %d i == paramIndex ? %d", i,
+      LOG(kDefLog, kInfo, "Create layout entry for buffer %d", i);
+      LOG(kDefLog, kInfo, "i %d outputIndex %d i == paramIndex ? %d", i,
           outputIndex, i == paramIndex);
       bgLayoutEntries[i] = WGPUBindGroupLayoutEntry{
           .binding = static_cast<uint32_t>(i),
@@ -158,7 +158,7 @@ MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
         .entries = bgLayoutEntries.data()};
     WGPUBindGroupLayout bgLayout =
         wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
-    log(kDefLog, kInfo, "Create input and output buffers");
+    LOG(kDefLog, kInfo, "Create input and output buffers");
     for (size_t inputIndex = 0; inputIndex < desc.numInputs[shaderIdx];
          ++inputIndex) {
       multiKernel.buffers[bufferIndex] = desc.inputs[inputIndex].data.buffer;
@@ -178,20 +178,20 @@ MultiKernel CreateMultiKernel(Context &ctx, const MultiKernelDesc &desc) {
           .size = desc.paramSizes[shaderIdx],
           .mappedAtCreation = false,
       };
-      log(kDefLog, kInfo, "Create the params buffer at bufferIndex %d",
+      LOG(kDefLog, kInfo, "Create the params buffer at bufferIndex %d",
           bufferIndex);
       multiKernel.buffers[bufferIndex] =
           wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
       multiKernel.bufferSizes[bufferIndex] = desc.paramSizes[shaderIdx];
       bufferIndex++;
-      log(kDefLog, kInfo, "Params buffer written");
+      LOG(kDefLog, kInfo, "Params buffer written");
     } else {
-      log(kDefLog, kInfo, "No params buffer needed");
+      LOG(kDefLog, kInfo, "No params buffer needed");
     }
     {
       std::vector<WGPUBindGroupEntry> bindGroupEntries(
           multiKernel.numBuffers[shaderIdx]);
-      log(kDefLog, kInfo, "Number of buffers: %d",
+      LOG(kDefLog, kInfo, "Number of buffers: %d",
           multiKernel.numBuffers[shaderIdx]);
       for (size_t i = 0; i < multiKernel.numBuffers[shaderIdx]; ++i) {
         bindGroupEntries[i] = WGPUBindGroupEntry{
@@ -275,7 +275,7 @@ void DispatchMultiKernel(Context &ctx, MultiKernel &multiKernel) {
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        log(kDefLog, kInfo, "QueueOnSubmittedWorkDone status: %d",
+        LOG(kDefLog, kInfo, "QueueOnSubmittedWorkDone status: %d",
             WGPUQueueWorkDoneStatus_Success == status);
         check(status == WGPUQueueWorkDoneStatus_Success,
               "Check queue work success", __FILE__, __LINE__);
@@ -321,11 +321,11 @@ void TestMultiKernel1(Context &ctx) {
   DispatchMultiKernel(ctx, pipeline);
   Wait(ctx, pipeline.future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s",
+  LOG(kDefLog, kInfo, "%s",
       show<float, B * T, C>(inputArr, "Softmax Input").c_str());
-  log(kDefLog, kInfo, "%s",
+  LOG(kDefLog, kInfo, "%s",
       show<float, B * T, C>(outputArr, "Softmax Output").c_str());
-  log(kDefLog, kInfo, "Done with MultiKernel Test 1");
+  LOG(kDefLog, kInfo, "Done with MultiKernel Test 1");
 }
 
 void TestMultiKernel2(Context &ctx) {
@@ -372,15 +372,15 @@ void TestMultiKernel2(Context &ctx) {
   MultiKernel pipeline = CreateMultiKernel(ctx, desc);
   DispatchMultiKernel(ctx, pipeline);
   Wait(ctx, pipeline.future);
-  log(kDefLog, kInfo, "%s",
+  LOG(kDefLog, kInfo, "%s",
       show<float, B * T, C>(inputArr, "Softmax Input").c_str());
   ToCPU(ctx, outputs[0], outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s",
+  LOG(kDefLog, kInfo, "%s",
       show<float, B * T, C>(outputArr, "Softmax Output 0").c_str());
   ToCPU(ctx, outputs[1], outputArr.data(), sizeof(outputArr));
-  log(kDefLog, kInfo, "%s",
+  LOG(kDefLog, kInfo, "%s",
       show<float, B * T, C>(outputArr, "Softmax Output 1").c_str());
-  log(kDefLog, kInfo, "Done with MultiKernel Test 2");
+  LOG(kDefLog, kInfo, "Done with MultiKernel Test 2");
 }
 
 #endif  // _EXPERIMENTAL_H_

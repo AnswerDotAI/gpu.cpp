@@ -1,7 +1,7 @@
 NUM_JOBS=$(shell nproc)
 CXX=clang++
 
-.PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-entr check-clang clean-build clean all
+.PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-entr check-clang clean-build clean all watch-tests
 
 GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
@@ -11,9 +11,6 @@ default: examples/hello_world/build/hello_world
 
 examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp
 	$(LIBSPEC) && cd examples/hello_world && make build/hello_world && ./build/hello_world
-
-build/run_tests: check-clang dawnlib
-	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib utils/test_kernels.cpp -ldawn -ldl -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
 
 dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dylib),,run_setup)
 
@@ -37,10 +34,6 @@ FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON
 DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
 RELEASE_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=OFF
 TARGET_LIB=gpu
-TARGET_TESTS=run_tests
-
-tests-cmake: check-clang check-cmake
-	$(CMAKE_CMD) $(FASTBUILD_FLAGS) && make -j$(NUM_JOBS) $(TARGET_TESTS) && ./$(TARGET_TESTS)
 
 libgpu-cmake: check-clang check-cmake
 	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) gpu

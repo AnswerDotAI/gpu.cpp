@@ -118,6 +118,7 @@ int main() {
     .key_cache = CreateTensor(ctx, Shape{seqLen, qkvDim}, kf32),
     .value_cache = CreateTensor(ctx, Shape{seqLen, qkvDim}, kf32),
   };
-
-  // TODO(avh)
+  // clear screen
+  printf("\033[2J\033[1;1H");
+  printf("Done\n");
 }

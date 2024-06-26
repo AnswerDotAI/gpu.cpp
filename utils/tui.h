@@ -9,8 +9,6 @@
 
 namespace gpu {
 
-static const char kIntensity[] = "@%#8$X71x*+=-:^~'.` ";
-
 void cls() { printf("\033[2J\033[H"); }
 
 template <size_t NROWS, size_t NCOLS>

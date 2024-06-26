@@ -1,7 +1,6 @@
 # gpu.cpp
 
-gpu.cpp is a lightweight C++ library to write portable low-level GPU code that
-runs everywhere.
+gpu.cpp is a lightweight C++ library to write portable low-level GPU code.
 
 *Work-in-Progress*
 
@@ -13,16 +12,17 @@ without any intermediaries of model exporting, compilation, or runtime support.
 gpu.cpp is a lightweight library that makes it simple to write low-level GPU
 code that runs on any device with almost any GPU.
 
-While AI research today focuses on the frontier of datacenters, there is
-immense potential for highly capable generalist models to be embedded in
-computers that are personal and local.
+While AI research today is focused on the frontier of large-compute, expensive
+training runs, and datacenters, there is also immense potential for another
+frontier - highly capable generalist models to be embedded in computers that
+are personal and local.
 
-There’s a deep stack of technologies supporting large-scale datacenter GPU
-compute beginning with low level CUDA on top of which there’s a stack of
-compilers and frameworks. By contrast, when we think of developing low level
-GPU compute on personal devices, it’s been largely relegated to a small group
-of game engine developers and machine learning compiler and inference runtime
-experts. 
+For large-scale compute, there is a deep stack of technologies supporting
+large-scale datacenter GPU compute beginning with low level CUDA on top of
+which there’s a stack of compilers and frameworks. By contrast, when we think
+of developing low level GPU compute on personal devices, it’s been largely
+relegated to a few game engine developers and machine learning compiler and
+inference runtime experts. 
 
 We created gpu.cpp as a lightweight C++ library that allows us to easily and
 directly implement native low-level GPU algorithms as part of R&D and drop
@@ -38,21 +38,21 @@ Web](https://www.youtube.com/watch?v=qHrx41aOTUQ))
 
 By leveraging the WebGPU API specification as simply a portable interface to
 any GPU supported by native implementations that conform to major GPU
-interfaces like Metal, DirectX, and Vulkan. This means we can drop-in simple,
-low-level GPU code in our C++ projects and have it run on Nvidia, Intel, AMD
-GPUs, and even on Apple and Android mobile devices.
+interfaces like Metal, DirectX, and Vulkan. This means we can incorporate
+simple, low-level GPU code in our C++ projects and have it run on Nvidia,
+Intel, AMD GPUs, and even on Apple and Android mobile devices.
 
 gpu.cpp can be used for projects where you want portable easily-integrated GPU
 compute directly integrated into your system implementation. Some examples (but
 not limited to) include:
 
+- Direct fine-grained implementations of neural network architectures.
 - R&D for low-level GPU algorithms to be run on personal devices
+- Parallel compute-intensive physics simulations and physics engines.
 - GPU compution for applications - audio and video digital signal processing,
   custom game engines etc.
-- Direct fine-grained implementations of neural network architectures.
 - Offline rendering.
 - ML inference engines and runtimes.
-- Parallel compute-intensive physics simulations.
 
 gpu.cpp provides a small but powerful set of core functions and types that make
 WebGPU compute simple and concise to work with R&D and application use cases.
@@ -156,6 +156,11 @@ asynchronously, blocks on the result with `Wait()`, and then retrieves the
 result for display with `ToCPU()`. In performance critical code, you try to
 keep as much of the computation on the GPU as possible and minimize the amount
 of data transfer between the CPU and GPU. 
+
+The ahead-of-time resource acquisition functions are prefaced with `Create`,
+such as `CreateContext`, `CreateTensor`, `CreateKernel`, `CreateShader`. The
+asynchronous dispatch function is `DispatchKernel` and `ToCPU` moves data from
+the GPU to CPU, `Wait` blocks until the GPU computation is complete.
 
 This example is available in `examples/hello_world/run.cpp`. 
 
