@@ -6,7 +6,6 @@
 #include <thread>
 
 #include "gpu.h"
-#include "utils/tui.h" // rasterize
 #include "utils/array_utils.h"                       
 
 using namespace gpu;
