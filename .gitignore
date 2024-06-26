@@ -1,4 +1,6 @@
 build/*
+# any build subdirectory in the tree
+**/build/
 examples/hello_gpu/build/*
 examples/raymarch/build/*
 docs/html

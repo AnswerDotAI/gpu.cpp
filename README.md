@@ -7,10 +7,28 @@ runs everywhere.
 
 ## Who is gpu.cpp for?
 
-For exploring this space of GPU algorithms with the ability to portably just
-work on a wide range of hardware, without any intermediaries of model export,
-compilation, or runtime support, gpu.cpp is a lightweight library that makes it
-simple to write low-level GPU code that runs on any device with almost any GPU.
+gpu.cpp makes it simple to implement and integrate low-level GPU algorithms in
+your code with the ability to portably just work on a wide range of hardware,
+without any intermediaries of model exporting, compilation, or runtime support.
+gpu.cpp is a lightweight library that makes it simple to write low-level GPU
+code that runs on any device with almost any GPU.
+
+While AI research today focuses on the frontier of datacenters, there is
+immense potential for highly capable generalist models to be embedded in
+computers that are personal and local.
+
+There’s a deep stack of technologies supporting large-scale datacenter GPU
+compute beginning with low level CUDA on top of which there’s a stack of
+compilers and frameworks. By contrast, when we think of developing low level
+GPU compute on personal devices, it’s been largely relegated to a small group
+of game engine developers and machine learning compiler and inference runtime
+experts. 
+
+We created gpu.cpp as a lightweight C++ library that allows us to easily and
+directly implement native low-level GPU algorithms as part of R&D and drop
+implementations into code running on personal computing devices either as
+native applications or in the browser without impediment by hardware, tooling,
+or runtime support.
 
 gpu.cpp is implemented using the WebGPU API specification, which is designed
 for cross-platform GPU interactions. In spite of the name, WebGPU has native
@@ -24,12 +42,50 @@ interfaces like Metal, DirectX, and Vulkan. This means we can drop-in simple,
 low-level GPU code in our C++ projects and have it run on Nvidia, Intel, AMD
 GPUs, and even on Apple and Android mobile devices.
 
+gpu.cpp can be used for projects where you want portable easily-integrated GPU
+compute directly integrated into your system implementation. Some examples (but
+not limited to) include:
+
+- R&D for low-level GPU algorithms to be run on personal devices
+- GPU compution for applications - audio and video digital signal processing,
+  custom game engines etc.
+- Direct fine-grained implementations of neural network architectures.
+- Offline rendering.
+- ML inference engines and runtimes.
+- Parallel compute-intensive physics simulations.
+
 gpu.cpp provides a small but powerful set of core functions and types that make
 WebGPU compute simple and concise to work with R&D and application use cases.
 It keeps abstractions minimal and transparent. It has no dependencies other
-than the WebGPU API implementation itself (Dawn for native).
+than an implementation of the WebGPU API (Google's Dawn in the case of native
+builds).
 
 ## Hello World: A GELU Kernel
+
+While there are many general purpose GPU computing beyond machine learning, a
+simple example of a GELU kernel is a good starting point for understanding how
+to use gpu.cpp.
+
+GELU is an activation function in neural networks often used in mdoern large
+language model transformer architectures. It takes as input a vector of floats
+and applies the GELU function to each element of the vector. The function is
+nonlinear, attenuating values below zero to near zero, approximating the y = x
+identity function for largepositive values. For values near zero, smoothly
+interpolates between the identity function and the zero function.
+
+To implement the GELU function, we can think of the code in three parts:
+
+1. The code that runs on the GPU that implements the mathematical opporation.
+2. The code that runs on the CPU that sets up the GPU computation by allocating
+   and preparing resources. For high performance, this code should be run
+   ahead-of-time from the hot paths of the application.
+3. The code that runs on the CPU that dispatches the GPU computation and
+   retrieves the results. This code should be run from the hot paths of the
+   application.
+
+In this example, the GELU computation is only performed once so (2) and (3)
+occur sequentially, but other examples show examples of how resource
+acquisition is prepared ahead of time and dispatch occurs in the hot path.
 
 Here's an GELU kernel implemented (based on the CUDA implementation of
 [llm.c](https://github.com/karpathy/llm.c)) as an on-device WGSL shader and
@@ -56,122 +112,120 @@ fn main(
     let i: u32 = GlobalInvocationID.x;
     if (i < arrayLength(&inp)) {
         let x: f32 = inp[i];
-        // select is more stable than tanh for large x
         out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
-               * (x + .044715 * x * x * x))), x, x > 10.0);
+                 * (x + .044715 * x * x * x))), x, x > 10.0);
     }
 }
 )";
 
 int main(int argc, char **argv) {
-  printf("\nHello, gpu.cpp\n\n");
+  printf("\033[2J\033[1;1H");
+  printf("\nHello gpu.cpp!\n");
+  printf("--------------\n\n");
+
   Context ctx = CreateContext();
-  static constexpr size_t N = 3072;
+  static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
-    inputArr[i] = static_cast<float>(i) / 2.0; // dummy input data
+    inputArr[i] = static_cast<float>(i) / 10.0; // dummy input data
   }
   Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = CreateTensor(ctx, Shape{N}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32), TensorList{input, output},
+  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32),
+                           TensorList{input, output},
                            /* nthreads */ {N, 1, 1});
   DispatchKernel(ctx, op, promise);
   Wait(ctx, future);
   ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 32; ++i) {
-    printf("out[%d] : gelu(%.2f) = %.2f\n", i, inputArr[i], outputArr[i]);
+  for (int i = 0; i < 16; ++i) {
+    printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }
-  printf("...\n\n");
+  printf("  ...\n\n");
+  printf("Computed %zu values of GELU(x)\n\n", N);
   return 0;
 }
 ```
+
+As shown above, the GPU code is quoted in a domain specific language called
+WGSL (WebGPU Shading Language). The code is compiled and runs on the GPU.
+
+The CPU code in `main()` sets up the GPU computation, dispatches it
+asynchronously, blocks on the result with `Wait()`, and then retrieves the
+result for display with `ToCPU()`. In performance critical code, you try to
+keep as much of the computation on the GPU as possible and minimize the amount
+of data transfer between the CPU and GPU. 
 
 This example is available in `examples/hello_world/run.cpp`. 
 
 ## Quick Start: Dependencies and Installation
 
 The only dependency of this library is a WebGPU implementation. Currently we
-recommend using the Dawn backend until further testing, but we plan to support
-emscripten (web) and wgpu (native) backends.
+recommend using the Dawn native backend until further testing, but we plan to
+support other targets and WebGPU implementations (eg the web, or possibly wgpu
+as an alternative native backend to Dawn).
 
-You should have clang and cmake installed (we currently test on 3.25+). On mac,
-you can install cmake using [homebrew](https://brew.sh/) with: `brew install
-cmake`. On Ubuntu, you can install cmake using `apt-get` with: `sudo apt-get
-install cmake`.
+Currently we only support Linux and MacOS. Windows support via WGSL is planned.
+
+To build gpu.cpp, you should have clang installed and support C++17. You should
+also have python a python script is used to download a precompiled binary for
+the Dawn webgpu implementation)a precompiled binary for the Dawn webgpu
+implementation. 
+
+Optionally, Dawn can be built from scratch using a cmake build option, but this
+is only recommended for advanced users. cmake builds take much longer than
+using the provided  precompiled binary as it compiles the entire WebGPU C API
+implementation.
 
 ## Quick Start: Building and Running
 
-(( TODO(avh): Change this to use pre-built binaries ))
+After cloning the repo, from the top-level gpu.cpp, you should be able to build
+and run the hello world GELU example by typing:
 
-The build is handled by cmake. Some useful common cmake invocations are wrapped
-in the convenience Makefile. 
+`make`
 
-The first time you build and run the project, it will download the WebGPU
-backend implementation (Dawn by default) and build it which may take a few
-minutes. The gpu.cpp library itself is small so after building the Dawn backend
-the first time, subsequent builds of the library should take seconds on most
-personal computing devices.
+The first time you build and run the project this way, it will download a
+prebuilt shared library for the Dawn native WebGPU implementation automatically
+(using the `setup.py` script). This places the Dawn shared library in the
+`third_party/lib` directory. Afterwards you should see `libdawn.dylib` on MacOS
+or `libdawn.so` on Linux. This download only occurs the first time, after which
+the shared library is reused for builds.
 
-*Using gpu.cpp as a Library*
+The build process itself should take a second or two - both the implementation
+code in `examples/hello_world/run.cpp` and the core library in `gpu.h` is very
+small to make compilation iterations fast.
 
-You can build the library itself which builds a shared library that you can
-link against for your own projects. This builds a library that can be used in
-other C++ projects (most of the code is in `gpu.h`, plus some supporting code
-in `utils/`).
-
-```
-make libgpu
-```
-
-If you are starting a new project using gpu.cpp as a library dependency, we
-recommend starting by cloning the template project
-[https://github.com/AnswerDotAI/gpu.cpp-template](https://github.com/AnswerDotAI/gpu.cpp-template).
-
-*Example Demos in `examples/`*
-
-From there you can explore the example projects in `examples/` which illustrate
-how to use gpu.cpp as a library. For example a standalone version of the hello
-world gelu kernel shown above:
+If the build and executions is successful, you should see the output of the
+GELU computation:
 
 ```
-cd examples/hello_world && make run & cd ../..
+Hello gpu.cpp!
+--------------
+
+  gelu(0.00) = 0.00
+  gelu(0.10) = 0.05
+  gelu(0.20) = 0.12
+  gelu(0.30) = 0.19
+  gelu(0.40) = 0.26
+  gelu(0.50) = 0.35
+  gelu(0.60) = 0.44
+  gelu(0.70) = 0.53
+  gelu(0.80) = 0.63
+  gelu(0.90) = 0.73
+  gelu(1.00) = 0.84
+  gelu(1.10) = 0.95
+  gelu(1.20) = 1.06
+  gelu(1.30) = 1.17
+  gelu(1.40) = 1.29
+  gelu(1.50) = 1.40
+  ...
+
+Computed 10000 values of GELU(x)
 ```
 
-You should see a bit of output showing the first elements of the GELU
-computation from the above example:
-
-```
-Hello, gpu.cpp
-
-0 : 0.000000
-1 : 0.841192
-2 : 1.954598
-3 : 2.996363
-4 : 3.999930
-5 : 5.000000
-6 : 6.000000
-7 : 7.000000
-8 : 8.000000
-9 : 9.000000
-...
-```
-
-*Machine Learning Kernel Implementations (WIP)*
-
-A more extensive set of (machine learning-centric) kernels is implemented in
-`utils/test_kernels.cpp`. This can be built and run (from the top level
-directory) using:
-
-```
-make tests
-```
-
-For more configurability and control of the build, see the `cmake`  invocations
-in the `Makefile`,  as well as the configuration in `Cmakelists.txt`.
-
-*Resetting Build State / Removing Build Artifacts*
+From here you can explore the example projects in `examples/` which illustrate
+how to use gpu.cpp as a library. 
 
 If you need to clean up the build artifacts, you can run:
 
@@ -182,33 +236,6 @@ make clean
 ## Troubleshooting
 
 If you run into issues building the project, please open an issue.
-
-## Motivation and Goals
-
-Although gpu.cpp is intended for any form of general purpose GPU computation,
-the project is partly motivated by emerging needs in machine learning R&D. 
-
-Specifically, with large foundation models, a significant amount of R&D now
-occurs in the post-training computation. Large foundation models have become
-become computable objects over which custom algorithms are implemented.
-Performing custom computations over compute-intensive foundation models
-benefits from low-level control of the GPU. 
-
-At this time, tooling for implementing low-level GPU computation is heavily
-focused on CUDA as a first class citizen. This leaves a gap in portability,
-meaning R&D algorithms that work in a research environment are difficult to
-operationalize for everyday use to run on personal computing hardware that's
-broadly accessible (personal workstations, laptops, mobile devices).
-
-We created gpu.cpp as a lightweight C++ library that allows us to easily and
-directly implement native low-level GPU algorithms as part of R&D and drop
-implementations into code running on personal computing devices either as
-native applications or in the browser without impediment by hardware, tooling,
-or runtime support.
-
-## What gpu.cpp is for
-
-(( TODO(avh) ))
 
 ## What gpu.cpp is not
 
@@ -232,13 +259,23 @@ rendering/graphics on the GPU, although it might be useful for compute shaders
 in graphics projects - one of the examples is a small compute renderer,
 rendered to the terminal.
 
-## Limitations
+## Limitations and Upcoming Features
 
-(( TODO(avh) ))
+gpu.cpp is a work-in-progress and there are many features and improvements to
+come. At this early stage, we expect the API design to evolve as we identify
+improvements / needs from use cases.
+
+In spite of using WebGPU we haven't tested builds/targeting the browser yet
+though that is planned. 
 
 ## Acknowledgements
 
-(( TODO(avh) ))
+We use:
+- [Dawn](https://dawn.googlesource.com/dawn) as the WebGPU implementation
+- [webgpu-dawn-binaries](https://github.com/jspanchu/webgpu-dawn-binaries) by
+  @jspanchu to build a binary artifact of Dawn.
+- [webgpu-distribution](https://github.com/eliemichel/WebGPU-distribution) by
+  @eliemichel for cmake builds.
 
 ## Contributing and Work-in-Progress
 
