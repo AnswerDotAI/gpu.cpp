@@ -17,7 +17,7 @@ build/run_tests: check-dependencies dawnlib
 
 dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dylib),,run_setup)
 
-run_setup:
+run_setup: check-python
 	python setup.py
 
 all: dawnlib
@@ -79,3 +79,6 @@ check-dependencies:
 
 check-entr:
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
+
+check-python:
+	@command -v python >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 
