@@ -159,24 +159,24 @@ of data transfer between the CPU and GPU.
 
 This example is available in `examples/hello_world/run.cpp`. 
 
-## Quick Start: Dependencies and Installation
+## Dependencies
+
+To build gpu.cpp, you only need:
+
+- `clang++` compiler installed with support for C++17.
+- python 3+ (to run the script which downloads the Dawn shared library) 
+- `make` to build the project.
 
 The only dependency of this library is a WebGPU implementation. Currently we
 recommend using the Dawn native backend until further testing, but we plan to
 support other targets and WebGPU implementations (eg the web, or possibly wgpu
-as an alternative native backend to Dawn).
-
-Currently we only support Linux and MacOS. Windows support via WGSL is planned.
-
-To build gpu.cpp, you should have clang installed and support C++17. You should
-also have python a python script is used to download a precompiled binary for
-the Dawn webgpu implementation)a precompiled binary for the Dawn webgpu
-implementation. 
+as an alternative native backend to Dawn). Currently we also only support Linux
+and MacOS although Windows support via WGSL is planned.
 
 Optionally, Dawn can be built from scratch using a cmake build option, but this
 is only recommended for advanced users. cmake builds take much longer than
-using the provided  precompiled binary as it compiles the entire WebGPU C API
-implementation.
+using the provided precompiled Dawn shared library binary as it compiles the
+entire WebGPU C API implementation from scratch.
 
 ## Quick Start: Building and Running
 
