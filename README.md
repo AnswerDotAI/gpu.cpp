@@ -3,81 +3,26 @@
 gpu.cpp is a lightweight library for portable low-level GPU computation
 directly into C++ programs.
 
-It provides a small composable set of core
-functions and types for GPU compute using the WebGPU API.
+It provides a small composable set of core functions and types for GPU compute
+using the WebGPU API.
 
-*Work-in-Progress*
-
-## Who is gpu.cpp for?
-
-gpu.cpp makes it simple to implement and integrate low-level GPU algorithms in
-your code with the ability to portably just work on a wide range of hardware,
-without any intermediaries of model exporting, compilation, or runtime support.
-gpu.cpp is a lightweight library that makes it simple to write low-level GPU
-code that runs on any device with almost any GPU.
-
-While AI research today is focused on the frontier of large-compute, expensive
-training runs, and datacenters, there is also immense potential for another
-frontier - highly capable generalist models to be embedded in computers that
-are personal and local.
-
-For large-scale compute, there is a deep stack of technologies supporting
-large-scale datacenter GPU compute beginning with low level CUDA on top of
-which there’s a stack of compilers and frameworks. By contrast, when we think
-of developing low level GPU compute on personal devices, it’s been largely
-relegated to a few game engine developers and machine learning compiler and
-inference runtime experts. 
-
-We created gpu.cpp as a lightweight C++ library that allows us to easily and
-directly implement native low-level GPU algorithms as part of R&D and drop
-implementations into code running on personal computing devices either as
-native applications or in the browser without impediment by hardware, tooling,
-or runtime support.
-
-gpu.cpp is implemented using the WebGPU API specification, which is designed
-for cross-platform GPU interactions. In spite of the name, WebGPU has native
-(Dawn and wgpu) implementations decoupled from the web and the browser. For
-additional background - see [WebGPU is Not Just about the
-Web](https://www.youtube.com/watch?v=qHrx41aOTUQ))
-
-By leveraging the WebGPU API specification as simply a portable interface to
-any GPU supported by native implementations that conform to major GPU
-interfaces like Metal, DirectX, and Vulkan. This means we can incorporate
-simple, low-level GPU code in our C++ projects and have it run on Nvidia,
-Intel, AMD GPUs, and even on Apple and Android mobile devices.
-
-gpu.cpp can be used for projects where you want portable easily-integrated GPU
-compute directly integrated into your system implementation. Some examples (but
-not limited to) include:
-
-- Direct fine-grained implementations of neural network architectures.
-- R&D for low-level GPU algorithms to be run on personal devices
-- Parallel compute-intensive physics simulations and physics engines.
-- GPU compution for applications - audio and video digital signal processing,
-  custom game engines etc.
-- Offline rendering.
-- ML inference engines and runtimes.
-
-gpu.cpp provides a small but powerful set of core functions and types that make
-WebGPU compute simple and concise to work with R&D and application use cases.
-It keeps abstractions minimal and transparent. It has no dependencies other
-than an implementation of the WebGPU API (Google's Dawn in the case of native
-builds).
+*** This project is a work-in-progress *** for now we recommend use to be
+limited to contributing developers and early adopters.
 
 ## Hello World: A GELU Kernel
 
-While there are many general purpose GPU computing beyond machine learning, a
-simple example of a GELU kernel is a good starting point for understanding how
-to use gpu.cpp.
+Although there are many uses for general purpose GPU computing beyond AI, a
+simple example of a GELU kernel used in neural networks is nevertheless a good
+starting point for understanding how to use gpu.cpp.
 
-GELU is an activation function in neural networks often used in mdoern large
+GELU is an activation function in neural networks often used in modern large
 language model transformer architectures. It takes as input a vector of floats
 and applies the GELU function to each element of the vector. The function is
 nonlinear, attenuating values below zero to near zero, approximating the y = x
 identity function for largepositive values. For values near zero, smoothly
 interpolates between the identity function and the zero function.
 
-To implement the GELU function, we can think of the code in three parts:
+To implement this, we can think of the code in three parts:
 
 1. The code that runs on the GPU that implements the mathematical opporation.
 2. The code that runs on the CPU that sets up the GPU computation by allocating
@@ -123,10 +68,7 @@ fn main(
 )";
 
 int main(int argc, char **argv) {
-  printf("\033[2J\033[1;1H");
-  printf("\nHello gpu.cpp!\n");
-  printf("--------------\n\n");
-
+  printf("\nHello gpu.cpp!\n\n");
   Context ctx = CreateContext();
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
@@ -146,48 +88,44 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 16; ++i) {
     printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }
-  printf("  ...\n\n");
-  printf("Computed %zu values of GELU(x)\n\n", N);
+  printf("... \n\n  Computed %zu values of GELU(x)\n\n", N);
   return 0;
 }
 ```
 
 As shown above, the GPU code is quoted in a domain specific language called
-WGSL (WebGPU Shading Language). The code is compiled and runs on the GPU.
+WGSL (WebGPU Shading Language). In a larger project, you would store this code
+in a separate file to be loaded at runtime. The WGSL code is compiled and runs
+on the GPU.
 
-The CPU code in `main()` sets up the GPU computation, dispatches it
-asynchronously, blocks on the result with `Wait()`, and then retrieves the
-result for display with `ToCPU()`. In performance critical code, you try to
-keep as much of the computation on the GPU as possible and minimize the amount
-of data transfer between the CPU and GPU. 
-
+The CPU code in `main()` sets up the host coordination for the GPU computation.
 The ahead-of-time resource acquisition functions are prefaced with `Create`,
-such as `CreateContext`, `CreateTensor`, `CreateKernel`, `CreateShader`. The
-asynchronous dispatch function is `DispatchKernel` and `ToCPU` moves data from
-the GPU to CPU, `Wait` blocks until the GPU computation is complete.
+such as `CreateContext`, `CreateTensor`, `CreateKernel`, `CreateShader`. 
 
-This example is available in `examples/hello_world/run.cpp`. 
+The dispatch occurs asynchronously via the `DispatchKernel` invocation. `Wait`
+blocks until the GPU computation is complete and `ToCPU` moves data from the
+GPU to CPU.  This example is available in `examples/hello_world/run.cpp`. 
 
-## Dependencies
+## Quick Start
 
 To build gpu.cpp, you only need:
 
 - `clang++` compiler installed with support for C++17.
-- python3 and above, to run the script which downloads the Dawn shared library.
+- `python3` and above, to run the script which downloads the Dawn shared library.
 - `make` to build the project.
 
-The only dependency of this library is a WebGPU implementation. Currently we
-recommend using the Dawn native backend until further testing, but we plan to
-support other targets and WebGPU implementations (eg the web, or possibly wgpu
-as an alternative native backend to Dawn). Currently we also only support Linux
-and MacOS although Windows support via WGSL is planned.
+The only package dependency of this library is a WebGPU implementation.
+Currently we support the Dawn native backend, but we plan to support other
+targets and WebGPU implementations (web browsers or other native
+implementations such as wgpu). Currently we support MacOS, Linux, and Windows
+(via WSL).
 
-Optionally, Dawn can be built from scratch using a cmake build option, but this
-is only recommended for advanced users. cmake builds take much longer than
-using the provided precompiled Dawn shared library binary as it compiles the
-entire WebGPU C API implementation from scratch.
+Optionally, Dawn can be built from scratch with gpu.cpp using the cmake build
+scripts provided, but this is only recommended for advanced users. cmake builds
+take much longer than using the provided precompiled Dawn shared library binary
+as it compiles the entire WebGPU C API implementation from scratch.
 
-## Quick Start: Building and Running
+### Building and Running
 
 After cloning the repo, from the top-level gpu.cpp, you should be able to build
 and run the hello world GELU example by typing:
@@ -198,12 +136,10 @@ The first time you build and run the project this way, it will download a
 prebuilt shared library for the Dawn native WebGPU implementation automatically
 (using the `setup.py` script). This places the Dawn shared library in the
 `third_party/lib` directory. Afterwards you should see `libdawn.dylib` on MacOS
-or `libdawn.so` on Linux. This download only occurs the first time, after which
-the shared library is reused for builds.
+or `libdawn.so` on Linux. This download only occurs the first time.
 
-The build process itself should take a second or two - both the implementation
-code in `examples/hello_world/run.cpp` and the core library in `gpu.h` is very
-small to make compilation iterations fast.
+The build process itself should take a second or two - the core library in
+`gpu.h` are kept small by design to make compilation iterations fast.
 
 If the build and executions is successful, you should see the output of the
 GELU computation:
@@ -251,6 +187,56 @@ make clean
 ## Troubleshooting
 
 If you run into issues building the project, please open an issue.
+
+## Who is gpu.cpp for?
+
+gpu.cpp is a lightweight library that makes it simple to write low-level GPU
+code that runs on any device with almost any GPU. You can simply implement and
+integrate low-level GPU algorithms in an application with the ability to
+portably just work on a wide range of hardware, without intermediaries of model
+exporting, compilation, or runtime support. 
+
+Although gpu.cpp can be applied to any GPU compute use cases beyond AI, we also
+hope it helps to explore the potential for personal and local AI. For
+large-scale compute, there is a deep stack of technologies supporting
+large-scale datacenter GPU compute beginning with low level CUDA on top of
+which there’s a stack of compilers and frameworks. By contrast, when we think
+of developing low level GPU compute on personal devices, its use has been
+largely to large specialized projects such as ML compiler and runtime
+implementations. 
+
+We created gpu.cpp as a lightweight C++ library that allows us to easily and
+directly implement native low-level GPU algorithms as part of R&D and drop
+implementations into portable code running on personal computing devices.
+
+gpu.cpp is implemented using the WebGPU API specification, which is designed
+for cross-platform GPU interactions. In spite of the name, WebGPU has native
+(Dawn and wgpu) implementations decoupled from the web and the browser. For
+additional background - see [WebGPU is Not Just about the
+Web](https://www.youtube.com/watch?v=qHrx41aOTUQ))
+
+By leveraging the WebGPU API specification as simply a portable interface to
+any GPU supported by native implementations that conform to major GPU
+interfaces like Metal, DirectX, and Vulkan. This means we can incorporate
+simple, low-level GPU code in our C++ projects and have it run on Nvidia,
+Intel, AMD GPUs, and even Apple and Android mobile devices.
+
+gpu.cpp can be used for projects targeting portable GPU compute directly
+integrated into your project. Some examples (but not limited to) include:
+
+- Direct code implementations of neural network architectures.
+- R&D for low-level GPU algorithms to be run on personal devices.
+- Parallel compute-intensive physics simulations and physics engines.
+- GPU compution for applications - audio and video digital signal processing,
+  custom game engines etc.
+- Offline rendering.
+- ML inference engines and runtimes.
+
+gpu.cpp provides a small but powerful set of core functions and types that make
+WebGPU compute simple and concise to work with R&D and application use cases.
+It keeps abstractions minimal and transparent. It has no dependencies other
+than an implementation of the WebGPU API (Google's Dawn in the case of native
+builds).
 
 ## What gpu.cpp is not
 
