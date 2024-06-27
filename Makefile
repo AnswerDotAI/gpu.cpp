@@ -85,7 +85,7 @@ check-linux-vulkan:
 	        echo "Vulkan is installed."; \
 	        vulkaninfo; \
 	    else \
-        	echo "Vulkan is not installed. Please install Vulkan drivers to continue. On Debian / Ubuntu: `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools`"; \
+        	echo "Vulkan is not installed. Please install Vulkan drivers to continue. On Debian / Ubuntu: sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools"; \
 	        exit 1; \
 	    fi \
 	else \
