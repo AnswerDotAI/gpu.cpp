@@ -22,15 +22,19 @@ inline void LOG(Logger& logger, int level, const char *message, ...) {
   static const char *red = "\033[0;31m";
   static const char *white = "\033[0;37m";
   static const char *gray = "\033[0;90m";
+  static const char *reset = "\033[0m";
   static const char *logColors[] = {red, red, orange, gray};
   if (level <= logger.level) {
     va_list(args);
     va_start(args, message);
     snprintf(logger.buffer, sizeof(logger.buffer), message, args);
-    fprintf(logger.stream, "[%s%s%s] ", logColors[level], kLevelStr[level],
+    // Brackets and messages are white.
+    // Log levells are red for error and warning, orange for info, and grey for trace.
+    // Then the color is reset.
+    fprintf(logger.stream, "%s[%s%s%s] ", white, logColors[level], kLevelStr[level],
             white);
     vfprintf(logger.stream, message, args);
-    fprintf(logger.stream, "\n");
+    fprintf(logger.stream, "%s\n", reset);
     va_end(args);
   }
 }
