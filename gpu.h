@@ -20,10 +20,10 @@ namespace gpu {
 
 static Logger kGpuLog = {stdout, "", kInfo};
 
-#ifdef NDEBUG
-static constexpr bool kDebug = false;
-#else
+#ifndef NDEBUG
 static constexpr bool kDebug = true;
+#else
+static constexpr bool kDebug = false;
 #endif
 
 /**
@@ -228,7 +228,7 @@ struct Context {
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
   ~Context() {
-    LOG(kDefLog, kInfo, "Destroying context");
+    LOG(kDefLog, kTrace, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
       wgpuInstanceProcessEvents(instance);
@@ -252,7 +252,7 @@ struct Context {
     } else {
       LOG(kDefLog, kWarn, "Instance is null");
     }
-    LOG(kDefLog, kInfo, "Destroyed context");
+    LOG(kDefLog, kTrace, "Destroyed context");
   }
 };
 

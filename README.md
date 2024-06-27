@@ -1,10 +1,10 @@
 # gpu.cpp
 
 gpu.cpp is a lightweight library incorporating portable, low-level GPU
-computation code directly into the C++ code of applications and R&D projects.
+computations directly into the C++ code of applications and R&D projects.
 
-It uses WebGPU in the backend and provides a small, simple set of functions and
-types for portable GPU computation.
+It uses WebGPU as a portable native GPU API, and provides a small, simple set
+of functions and types for portable GPU computation.
 
 *** This project is a work-in-progress *** for now we recommend use to be
 limited to contributing developers and early adopters.
@@ -113,7 +113,7 @@ To build gpu.cpp, you will need to have installed on your system:
 - `clang++` compiler installed with support for C++17.
 - `python3` and above, to run the script which downloads the Dawn shared library.
 - `make` to build the project.
-- *Only on Linux systems* Vulkan drivers. If Vulkan is not installed, you can
+- *Only on Linux systems* - Vulkan drivers. If Vulkan is not installed, you can
   run `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install
   them.
 
