@@ -108,11 +108,16 @@ GPU to CPU.  This example is available in `examples/hello_world/run.cpp`.
 
 ## Quick Start
 
-To build gpu.cpp, you only need:
+To build gpu.cpp, the system requirements are:
 
 - `clang++` compiler installed with support for C++17.
 - `python3` and above, to run the script which downloads the Dawn shared library.
 - `make` to build the project.
+- *Only on Linux* systems, Vulkan drivers must be installed. If they are not
+  installed (and you don't mind installing them), you can run `you can run
+  `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install
+  them.
+
 
 The only package dependency of this library is a WebGPU implementation.
 Currently we support the Dawn native backend, but we plan to support other
