@@ -1,10 +1,10 @@
 # gpu.cpp
 
-gpu.cpp is a lightweight library for portable low-level GPU computation
-directly into C++ programs.
+gpu.cpp is a lightweight library incorporating portable, low-level GPU
+computation code directly into the C++ code of applications and R&D projects.
 
-It provides a small composable set of core functions and types for GPU compute
-using the WebGPU API.
+It uses WebGPU in the backend and provides a small, simple set of functions and
+types for portable GPU computation.
 
 *** This project is a work-in-progress *** for now we recommend use to be
 limited to contributing developers and early adopters.
@@ -202,13 +202,13 @@ portably just work on a wide range of hardware, without intermediaries of model
 exporting, compilation, or runtime support. 
 
 Although gpu.cpp can be applied to any GPU compute use cases beyond AI, we also
-hope it helps to explore the potential for personal and local AI. For
-large-scale compute, there is a deep stack of technologies supporting
-large-scale datacenter GPU compute beginning with low level CUDA on top of
-which there’s a stack of compilers and frameworks. By contrast, when we think
-of developing low level GPU compute on personal devices, its use has been
-largely to large specialized projects such as ML compiler and runtime
-implementations. 
+hope it helps to explore the potential for personal and local AI. 
+
+There is already a deep ecosystem of technologies supporting large-scale
+datacenter GPU compute beginning with low level CUDA on top of which there’s a
+stack of compilers and frameworks. By contrast, when we think of developing low
+level GPU compute on personal devices, its use has been mostly the realm of
+large efforts such as ML compiler and runtime implementations. 
 
 We created gpu.cpp as a lightweight C++ library that allows us to easily and
 directly implement native low-level GPU algorithms as part of R&D and drop
