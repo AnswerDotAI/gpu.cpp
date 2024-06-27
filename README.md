@@ -108,27 +108,25 @@ GPU to CPU.  This example is available in `examples/hello_world/run.cpp`.
 
 ## Quick Start
 
-To build gpu.cpp, the system requirements are:
+To build gpu.cpp, you will need to have installed on your system:
 
 - `clang++` compiler installed with support for C++17.
 - `python3` and above, to run the script which downloads the Dawn shared library.
 - `make` to build the project.
-- *Only on Linux* systems, Vulkan drivers must be installed. If they are not
-  installed (and you don't mind installing them), you can run `you can run
-  `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install
+- *Only on Linux systems* Vulkan drivers. If Vulkan is not installed, you can
+  run `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install
   them.
 
-
-The only package dependency of this library is a WebGPU implementation.
-Currently we support the Dawn native backend, but we plan to support other
-targets and WebGPU implementations (web browsers or other native
-implementations such as wgpu). Currently we support MacOS, Linux, and Windows
-(via WSL).
+The only library dependency of gpu.cpp is a WebGPU implementation. Currently we
+support the Dawn native backend, but we plan to support other targets and
+WebGPU implementations (web browsers or other native implementations such as
+wgpu). Currently we support MacOS, Linux, and Windows (via WSL).
 
 Optionally, Dawn can be built from scratch with gpu.cpp using the cmake build
-scripts provided, but this is only recommended for advanced users. cmake builds
-take much longer than using the provided precompiled Dawn shared library binary
-as it compiles the entire WebGPU C API implementation from scratch.
+scripts provided - see the `-cmake` targets in the Makefile. However, this is
+only recommended for advanced users. cmake builds take much longer than using
+the provided precompiled Dawn shared library binary as it compiles the entire
+WebGPU C API implementation from scratch.
 
 ### Building and Running
 
