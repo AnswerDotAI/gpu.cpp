@@ -29,7 +29,7 @@ inline void LOG(Logger& logger, int level, const char *message, ...) {
     va_start(args, message);
     snprintf(logger.buffer, sizeof(logger.buffer), message, args);
     // Brackets and messages are white.
-    // Log levells are red for error and warning, orange for info, and grey for trace.
+    // Log levels are red for error and warning, orange for info, and grey for trace.
     // Then the color is reset.
     fprintf(logger.stream, "%s[%s%s%s] ", white, logColors[level], kLevelStr[level],
             white);
