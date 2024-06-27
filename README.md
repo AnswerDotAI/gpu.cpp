@@ -1,6 +1,10 @@
 # gpu.cpp
 
-gpu.cpp is a lightweight C++ library to write portable low-level GPU code.
+gpu.cpp is a lightweight library for portable low-level GPU computation
+directly into C++ programs.
+
+It provides a small composable set of core
+functions and types for GPU compute using the WebGPU API.
 
 *Work-in-Progress*
 
@@ -169,7 +173,7 @@ This example is available in `examples/hello_world/run.cpp`.
 To build gpu.cpp, you only need:
 
 - `clang++` compiler installed with support for C++17.
-- python 3+ (to run the script which downloads the Dawn shared library) 
+- python3 and above, to run the script which downloads the Dawn shared library.
 - `make` to build the project.
 
 The only dependency of this library is a WebGPU implementation. Currently we
