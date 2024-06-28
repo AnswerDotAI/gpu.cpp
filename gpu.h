@@ -155,7 +155,9 @@ struct ShaderCode {
       : data(data), workgroupSize(workgroupSize), precision(precision) {}
   std::string data;
   Shape workgroupSize;
-  NumType precision;
+  NumType precision = kf32;
+  std::string label = "shader";
+  std::string entryPoint = "main";
 };
 
 /**
@@ -228,7 +230,7 @@ struct Context {
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
   ~Context() {
-    LOG(kDefLog, kTrace, "Destroying context");
+    LOG(kDefLog, kInfo, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
       wgpuInstanceProcessEvents(instance);
@@ -252,7 +254,7 @@ struct Context {
     } else {
       LOG(kDefLog, kWarn, "Instance is null");
     }
-    LOG(kDefLog, kTrace, "Destroyed context");
+    LOG(kDefLog, kInfo, "Destroyed context");
   }
 };
 

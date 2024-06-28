@@ -46,8 +46,8 @@ invoked from the host using this library.
 #include <cstdio>
 #include <future>
 
-using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
-                     // CreateShader, DispatchKernel, Wait, ToCPU
+using namespace gpu; // createContext, createTensor, createKernel,
+                     // createShader, dispatchKernel, wait, toCPU
                      // Tensor, Kernel, Context, Shape, kf32
 
 static const char *kGelu = R"(
@@ -69,22 +69,22 @@ fn main(
 
 int main(int argc, char **argv) {
   printf("\nHello gpu.cpp!\n\n");
-  Context ctx = CreateContext();
+  Context ctx = createContext();
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i) / 10.0; // dummy input data
   }
-  Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
-  Tensor output = CreateTensor(ctx, Shape{N}, kf32);
+  Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
+  Tensor output = createTensor(ctx, Shape{N}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32),
+  Kernel op = createKernel(ctx, createShader(kGelu, 256, kf32),
                            TensorList{input, output},
                            /* nthreads */ {N, 1, 1});
-  DispatchKernel(ctx, op, promise);
-  Wait(ctx, future);
-  ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  dispatchKernel(ctx, op, promise);
+  wait(ctx, future);
+  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 16; ++i) {
     printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }
@@ -99,11 +99,11 @@ in a separate file to be loaded at runtime. The WGSL code is compiled and runs
 on the GPU.
 
 The CPU code in `main()` sets up the host coordination for the GPU computation.
-The ahead-of-time resource acquisition functions are prefaced with `Create`,
-such as `CreateContext`, `CreateTensor`, `CreateKernel`, `CreateShader`. 
+The ahead-of-time resource acquisition functions are prefaced with `create`,
+such as `createContext`, `createTensor`, `createKernel`, `createShader`. 
 
-The dispatch occurs asynchronously via the `DispatchKernel` invocation. `Wait`
-blocks until the GPU computation is complete and `ToCPU` moves data from the
+The dispatch occurs asynchronously via the `dispatchKernel` invocation. `wait`
+blocks until the GPU computation is complete and `toCPU` moves data from the
 GPU to CPU.  This example is available in `examples/hello_world/run.cpp`. 
 
 ## Quick Start

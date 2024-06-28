@@ -33,6 +33,8 @@
 #ifndef REFERENCE_IMPLS_H
 #define REFERENCE_IMPLS_H
 
+namespace ref {
+
 #define GELU_SCALING_FACTOR sqrtf(2.0f / M_PI)
 
 void gelu_forward_cpu(float* out, const float* inp, int N) {
@@ -228,6 +230,8 @@ void attention_forward_cpu(float* out, float* preatt, float* att,
             }
         }
     }
+}
+
 }
 
 #endif

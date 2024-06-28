@@ -12,16 +12,6 @@
 
 using namespace gpu;
 
-bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
-  for (size_t i = 0; i < n; i++) {
-    if (std::abs(a[i] - b[i]) > tol || std::isnan(a[i]) || std::isnan(b[i])) {
-      LOG(kDefLog, kInfo, "Mismatch at index %d: %f != %f", i, a[i], b[i]);
-      return false;
-    }
-  }
-  return true;
-}
-
 void testResidual(Context &ctx) {
   constexpr size_t N = 200000;
   constexpr size_t workgroupSize = 256;

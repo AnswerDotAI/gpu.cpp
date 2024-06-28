@@ -3,6 +3,8 @@
 #include "utils/logging.h"
 #include <array>
 
+#include "reference_impls.h"
+
 using namespace gpu;
 
 static const char *kShaderGelu = R"(
@@ -43,51 +45,20 @@ static const char *kShaderMatmul0 = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<f32>;
 @group(0) @binding(1) var<storage, read_write> B: array<f32>;
 @group(0) @binding(2) var<storage, read_write> C: array<f32>;
-@compute @workgroup_size(workgroupSizeX, workgroupSizeY, 1)
-fn matmul(
+@compute @workgroup_size({{workgroupSize}})
+fn main(
     @builtin(global_invocation_id) global_id : vec3<u32>) {
-    // row and column of C
-    let row = global_id.y;
+    let row = global_id.y; // row and column of C 
     let col = global_id.x;
-    for (var k = 0u; k < {{K}}; k = k + 1u) {
-        // B is stored as B^T, effectively column-major
-        C[row * {{N}} + col] += A[row * {{K}} + k] * B[k + col * {{N}}];
-    }
-}
-");
-
-static const char *kShaderMatMul = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<f32>;
-@group(0) @binding(1) var<storage, read_write> B: array<f32>;
-@group(0) @binding(2) var<storage, read_write> C: array<f32>;
-var<workgroup> tileA: array<f32, workgroupSizeY * workgroupSizeX>;
-var<workgroup> tileB: array<f32, workgroupSizeY * workgroupSizeX>;
-@compute @workgroup_size(workgroupSizeX, workgroupSizeY, 1)
-fn matmul(
-    @builtin(global_invocation_id) global_id : vec3<u32>,
-    @builtin(local_invocation_id) local_id : vec3<u32>,
-    @builtin(workgroup_id) workgroup_id : vec3<u32>
-) {
-    let row = global_id.x;
-    let col = global_id.y;
     if (row >= {{M}} || col >= {{N}}) {
         return;
     }
-    var result: f32 = 0.0;
-    for (var i = 0u; i < {{K}}; i = i + workgroupSizeX) {
-        // Load tiles into shared memory
-        tileA[local_id.y][local_id.x] = A[row][i + local_id.x];
-        tileB[local_id.y][local_id.x] = B[i + local_id.y][col];
-        // Synchronize to make sure the tile is loaded
-        workgroupBarrier();
-        // Perform partial dot product for the current tile
-        for (var k = 0u; k < workgroupSizeX; k = k + 1u) {
-            result = result + tileA[local_id.y][k] * tileB[k][local_id.x];
-        }
-        // Synchronize before loading the next tile
-        workgroupBarrier();
+    var total: f32 = 0.0;
+    for (var k = 0u; k < {{K}}; k = k + 1u) {
+        // B is stored as B^T, effectively column-major
+        total += A[row * {{K}} + k] * B[col * {{N}} + k];
     }
-    C[row][col] = result;
+    C[row * {{N}} + col] = total;
 }
 )";
 
@@ -128,7 +99,10 @@ void initTransformer(Context &ctx, size_t modelDim, size_t qkvDim,
   // Initialize values
   std::unique_ptr<float[]> qkvInit(new float[modelDim * 3 * qkvDim]);
   randn(qkvInit.get(), size(transformer.qkv.shape), gen);
-  printf("%s", show<float>(qkvInit.get(), transformer.qkv.shape[0], transformer.qkv.shape[1], "QKV Weights").c_str());
+  LOG(kDefLog, kInfo, "%s",
+      show<float>(qkvInit.get(), transformer.qkv.shape[0],
+                  transformer.qkv.shape[1], "QKV Weights")
+          .c_str());
   toGPU(ctx, qkvInit.get(), transformer.qkv);
 
   activations = {
@@ -140,10 +114,10 @@ void initTransformer(Context &ctx, size_t modelDim, size_t qkvDim,
   };
 }
 
-inline ShaderCode createMatmul(const char *shaderTemplate,
-                        const size_t M, const size_t K, const size_t N,
-                        const Shape &workgroupSize = {256, 1, 1},
-                        NumType precision = kf32) {
+inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
+                               const size_t K, const size_t N,
+                               const Shape &workgroupSize = {256, 1, 1},
+                               NumType precision = kf32) {
   std::string codeString(shaderTemplate);
   ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
   ReplaceAll(codeString, "{{precision}}", toString(precision));
@@ -156,19 +130,17 @@ inline ShaderCode createMatmul(const char *shaderTemplate,
 int main() {
   printf("\033[2J\033[1;1H");
   Context ctx = createContext();
-  // static constexpr N = 3072;
-  static constexpr size_t N = 128;
   static constexpr size_t seqLen = 24;
   static constexpr size_t batchSize = 1;
-  static constexpr size_t modelDim = 3072;
+  static constexpr size_t modelDim = 2; // 3072;
   static constexpr size_t hiddenWidth = modelDim * 2;
-  static constexpr size_t qkvDim = 256;
+  static constexpr size_t qkvDim = 1; //256;
   std::mt19937 gen(314);
 
   Transformer transformer;
   Activations activations;
   KVCache kvcache;
-  printf("Initializing transformer, allocating GPU buffers ...\n");
+  LOG(kDefLog, kInfo, "Initializing transformer, allocating GPU buffers ...\n");
   initTransformer(ctx, modelDim, qkvDim, batchSize, seqLen, hiddenWidth,
                   transformer, activations, kvcache);
 
@@ -176,14 +148,33 @@ int main() {
   std::array<float, modelDim * 3 * qkvDim> weightsArr;
   randn(inputArr, gen);
   randn(weightsArr, gen);
+  LOG(kDefLog, kInfo, "%s",
+      show<float>(inputArr.data(), 1, modelDim, "Input").c_str());
   Tensor input = createTensor(ctx, Shape{modelDim}, kf32, inputArr.data());
   Tensor output = createTensor(ctx, Shape{3 * qkvDim}, kf32);
 
-  ShaderCode matmul = createMatmul(kShaderMatmul0, modelDim, 3 * qkvDim, modelDim);
+  ShaderCode matmul = createMatmul(kShaderMatmul0, 1, modelDim, 3 * qkvDim);
+  Kernel qkv =
+      createKernel(ctx, matmul, TensorList{transformer.qkv, input, output},
+                   /*nthreads*/ {modelDim, 1, 1});
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  dispatchKernel(ctx, qkv, promise);
+  wait(ctx, future);
+  std::array<float, 3 * qkvDim> outputArr;
+  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  LOG(kDefLog, kInfo, "Output: %s",
+      show<float>(outputArr.data(), 1, 3 * qkvDim, "QKV Output").c_str());
 
+  std::array<float, 3 * qkvDim> outputRefArr;
+  ref::matmul_forward_cpu(
+      outputRefArr.data(), inputArr.data(), weightsArr.data(), NULL,
+      /* batch */ 1, /* T */ 1, /* C */ modelDim, /* OC */ 3 * qkvDim);
+  LOG(kDefLog, kInfo, "Reference Output: %s",
+      show<float>(outputRefArr.data(), 1, 3 * qkvDim, "QKV Output (Reference)")
+          .c_str());
 
+  LOG(kDefLog, kInfo, isclose(outputArr.data(), outputRefArr.data(), 3 * qkvDim) ? "PASS" : "FAIL");
 
-
-
-  printf("Done\n");
+  LOG(kDefLog, kInfo, "Done");
 }
