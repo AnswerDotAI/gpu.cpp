@@ -14,5 +14,9 @@ In order of beginning to advanced:
 | [gpu_puzzles](gpu_puzzles) | (WIP) Implementation of Sasha Rush's GPU puzzles
 | [render](render) | GPU rendering of a signed distance function for a 3D sphere. |
 | [physics](physics) | Parallel physics simulation of a double pendulum with each thread starting at a different initial condition. |
-| [transformer](transformer) | (WIP) a neural network transformer block computation |
 | [webgpu_intro](webgpu_intro) | A minimal from-scratch example of how to use WebGPU directly without this library. This is useful to understand the code internals of gpu.cpp. Note this takes a while to build as it compiles the WebGPU C API implementation. |
+
+Future examples that may be added (collaborations welcome):
+
+- Matrix multiplication worklog / tutorial
+- A transformer block for a neural network (see `experimental/` WIP)
