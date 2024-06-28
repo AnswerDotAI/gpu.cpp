@@ -43,23 +43,23 @@ struct Shape {
                                         // dynamic allocation for shape data
   std::array<size_t, kMaxRank> data = {0};
   size_t rank = 0;
-  Shape() = default;
-  Shape(std::initializer_list<size_t> dims) {
+  inline Shape() = default;
+  inline Shape(std::initializer_list<size_t> dims) {
     assert(dims.size() <= kMaxRank);
     std::copy(dims.begin(), dims.end(), data.begin());
     rank = dims.size();
   }
-  size_t &operator[](size_t index) {
+  inline size_t &operator[](size_t index) {
     assert(index < rank);
     return data[index];
   }
-  const size_t &operator[](size_t index) const {
+  inline const size_t &operator[](size_t index) const {
     assert(index < rank);
     return data[index];
   }
 };
 
-size_t size(const Shape &shape) {
+inline size_t size(const Shape &shape) {
   size_t numels = 1;
   for (size_t i = 0; i < shape.rank; i++) {
     numels *= shape.data[i];
@@ -102,7 +102,7 @@ struct Context; // Forward declaration so that TensorPool can have a pointer to
                 // Context
 
 struct TensorPool {
-  TensorPool(Context *ctx) : ctx(ctx), data() {};
+  inline TensorPool(Context *ctx) : ctx(ctx), data() {};
   Context *ctx;
   std::unordered_map<WGPUBuffer, Tensor> data;
   ~TensorPool();
@@ -113,7 +113,7 @@ enum NumType { kf32 };
 /**
  * @brief Converts NumType to string.
  */
-std::string ToString(NumType type) {
+inline std::string ToString(NumType type) {
   switch (type) {
   case kf32:
     return "f32";
@@ -128,7 +128,7 @@ std::string ToString(NumType type) {
  * is meant to be slotted into shader code (hence no additional parentheses or
  * brackets).
  */
-std::string ToString(const Shape &shape) {
+inline std::string ToString(const Shape &shape) {
   std::string str;
   for (size_t i = 0; i < shape.rank; i++) {
     str += std::to_string(shape.data[i]);
@@ -146,11 +146,11 @@ std::string ToString(const Shape &shape) {
  * consistent.
  */
 struct ShaderCode {
-  ShaderCode(const std::string &data = "", size_t workgroupSize = 256,
+  inline ShaderCode(const std::string &data = "", size_t workgroupSize = 256,
              NumType precision = kf32)
       : data(data), workgroupSize({workgroupSize, 1, 1}), precision(precision) {
   }
-  ShaderCode(const std::string &data, const Shape &workgroupSize = {256, 1, 1},
+  inline ShaderCode(const std::string &data, const Shape &workgroupSize = {256, 1, 1},
              NumType precision = kf32)
       : data(data), workgroupSize(workgroupSize), precision(precision) {}
   std::string data;
@@ -192,7 +192,7 @@ struct Kernel {
  * @param[in] rhs Second Kernel instance to compare
  * @return True if lhs < rhs, false otherwise
  */
-bool operator<(const Kernel &lhs, const Kernel &rhs) {
+inline bool operator<(const Kernel &lhs, const Kernel &rhs) {
   return lhs.commandBuffer < rhs.commandBuffer;
 }
 
@@ -202,10 +202,10 @@ bool operator<(const Kernel &lhs, const Kernel &rhs) {
  * have multiple resource pools of kernels in more complex scenarios.
  */
 struct KernelPool {
-  KernelPool(Context *ctx) : ctx(ctx), data() {}
+  inline KernelPool(Context *ctx) : ctx(ctx), data() {}
   Context *ctx;
   std::set<Kernel *> data;
-  ~KernelPool() {
+  inline ~KernelPool() {
     // Note : Some kernel resources such as commandBuffer are harvested by
     // queue submission, explicitly destroying readback and callback buffers
     // produces runtime errors.
@@ -274,7 +274,7 @@ struct Context {
  * @return Tensor instance representing the created tensor
  * @example Tensor tensor = CreateTensor(pool, device, {256, 256}, kf32);
  */
-Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
+inline Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
                     NumType dtype,
                     WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
                                                  WGPUBufferUsage_CopyDst |
@@ -314,7 +314,7 @@ Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
  * @return Tensor instance representing the created tensor
  * @example Tensor tensor = CreateTensor(ctx, {256, 256}, kf32);
  */
-Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype) {
+inline Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype) {
   return CreateTensor(ctx.pool, ctx.device, shape, dtype);
 }
 
@@ -333,7 +333,7 @@ Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype) {
  * @return Tensor instance representing the created tensor
  * @example Tensor tensor = CreateTensor(ctx, {256, 256}, kf32, data);
  */
-Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype,
+inline Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype,
                     float *data) {
   Tensor tensor =
       CreateTensor(ctx.pool, ctx.device, shape, dtype,
@@ -355,7 +355,7 @@ Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype,
  * @param[in] tensor Tensor instance to free
  * @example FreeTensor(pool, tensor);
  */
-void FreeTensor(TensorPool &pool, Tensor tensor) {
+inline void FreeTensor(TensorPool &pool, Tensor tensor) {
   if (tensor.data.buffer) {
     wgpuBufferRelease(tensor.data.buffer);
   } else {
@@ -371,7 +371,7 @@ void FreeTensor(TensorPool &pool, Tensor tensor) {
 /**
  * @brief Destructor for TensorPool which frees all tensors in the pool.
  */
-TensorPool::~TensorPool() {
+inline TensorPool::~TensorPool() {
   // Need to get keys in a separate iteration, otherwise iterator is getting
   // invalidated during erase.
   std::vector<WGPUBuffer> keys;
@@ -397,7 +397,7 @@ TensorPool::~TensorPool() {
  * @param[in] to Substring to replace with
  * @example ReplaceAll(str, "{{workgroupSize}}", "256");
  */
-void ReplaceAll(std::string &str, const std::string &from,
+inline void ReplaceAll(std::string &str, const std::string &from,
                 const std::string &to) {
   size_t start_pos = 0;
   while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
@@ -423,7 +423,7 @@ void ReplaceAll(std::string &str, const std::string &from,
  * that is returned by CreateShader().
  * @example ShaderCode code = CreateShader(kPuzzle1, {256, 1, 1}, kf32);
  */
-ShaderCode CreateShader(const char *shaderTemplate,
+inline ShaderCode CreateShader(const char *shaderTemplate,
                         const Shape &workgroupSize = {256, 1, 1},
                         NumType precision = kf32) {
   std::string codeString(shaderTemplate);
@@ -445,8 +445,8 @@ ShaderCode CreateShader(const char *shaderTemplate,
  * @param[in] precision Data type precision for the shader
  * @example ShaderCode code = CreateShader(kPuzzle1, 256, kf32);
  */
-ShaderCode CreateShader(const char *shaderTemplate, size_t workgroupSize,
-                        NumType precision = kf32) {
+inline ShaderCode CreateShader(const char *shaderTemplate, size_t workgroupSize,
+                               NumType precision = kf32) {
   return CreateShader(shaderTemplate, Shape{workgroupSize, 1, 1}, precision);
 }
 
@@ -482,9 +482,9 @@ inline void check(bool condition, const char *message,
  * @return Context instance representing the created GPU context
  * @example Context ctx = CreateContext();
  */
-Context CreateContext(const WGPUInstanceDescriptor &desc = {},
-                      const WGPURequestAdapterOptions &adapterOpts = {},
-                      WGPUDeviceDescriptor devDescriptor = {}) {
+inline Context CreateContext(const WGPUInstanceDescriptor &desc = {},
+                             const WGPURequestAdapterOptions &adapterOpts = {},
+                             WGPUDeviceDescriptor devDescriptor = {}) {
   Context context;
   {
     context.instance = wgpuCreateInstance(&desc);
@@ -562,7 +562,7 @@ Context CreateContext(const WGPUInstanceDescriptor &desc = {},
   return context;
 }
 
-void Wait(Context &ctx, std::future<void> &future) {
+inline void Wait(Context &ctx, std::future<void> &future) {
   while (future.wait_for(std::chrono::seconds(0)) !=
          std::future_status::ready) {
     wgpuInstanceProcessEvents(ctx.instance);
@@ -577,7 +577,7 @@ void Wait(Context &ctx, std::future<void> &future) {
  * @param[in] bufferSize Size of the data buffer in bytes
  * @example ToCPU(ctx, tensor, data, bufferSize);
  */
-void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
+inline void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;
   struct CopyOp {
     WGPUCommandBuffer commandBuffer;
@@ -657,7 +657,7 @@ void ToCPU(Context &ctx, Tensor &tensor, std::array<float, N> data) {
  * @param[in] size Size of the data buffer in bytes
  * @example ToGPU(ctx, data, buffer, size);
  */
-void ToGPU(Context &ctx, const void *data, WGPUBuffer buffer, size_t size) {
+inline void ToGPU(Context &ctx, const void *data, WGPUBuffer buffer, size_t size) {
   wgpuQueueWriteBuffer(ctx.queue, buffer, 0, data, size);
 }
 
@@ -669,7 +669,7 @@ void ToGPU(Context &ctx, const void *data, WGPUBuffer buffer, size_t size) {
  * @param[in] tensor Tensor instance representing the GPU buffer to copy to
  * @example ToGPU(ctx, data, tensor);
  */
-void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
+inline void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
 }
@@ -686,7 +686,7 @@ void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
  * @param[in] op Kernel instance representing the kernel to reset
  * @example ResetCommandBuffer(device, {256, 1, 1}, op);
  */
-void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
+inline void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
   LOG(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
@@ -738,10 +738,10 @@ template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
  * @example Kernel kernel = CreateKernel(ctx, shader, dataBindings, numInputs, output,
  * nThreads, params, paramsSize);
  */
-Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
-                    const Tensor *dataBindings, size_t numTensors,
-                    const Shape &nThreads, const void *params,
-                    size_t paramsSize = 0) {
+inline Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
+                           const Tensor *dataBindings, size_t numTensors,
+                           const Shape &nThreads, const void *params,
+                           size_t paramsSize = 0) {
   assert(nThreads.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
@@ -922,7 +922,7 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
  * @param[in] kernel Kernel instance to dispatch
  * @example DispatchKernel(ctx, kernel);
  */
-void DispatchKernel(Context &ctx, Kernel &kernel, std::promise<void> &promise) {
+inline void DispatchKernel(Context &ctx, Kernel &kernel, std::promise<void> &promise) {
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &kernel.commandBuffer);
   wgpuQueueOnSubmittedWorkDone(

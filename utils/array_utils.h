@@ -74,7 +74,7 @@ std::string show(const std::array<numtype, rows * cols>& a, const std::string& n
 
 
 // For testing only, not optimized
-void transpose(float* input, float* output, size_t M, size_t N) {
+inline void transpose(float* input, float* output, size_t M, size_t N) {
   for (size_t i = 0; i < M; i++) {
     for (size_t j = 0; j < N; j++) {
       output[j * M + i] = input[i * N + j];
@@ -109,7 +109,7 @@ void randn(std::array<float, size> &a, std::mt19937 &gen, float mean = 0.0,
 }
 
 
-void eye(float* a, size_t N) {
+inline void eye(float* a, size_t N) {
   for (size_t i = 0; i < N; i++) {
     for (size_t j = 0; j < N; j++) {
       a[i * N + j] = (i == j) ? 1.0 : 0.0;
@@ -117,7 +117,7 @@ void eye(float* a, size_t N) {
   }
 }
 
-void flip(float* a, size_t R, size_t C, bool horizontal = true) {
+inline void flip(float* a, size_t R, size_t C, bool horizontal = true) {
   if (horizontal) {
     for (size_t i = 0; i < R; i++) {
       for (size_t j = 0; j < C / 2; j++) {
