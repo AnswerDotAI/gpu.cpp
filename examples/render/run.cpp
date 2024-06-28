@@ -114,26 +114,26 @@ int main(int argc, char **argv) {
 
   std::fill(begin(screen), end(screen), 0.0f);
 
-  Context ctx = CreateContext();
-  Tensor devScreen = CreateTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
+  Context ctx = createContext();
+  Tensor devScreen = createTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
   uint32_t zeroTime = getCurrentTimeInMilliseconds();
 
-  ShaderCode shader = CreateShader(kSDF, Shape{16, 16, 1});
+  ShaderCode shader = createShader(kSDF, Shape{16, 16, 1});
   Kernel renderKernel =
-      CreateKernel(ctx, shader, TensorList{devScreen}, {NCOLS, NROWS, 1}, params);
+      createKernel(ctx, shader, TensorList{devScreen}, {NCOLS, NROWS, 1}, params);
   while (true) {
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
-    DispatchKernel(ctx, renderKernel, promise);
-    Wait(ctx, future);
-    ToCPU(ctx, devScreen, screen.data(), sizeof(screen));
+    dispatchKernel(ctx, renderKernel, promise);
+    wait(ctx, future);
+    toCPU(ctx, devScreen, screen.data(), sizeof(screen));
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
 
     // write params to the last buffer
     wgpuQueueWriteBuffer(ctx.queue,
                          renderKernel.buffers[renderKernel.numBindings - 1], 0,
                          static_cast<void *>(&params), sizeof(params));
-    ResetCommandBuffer(ctx.device, /*nthreads*/ {NCOLS, NROWS, 1},
+    resetCommandBuffer(ctx.device, /*nthreads*/ {NCOLS, NROWS, 1},
                        renderKernel);
 
     static const char intensity[] = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/"

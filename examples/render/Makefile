@@ -13,7 +13,7 @@ build/$(TARGET): run.cpp
 
 watch:
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
-	mkdir -p build && ls | entr -s "rm -f ./build/$(TARGET) && make -j$(NUM_JOBS) ./build/$(TARGET) && ./build/$(TARGET)"
+	mkdir -p build && ls | entr -s "rm -f ./build/$(TARGET) && make -j$(NUM_JOBS) ./build/$(TARGET) && $(LIBSPEC) && ./build/$(TARGET)"
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*

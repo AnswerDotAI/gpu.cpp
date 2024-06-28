@@ -4,6 +4,7 @@ LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
 TARGET=transformer
+CODEPATH = . ../../utils ../../
 
 tests:
 	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib test_kernels.cpp -ldawn -ldl -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
@@ -17,7 +18,7 @@ build/$(TARGET): run.cpp
 
 watch: 
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
-	mkdir -p build && ls . ../../*.h | entr -s "$(LIBSPEC) && rm -f ./build/$(TARGET) && make -j$(NUM_JOBS) ./build/$(TARGET) && ./build/$(TARGET)"
+	mkdir -p build && ls $(CODEPATH) run.cpp | entr -s "$(LIBSPEC) && rm -f ./build/$(TARGET) && make -j$(NUM_JOBS) ./build/$(TARGET) && ./build/$(TARGET)"
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*

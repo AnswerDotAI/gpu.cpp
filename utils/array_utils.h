@@ -23,17 +23,17 @@ namespace gpu {
 static constexpr int kShowMaxRows = 14;
 static constexpr int kShowMaxCols = 8;
 
-template <typename numtype, size_t rows, size_t cols>
-std::string show(const std::array<numtype, rows * cols>& a, const std::string& name = "") {
+template <typename numtype>
+std::string show(const numtype* a, size_t rows, size_t cols, const std::string& name = "") {
   std::string output = "\n";
   if (name != "") {
     output += name + " (" + std::to_string(rows) + ", " + std::to_string(cols) + ")\n";
   } else {
-    output += std::to_string(rows) + ", " + std::to_string(cols) + "\n";
+    output += "(" + std::to_string(rows) + ", " + std::to_string(cols) + ")\n";
   }
   // spacing as log10 of max value
   int spacing = 1;
-  numtype max = *std::max_element(a.begin(), a.end());
+  numtype max = *std::max_element(a, a + rows * cols);
   if constexpr (std::is_same<numtype, int>::value) {
     spacing = std::max(0, (int)log10(max + .01)) + 2;
   } else if constexpr (std::is_same<numtype, float>::value) {
@@ -72,6 +72,16 @@ std::string show(const std::array<numtype, rows * cols>& a, const std::string& n
   return output;
 }
 
+template <typename numtype, size_t rows, size_t cols>
+std::string show(const std::array<numtype, rows * cols>& a, const std::string& name = "") {
+  return show<numtype>(a.data(), rows, cols, name);
+}
+
+template <size_t rows, size_t cols>
+std::string show(const std::array<float, rows * cols>& a, const std::string& name = "") {
+  return show<float, rows, cols>(a, name);
+}
+
 
 // For testing only, not optimized
 inline void transpose(float* input, float* output, size_t M, size_t N) {
@@ -96,6 +106,14 @@ void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min,
   std::uniform_int_distribution<> dist(min, max);
   for (int i = 0; i < size; i++) {
     a[i] = static_cast<numtype>(dist(gen));
+  }
+}
+
+void randn(float* a, size_t N, std::mt19937 &gen, float mean = 0.0,
+             float std=1.0) {
+  std::normal_distribution<float> dist(mean, std);
+  for (int i = 0; i < N; i++) {
+    a[i] = static_cast<float>(dist(gen));
   }
 }
 

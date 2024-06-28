@@ -3,8 +3,8 @@
 #include <cstdio>
 #include <future>
 
-using namespace gpu; // CreateContext, CreateTensor, CreateKernel,
-                     // CreateShader, DispatchKernel, Wait, ToCPU
+using namespace gpu; // createContext, createTensor, createKernel,
+                     // createShader, dispatchKernel, wait, toCPU
                      // Tensor, Kernel, Context, Shape, kf32
 
 static const char *kGelu = R"(
@@ -29,22 +29,22 @@ int main(int argc, char **argv) {
   printf("\nHello gpu.cpp!\n");
   printf("--------------\n\n");
 
-  Context ctx = CreateContext();
+  Context ctx = createContext();
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i) / 10.0; // dummy input data
   }
-  Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
-  Tensor output = CreateTensor(ctx, Shape{N}, kf32);
+  Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
+  Tensor output = createTensor(ctx, Shape{N}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = CreateKernel(ctx, CreateShader(kGelu, 256, kf32),
+  Kernel op = createKernel(ctx, createShader(kGelu, 256, kf32),
                            TensorList{input, output},
                            /* nthreads */ {N, 1, 1});
-  DispatchKernel(ctx, op, promise);
-  Wait(ctx, future);
-  ToCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  dispatchKernel(ctx, op, promise);
+  wait(ctx, future);
+  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 16; ++i) {
     printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }

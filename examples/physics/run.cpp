@@ -51,7 +51,7 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 int main() {
   // N can be quite a bit larger than this on most GPUs (~ 1M on MBP M1)
   static constexpr size_t N = 1000;
-  Context ctx = CreateContext();
+  Context ctx = createContext();
 
   // Host-side data
   std::array<float, N> theta1Arr, theta2Arr, v1Arr, v2Arr, lengthArr;
@@ -64,20 +64,20 @@ int main() {
   }
 
   // GPU buffers
-  Tensor theta1 = CreateTensor(ctx, Shape{N}, kf32, theta1Arr.data());
-  Tensor theta2 = CreateTensor(ctx, Shape{N}, kf32, theta2Arr.data());
-  Tensor vel1 = CreateTensor(ctx, Shape{N}, kf32, v1Arr.data());
-  Tensor vel2 = CreateTensor(ctx, Shape{N}, kf32, v2Arr.data());
-  Tensor length = CreateTensor(ctx, Shape{N}, kf32, lengthArr.data());
+  Tensor theta1 = createTensor(ctx, Shape{N}, kf32, theta1Arr.data());
+  Tensor theta2 = createTensor(ctx, Shape{N}, kf32, theta2Arr.data());
+  Tensor vel1 = createTensor(ctx, Shape{N}, kf32, v1Arr.data());
+  Tensor vel2 = createTensor(ctx, Shape{N}, kf32, v2Arr.data());
+  Tensor length = createTensor(ctx, Shape{N}, kf32, lengthArr.data());
   std::array<float, 2 * 2 * N> posArr; // x, y outputs for each pendulum
   std::string screen(80 * 40, ' ');
-  Tensor pos = CreateTensor(ctx, Shape{N * 4}, kf32);
+  Tensor pos = createTensor(ctx, Shape{N * 4}, kf32);
   Shape nThreads{N, 1, 1};
 
   // Prepare computation
-  ShaderCode shader = CreateShader(kShaderUpdateSim, 256, kf32);
+  ShaderCode shader = createShader(kShaderUpdateSim, 256, kf32);
   printf("Shader code: %s\n", shader.data.c_str());
-  Kernel update = CreateKernel(
+  Kernel update = createKernel(
       ctx, shader, TensorList{theta1, theta2, vel1, vel2, length, pos},
       nThreads);
 
@@ -86,9 +86,9 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
-    DispatchKernel(ctx, update, promise);
-    Wait(ctx, future);
-    ToCPU(ctx, pos, posArr.data(), sizeof(posArr));
+    dispatchKernel(ctx, update, promise);
+    wait(ctx, future);
+    toCPU(ctx, pos, posArr.data(), sizeof(posArr));
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     // N * 2 because there's two objects per pendulum
@@ -96,7 +96,7 @@ int main() {
     printf("\033[2J\033[1;1H" // clear screen and move cursor to top-left
            "# simulations: %lu\n%s",
            N, screen.c_str());
-    ResetCommandBuffer(ctx.device, nThreads, update); // Prepare kernel command
+    resetCommandBuffer(ctx.device, nThreads, update); // Prepare kernel command
                                                       // buffer for nxt iteration
     std::this_thread::sleep_for(std::chrono::milliseconds(8) - elapsed);
   }

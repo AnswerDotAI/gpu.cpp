@@ -113,7 +113,7 @@ enum NumType { kf32 };
 /**
  * @brief Converts NumType to string.
  */
-inline std::string ToString(NumType type) {
+inline std::string toString(NumType type) {
   switch (type) {
   case kf32:
     return "f32";
@@ -128,7 +128,7 @@ inline std::string ToString(NumType type) {
  * is meant to be slotted into shader code (hence no additional parentheses or
  * brackets).
  */
-inline std::string ToString(const Shape &shape) {
+inline std::string toString(const Shape &shape) {
   std::string str;
   for (size_t i = 0; i < shape.rank; i++) {
     str += std::to_string(shape.data[i]);
@@ -165,7 +165,7 @@ struct ShaderCode {
 struct CallbackDataDyn {
   WGPUBuffer buffer; // managed by owning Kernel
   size_t bufferSize;
-  float *output; // non-owning, only for target memory in ToCPU, not used for
+  float *output; // non-owning, only for target memory in toCPU, not used for
                  // kernel invocations
   std::promise<void> *promise;
   std::future<void> *future;
@@ -263,7 +263,7 @@ struct Context {
  * TensorPool, and returned.
  *
  * This is the core implementation which takes the minimal set of parameters in
- * terms of the raw WebGPU API, and is used by the other CreateTensor overloads
+ * terms of the raw WebGPU API, and is used by the other createTensor overloads
  * which provide more ergonomic interfaces.
  *
  * @param[in] pool TensorPool instance to manage the tensor
@@ -272,9 +272,9 @@ struct Context {
  * @param[in] dtype Data type of the tensor (e.g. kf32)
  * @param[in] usage Usage flags for the tensor buffer
  * @return Tensor instance representing the created tensor
- * @example Tensor tensor = CreateTensor(pool, device, {256, 256}, kf32);
+ * @example Tensor tensor = createTensor(pool, device, {256, 256}, kf32);
  */
-inline Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
+inline Tensor createTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
                     NumType dtype,
                     WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
                                                  WGPUBufferUsage_CopyDst |
@@ -304,7 +304,7 @@ inline Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &sh
  *
  * Instead of taking the TensoPool and raw WebGPU API WGPUDevice and
  * WGPUBufferUsageFlags arguments, this is a convenience wrapper around the
- * core CreateTensor function which has default usage flags for a storage
+ * core createTensor function which has default usage flags for a storage
  * buffer, and also takes in the Context object.
  *
  * instance instead of the narrower TensorPool object.
@@ -312,10 +312,10 @@ inline Tensor CreateTensor(TensorPool &pool, WGPUDevice &device, const Shape &sh
  * @param[in] shape Shape of the tensor
  * @param[in] dtype Data type of the tensor (e.g. kf32)
  * @return Tensor instance representing the created tensor
- * @example Tensor tensor = CreateTensor(ctx, {256, 256}, kf32);
+ * @example Tensor tensor = createTensor(ctx, {256, 256}, kf32);
  */
-inline Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype) {
-  return CreateTensor(ctx.pool, ctx.device, shape, dtype);
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype) {
+  return createTensor(ctx.pool, ctx.device, shape, dtype);
 }
 
 /**
@@ -331,12 +331,12 @@ inline Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype) {
  * @param[in] dtype Data type of the tensor (e.g. kf32)
  * @param[in] data Initial data to populate the tensor with
  * @return Tensor instance representing the created tensor
- * @example Tensor tensor = CreateTensor(ctx, {256, 256}, kf32, data);
+ * @example Tensor tensor = createTensor(ctx, {256, 256}, kf32, data);
  */
-inline Tensor CreateTensor(Context &ctx, const Shape &shape, NumType dtype,
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
                     float *data) {
   Tensor tensor =
-      CreateTensor(ctx.pool, ctx.device, shape, dtype,
+      createTensor(ctx.pool, ctx.device, shape, dtype,
                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
                        WGPUBufferUsage_CopySrc);
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
@@ -417,18 +417,18 @@ inline void ReplaceAll(std::string &str, const std::string &from,
  * @param[in] workgroupSize Shape of the workgroup. Unlike tensor shapes which
  * can be of arbitrary rank, workgroup size is always of rank 3 corresponding
  * to x y and z. workgroupSize is stored as a field in the ShaderCode instance
- * that is returned by CreateShader().
+ * that is returned by createShader().
  * @param[in] precision Data type precision for the shader. As with
  * workgroupSize, precision is stored as a field in the ShaderCode instance
- * that is returned by CreateShader().
- * @example ShaderCode code = CreateShader(kPuzzle1, {256, 1, 1}, kf32);
+ * that is returned by createShader().
+ * @example ShaderCode code = createShader(kPuzzle1, {256, 1, 1}, kf32);
  */
-inline ShaderCode CreateShader(const char *shaderTemplate,
+inline ShaderCode createShader(const char *shaderTemplate,
                         const Shape &workgroupSize = {256, 1, 1},
                         NumType precision = kf32) {
   std::string codeString(shaderTemplate);
-  ReplaceAll(codeString, "{{workgroupSize}}", ToString(workgroupSize));
-  ReplaceAll(codeString, "{{precision}}", ToString(precision));
+  ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
+  ReplaceAll(codeString, "{{precision}}", toString(precision));
   LOG(kDefLog, kInfo, "Shader code:\n%s", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
 }
@@ -443,11 +443,11 @@ inline ShaderCode CreateShader(const char *shaderTemplate,
  * @param[in] shaderTemplate Shader template string with placeholders
  * @param[in] workgroupSize Workgroup size in the x dimension
  * @param[in] precision Data type precision for the shader
- * @example ShaderCode code = CreateShader(kPuzzle1, 256, kf32);
+ * @example ShaderCode code = createShader(kPuzzle1, 256, kf32);
  */
-inline ShaderCode CreateShader(const char *shaderTemplate, size_t workgroupSize,
+inline ShaderCode createShader(const char *shaderTemplate, size_t workgroupSize,
                                NumType precision = kf32) {
-  return CreateShader(shaderTemplate, Shape{workgroupSize, 1, 1}, precision);
+  return createShader(shaderTemplate, Shape{workgroupSize, 1, 1}, precision);
 }
 
 inline void check(bool condition, const char *message,
@@ -480,9 +480,9 @@ inline void check(bool condition, const char *message,
  * (optional)
  * @param[in] devDescriptor Device descriptor for the WebGPU device (optional)
  * @return Context instance representing the created GPU context
- * @example Context ctx = CreateContext();
+ * @example Context ctx = createContext();
  */
-inline Context CreateContext(const WGPUInstanceDescriptor &desc = {},
+inline Context createContext(const WGPUInstanceDescriptor &desc = {},
                              const WGPURequestAdapterOptions &adapterOpts = {},
                              WGPUDeviceDescriptor devDescriptor = {}) {
   Context context;
@@ -562,7 +562,7 @@ inline Context CreateContext(const WGPUInstanceDescriptor &desc = {},
   return context;
 }
 
-inline void Wait(Context &ctx, std::future<void> &future) {
+inline void wait(Context &ctx, std::future<void> &future) {
   while (future.wait_for(std::chrono::seconds(0)) !=
          std::future_status::ready) {
     wgpuInstanceProcessEvents(ctx.instance);
@@ -575,9 +575,9 @@ inline void Wait(Context &ctx, std::future<void> &future) {
  * @param[in] tensor Tensor instance representing the GPU buffer to copy from
  * @param[out] data Pointer to the CPU memory to copy the data to
  * @param[in] bufferSize Size of the data buffer in bytes
- * @example ToCPU(ctx, tensor, data, bufferSize);
+ * @example toCPU(ctx, tensor, data, bufferSize);
  */
-inline void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
+inline void toCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) {
   WGPUDevice device = ctx.device;
   struct CopyOp {
     WGPUCommandBuffer commandBuffer;
@@ -630,24 +630,24 @@ inline void ToCPU(Context &ctx, Tensor &tensor, float *data, size_t bufferSize) 
             callbackData);
       },
       &callbackData);
-  Wait(ctx, op.future);
+  wait(ctx, op.future);
 }
 
 /**
- * @brief Overload of the ToCPU function to copy data from a GPU buffer to CPU
+ * @brief Overload of the toCPU function to copy data from a GPU buffer to CPU
  * memory for an array of floats instead of a pointer to a float buffer.
  * @param[in] ctx Context instance to manage the operation
  * @param[in] tensor Tensor instance representing the GPU buffer to copy from
  * @param[out] data Array of floats to copy the data to
- * @example ToCPU(ctx, tensor, data);
+ * @example toCPU(ctx, tensor, data);
  */
 template <size_t N>
-void ToCPU(Context &ctx, Tensor &tensor, std::array<float, N> data) {
-  ToCPU(ctx, tensor, data.data(), sizeof(data));
+void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> data) {
+  toCPU(ctx, tensor, data.data(), sizeof(data));
 }
 
 /**
- * @brief Copies data from CPU memory to a GPU buffer. The ToGPU overloads are
+ * @brief Copies data from CPU memory to a GPU buffer. The toGPU overloads are
  * effectively a convenience wrapper around the WebGPU API call
  * wgpuQueueWriteBuffer.
  *
@@ -655,21 +655,21 @@ void ToCPU(Context &ctx, Tensor &tensor, std::array<float, N> data) {
  * @param[in] data Pointer to the CPU memory to copy from
  * @param[in] buffer WGPUBuffer instance representing the GPU buffer to copy to
  * @param[in] size Size of the data buffer in bytes
- * @example ToGPU(ctx, data, buffer, size);
+ * @example toGPU(ctx, data, buffer, size);
  */
-inline void ToGPU(Context &ctx, const void *data, WGPUBuffer buffer, size_t size) {
+inline void toGPU(Context &ctx, const void *data, WGPUBuffer buffer, size_t size) {
   wgpuQueueWriteBuffer(ctx.queue, buffer, 0, data, size);
 }
 
 /**
- * @brief Overload of the ToGPU function to copy data from CPU memory to a GPU
+ * @brief Overload of the toGPU function to copy data from CPU memory to a GPU
  * taking a Tensor instance instead of a WGPUBuffer instance.
  * @param[in] ctx Context instance to manage the operation
  * @param[in] data Pointer to the CPU memory to copy from
  * @param[in] tensor Tensor instance representing the GPU buffer to copy to
- * @example ToGPU(ctx, data, tensor);
+ * @example toGPU(ctx, data, tensor);
  */
-inline void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
+inline void toGPU(Context &ctx, const float *data, Tensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
 }
@@ -684,9 +684,9 @@ inline void ToGPU(Context &ctx, const float *data, Tensor &tensor) {
  * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
  * rank 3
  * @param[in] op Kernel instance representing the kernel to reset
- * @example ResetCommandBuffer(device, {256, 1, 1}, op);
+ * @example resetCommandBuffer(device, {256, 1, 1}, op);
  */
-inline void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
+inline void resetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel &op) {
   LOG(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
@@ -698,7 +698,7 @@ inline void ResetCommandBuffer(WGPUDevice &device, const Shape &nThreads, Kernel
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
                                        nullptr);
     LOG(kDefLog, kTrace, "Dispatching workgroups for number of threads = %s",
-        ToString(nThreads).c_str());
+        toString(nThreads).c_str());
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder, op.nWorkgroups[0], op.nWorkgroups[1],
         op.nWorkgroups[2]);
@@ -735,10 +735,10 @@ template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
  * arbitrary types to be passed as parameters.
  * @param[in] paramsSize Size of the parameters buffer in bytes.
  * @return Kernel instance representing the created kernel
- * @example Kernel kernel = CreateKernel(ctx, shader, dataBindings, numInputs, output,
+ * @example Kernel kernel = createKernel(ctx, shader, dataBindings, numInputs, output,
  * nThreads, params, paramsSize);
  */
-inline Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
+inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
                            const Tensor *dataBindings, size_t numTensors,
                            const Shape &nThreads, const void *params,
                            size_t paramsSize = 0) {
@@ -868,14 +868,14 @@ inline Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
       (nThreads[0] + (shader.workgroupSize[0] - 1)) / shader.workgroupSize[0],
       (nThreads[1] + (shader.workgroupSize[1] - 1)) / shader.workgroupSize[1],
       (nThreads[2] + (shader.workgroupSize[2] - 1)) / shader.workgroupSize[2]};
-  ResetCommandBuffer(device, nThreads, op);
+  resetCommandBuffer(device, nThreads, op);
   ctx.kernelPool.data.insert(&op);
-  LOG(kDefLog, kInfo, "Exiting CreateKernel");
+  LOG(kDefLog, kInfo, "Exiting createKernel");
   return op;
 }
 
 /**
- * @brief Overload which wraps the CreateKernel factory function to create a
+ * @brief Overload which wraps the createKernel factory function to create a
  * kernel on the GPU. This overload uses takes a static collection of input
  * tensors instead of a pointer and a statically determined ParamsType instead
  * of casting params to a void pointer.
@@ -889,21 +889,21 @@ inline Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
  * @param[in] params Optional parameters for the kernel. If the kernel does not
  * have any parameters, use NoParam.
  * @return Kernel instance representing the created kernel
- * @example Kernel kernel = CreateKernel(ctx, shader, tensorData, output, nThreads,
+ * @example Kernel kernel = createKernel(ctx, shader, tensorData, output, nThreads,
  * params);
  */
 template <typename ParamsType = NoParam, size_t numInputs>
-Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
+Kernel createKernel(Context &ctx, const ShaderCode &shader,
                     const TensorList<numInputs> &dataBindings, const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     LOG(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
-    return CreateKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
+    return createKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType));
   } else {
     LOG(kDefLog, kInfo, "No params");
-    return CreateKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
+    return createKernel(ctx, shader, dataBindings.data.data(), numInputs, nThreads,
                         nullptr, 0);
   }
 }
@@ -913,16 +913,16 @@ Kernel CreateKernel(Context &ctx, const ShaderCode &shader,
  * It also sets up a callback to notify when the kernel has finished executing
  * by setting the value of the promise in the kernel instance argument.
  *
- * DispatchKernel does *not* wait for the kernel to finish executing and returns
+ * dispatchKernel does *not* wait for the kernel to finish executing and returns
  * immediately. The caller can wait for the kernel to finish executing by
- * calling Wait() on the future in the kernel instance.
+ * calling wait() on the future in the kernel instance.
  *
  * @param[in] ctx Context instance to manage the kernel, from which the queue
  * for the GPU is obtained
  * @param[in] kernel Kernel instance to dispatch
- * @example DispatchKernel(ctx, kernel);
+ * @example dispatchKernel(ctx, kernel);
  */
-inline void DispatchKernel(Context &ctx, Kernel &kernel, std::promise<void> &promise) {
+inline void dispatchKernel(Context &ctx, Kernel &kernel, std::promise<void> &promise) {
   // Submit the command buffer
   wgpuQueueSubmit(ctx.queue, 1, &kernel.commandBuffer);
   wgpuQueueOnSubmittedWorkDone(
