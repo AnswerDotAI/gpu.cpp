@@ -9,7 +9,7 @@ LIBSPEC ?= . $(GPUCPP)/source
 
 default: examples/hello_world/build/hello_world
 
-examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp
+examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
 	$(LIBSPEC) && cd examples/hello_world && make build/hello_world && ./build/hello_world
 
 dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dylib),,run_setup)
@@ -17,7 +17,7 @@ dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dyli
 run_setup: check-python
 	python3 setup.py
 
-all: dawnlib
+all: dawnlib check-clang check-linux-vulkan
 	cd examples/gpu_puzzles && make build/gpu_puzzles
 	cd examples/hello_world && make build/hello_world
 	cd examples/physics && make build/physics
@@ -77,3 +77,17 @@ check-cmake:
 
 check-python:
 	@command -v python3 >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 
+
+check-linux-vulkan:
+	@echo "Checking system type and Vulkan availability..."
+	@if [ "$$(uname)" = "Linux" ]; then \
+	    if command -v vulkaninfo >/dev/null 2>&1; then \
+	        echo "Vulkan is installed."; \
+	        vulkaninfo; \
+	    else \
+        	echo "Vulkan is not installed. Please install Vulkan drivers to continue. On Debian / Ubuntu: sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools"; \
+	        exit 1; \
+	    fi \
+	else \
+	    echo "Non-Linux system detected. Skipping Vulkan check."; \
+	fi

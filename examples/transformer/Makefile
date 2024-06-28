@@ -5,12 +5,15 @@ LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
 TARGET=transformer
 
+tests:
+	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib test_kernels.cpp -ldawn -ldl -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
+
 run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)
 
 # Use clang -v to see the include paths
 build/$(TARGET): run.cpp
-	mkdir -p build && $(CXX) -DNDEBUG -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn -o ./build/$(TARGET)
+	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn -o ./build/$(TARGET)
 
 watch: 
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }

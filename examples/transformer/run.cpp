@@ -74,20 +74,22 @@ fn matmul(
 }
 )";
 
-template <size_t modelDim, size_t qkvDim, size_t batchSize, typename dtype=float>
 struct Transformer {
-  std::array<dtype, modelDim * 3 * qkvDim> qkv_weights;
-  std::array<dtype, 3 * qkvDim * modelDim> out_weigts;
+  Tensor qkv;         // modelDim * 3 * qkvDim
+  Tensor rmsNormPre;  // modelDim
+  Tensor rmsNormPost; // modelDim
+  Tensor out;         // 3 * qkvDim * modelDim
 
+  Tensor mlp1; // modelDim * (2 * hidden_width * modelDim)
+  Tensor mlp2; // modelDim * (2 * hidden_width * modelDim)
   ShaderCode matmul;
   ShaderCode attention;
   ShaderCode rmsNorm;
 };
 
 struct Activations {
-  Tensor norm1;
-  Tensor qkv; // batchSize * 3 * qkvDim
-  Tensor qk;
+  Tensor normPre; // modelDim * seqLen
+  Tensor attOut;
 };
 
 struct KVCache {
@@ -95,30 +97,50 @@ struct KVCache {
   Tensor value_cache;
 };
 
-void prepareModel(Context& ctx, size_t modelDim, size_t qkvDim, size_t batchSize) {
-  // TODO(avh)
+void initTransformer(Context &ctx, size_t modelDim, size_t qkvDim,
+                     size_t batchSize, size_t seqLen, size_t hiddenWidth,
+                     Transformer &transformer, Activations &activations,
+                     KVCache &kvcache) {
+  transformer = {
+      .qkv = CreateTensor(ctx, Shape{modelDim, 3 * qkvDim}, kf32),
+      .rmsNormPre = CreateTensor(ctx, Shape{modelDim}, kf32),
+      .rmsNormPost = CreateTensor(ctx, Shape{modelDim}, kf32),
+      .out = CreateTensor(ctx, Shape{3 * qkvDim, modelDim}, kf32),
+      .mlp1 = CreateTensor(ctx, Shape{modelDim, 2 * hiddenWidth}, kf32),
+      .mlp2 = CreateTensor(ctx, Shape{modelDim, 2 * hiddenWidth}, kf32),
+  };
+  activations = {
+      // TODO
+  };
+  kvcache = {
+      .key_cache = CreateTensor(ctx, Shape{seqLen, qkvDim}, kf32),
+      .value_cache = CreateTensor(ctx, Shape{seqLen, qkvDim}, kf32),
+  };
 }
 
 int main() {
+  printf("\033[2J\033[1;1H");
   Context ctx = CreateContext();
   // static constexpr N = 3072;
   static constexpr size_t N = 128;
   static constexpr size_t seqLen = 24;
-  static constexpr size_t samplesPerBatch = 1;
+  static constexpr size_t batchSize = 1;
   static constexpr size_t modelDim = 3072;
+  static constexpr size_t hiddenWidth = modelDim * 2;
   static constexpr size_t qkvDim = 256;
-  std::array<float, N> inputArr, outputArr;
+  std::array<float, modelDim> inputArr, outputArr;
   std::mt19937 gen(314);
   randn(inputArr, gen);
 
   Tensor input = CreateTensor(ctx, Shape{N}, kf32, inputArr.data());
-  Transformer<modelDim, qkvDim, seqLen * samplesPerBatch> transformer;
+  Transformer transformer;
   Activations activations;
-  KVCache kvacache = {
-    .key_cache = CreateTensor(ctx, Shape{seqLen, qkvDim}, kf32),
-    .value_cache = CreateTensor(ctx, Shape{seqLen, qkvDim}, kf32),
-  };
-  // clear screen
-  printf("\033[2J\033[1;1H");
+  KVCache kvcache;
+  printf("Initializing transformer, allocating GPU buffers ...\n");
+  initTransformer(ctx, modelDim, qkvDim, batchSize, seqLen, hiddenWidth,
+                  transformer, activations, kvcache);
+
+  input = CreateTensor(ctx, Shape{modelDim}, kf32, inputArr.data());
+
   printf("Done\n");
 }
