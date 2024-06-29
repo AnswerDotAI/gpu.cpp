@@ -35,7 +35,7 @@ void testResidual(Context &ctx) {
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   LOG(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Residual Output").c_str());
   std::array<float, N> outputRef;
-  residual_forward_cpu(outputRef.data(), input1Arr.data(), input2Arr.data(), N);
+  ref::residual_forward_cpu(outputRef.data(), input1Arr.data(), input2Arr.data(), N);
   LOG(kDefLog, kInfo, "%s", show<float, N, 1>(outputRef, "Residual Reference Output").c_str());
   assert(isclose(outputArr.data(), outputRef.data(), N));
   LOG(kDefLog, kInfo, "Done with Residual Test");
@@ -93,7 +93,7 @@ void testMatmul(Context &ctx) {
   std::array<float, K * N> input2ArrT;
   transpose(input2Arr.data(), input2ArrT.data(), K, N);
   LOG(kDefLog, kInfo, "%s", show<float, N, K>(input2ArrT, "B'").c_str());
-  matmul_forward_cpu(refOutputArr.data(), input1Arr.data(), input2ArrT.data(),
+  ref::matmul_forward_cpu(refOutputArr.data(), input1Arr.data(), input2ArrT.data(),
                      nullptr, 1, M, K, N);
   LOG(kDefLog, kInfo, show<float, M, N>(refOutputArr, "C (reference)").c_str());
 
@@ -150,7 +150,7 @@ void testGelu(Context &ctx) {
   LOG(kDefLog, kInfo, "%s",
       show<float, N, 1>(outputArr, "GELU Output").c_str());
   std::array<float, N> refOutputArr;
-  gelu_forward_cpu(refOutputArr.data(), inputArr.data(), N);
+  ref::gelu_forward_cpu(refOutputArr.data(), inputArr.data(), N);
   LOG(kDefLog, kInfo, "%s",
       show<float, N, 1>(refOutputArr, "GELU Reference Output").c_str());
   bool passed = isclose(outputArr.data(), refOutputArr.data(), N);
@@ -196,7 +196,7 @@ void testLayerNorm(Context &ctx) {
   LOG(kDefLog, kInfo, "%s",
       show<float, N, C>(outputArr, "LayerNorm Output").c_str());
   std::array<float, N * C> refOutputArr;
-  layernorm_forward_cpu(refOutputArr.data(), inputArr.data(), weightArr.data(),
+  ref::layernorm_forward_cpu(refOutputArr.data(), inputArr.data(), weightArr.data(),
                         biasArr.data(), N, 1, C);
   LOG(kDefLog, kInfo, "%s",
       show<float, N, C>(refOutputArr,
@@ -236,7 +236,7 @@ void testSoftmax(Context &ctx) {
   LOG(kDefLog, kInfo, "%s",
       show<float, B * T, C>(outputArr, "Softmax Output").c_str());
   std::array<float, B * T * C> refOutputArr;
-  softmax_forward_cpu(refOutputArr.data(), inputArr.data(), B * T, C);
+  ref::softmax_forward_cpu(refOutputArr.data(), inputArr.data(), B * T, C);
   LOG(kDefLog, kInfo, "%s",
       show<float, B * T, C>(refOutputArr, "Softmax reference Output").c_str());
 

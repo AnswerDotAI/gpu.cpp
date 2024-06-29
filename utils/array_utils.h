@@ -92,6 +92,11 @@ inline void transpose(float* input, float* output, size_t M, size_t N) {
   }
 }
 
+void range(float* input, size_t N, float start = 0.0) {
+  for (size_t i = 0; i < N; i++) {
+    input[i] = start + static_cast<float>(i);
+  }
+}
 
 template <size_t N> void range(std::array<float, N> &input, int start = 0) {
   for (size_t i = start; i < N; i++) {
@@ -99,10 +104,16 @@ template <size_t N> void range(std::array<float, N> &input, int start = 0) {
   }
 }
 
+void randint(float* a, size_t N, std::mt19937 &gen, int min=-1, int max=1) {
+  std::uniform_int_distribution<> dist(min, max);
+  for (int i = 0; i < N; i++) {
+    a[i] = static_cast<float>(dist(gen));
+  }
+}
 
 template <typename numtype, size_t size>
-void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min,
-             int max) {
+void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min=-1,
+             int max=1) {
   std::uniform_int_distribution<> dist(min, max);
   for (int i = 0; i < size; i++) {
     a[i] = static_cast<numtype>(dist(gen));

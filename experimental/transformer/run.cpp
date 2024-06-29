@@ -53,12 +53,18 @@ fn main(
     if (row >= {{M}} || col >= {{N}}) {
         return;
     }
-    var total: f32 = 0.0;
+    // [row * {{N}} + col] = 0;
+    // C[row * {{N}} + col] = f32(row * {{N}} + col);
+    // C[row * {{N}} + col] = f32(row * {{N}});
+    // C[row * {{N}} + col] = f32(col);
+    var total: f32 = 0; // A[row * {{K}}] * B[col * {{N}}];
     for (var k = 0u; k < {{K}}; k = k + 1u) {
         // B is stored as B^T, effectively column-major
         total += A[row * {{K}} + k] * B[col * {{N}} + k];
     }
     C[row * {{N}} + col] = total;
+    // C[row * {{N}} + col] = A[row * {{K}} + col];
+    // C[row * {{N}} + col] = 0;
 }
 )";
 
@@ -82,13 +88,13 @@ struct KVCache {
   Tensor value_cache;
 };
 
-void initTransformer(Context &ctx, size_t modelDim, size_t qkvDim,
+void createTransformer(Context &ctx, size_t modelDim, size_t qkvDim,
                      size_t batchSize, size_t seqLen, size_t hiddenWidth,
                      Transformer &transformer, Activations &activations,
                      KVCache &kvcache) {
   std::mt19937 gen(314159);
   transformer = {
-      .qkv = createTensor(ctx, Shape{modelDim, 3 * qkvDim}, kf32),
+      .qkv = createTensor(ctx, Shape{3 * qkvDim, modelDim}, kf32), // column-major
       .rmsNormPre = createTensor(ctx, Shape{modelDim}, kf32),
       .rmsNormPost = createTensor(ctx, Shape{modelDim}, kf32),
       .out = createTensor(ctx, Shape{3 * qkvDim, modelDim}, kf32),
@@ -98,7 +104,8 @@ void initTransformer(Context &ctx, size_t modelDim, size_t qkvDim,
 
   // Initialize values
   std::unique_ptr<float[]> qkvInit(new float[modelDim * 3 * qkvDim]);
-  randn(qkvInit.get(), size(transformer.qkv.shape), gen);
+  // randint(qkvInit.get(), size(transformer.qkv.shape), gen, -2, 2);
+  range(qkvInit.get(), size(transformer.qkv.shape), 0.0);
   LOG(kDefLog, kInfo, "%s",
       show<float>(qkvInit.get(), transformer.qkv.shape[0],
                   transformer.qkv.shape[1], "QKV Weights")
@@ -124,6 +131,7 @@ inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
   ReplaceAll(codeString, "{{M}}", std::to_string(M));
   ReplaceAll(codeString, "{{K}}", std::to_string(K));
   ReplaceAll(codeString, "{{N}}", std::to_string(N));
+  LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
 }
 
@@ -132,7 +140,7 @@ int main() {
   Context ctx = createContext();
   static constexpr size_t seqLen = 24;
   static constexpr size_t batchSize = 1;
-  static constexpr size_t modelDim = 2; // 3072;
+  static constexpr size_t modelDim = 3; // 3072;
   static constexpr size_t hiddenWidth = modelDim * 2;
   static constexpr size_t qkvDim = 1; //256;
   std::mt19937 gen(314);
@@ -141,13 +149,12 @@ int main() {
   Activations activations;
   KVCache kvcache;
   LOG(kDefLog, kInfo, "Initializing transformer, allocating GPU buffers ...\n");
-  initTransformer(ctx, modelDim, qkvDim, batchSize, seqLen, hiddenWidth,
+  createTransformer(ctx, modelDim, qkvDim, batchSize, seqLen, hiddenWidth,
                   transformer, activations, kvcache);
 
   std::array<float, modelDim> inputArr;
   std::array<float, modelDim * 3 * qkvDim> weightsArr;
-  randn(inputArr, gen);
-  randn(weightsArr, gen);
+  randint(inputArr, gen, -2, 2);
   LOG(kDefLog, kInfo, "%s",
       show<float>(inputArr.data(), 1, modelDim, "Input").c_str());
   Tensor input = createTensor(ctx, Shape{modelDim}, kf32, inputArr.data());
@@ -155,7 +162,7 @@ int main() {
 
   ShaderCode matmul = createMatmul(kShaderMatmul0, 1, modelDim, 3 * qkvDim);
   Kernel qkv =
-      createKernel(ctx, matmul, TensorList{transformer.qkv, input, output},
+      createKernel(ctx, matmul, TensorList{input, transformer.qkv, output},
                    /*nthreads*/ {modelDim, 1, 1});
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
