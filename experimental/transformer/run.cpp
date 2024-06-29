@@ -53,18 +53,12 @@ fn main(
     if (row >= {{M}} || col >= {{N}}) {
         return;
     }
-    // [row * {{N}} + col] = 0;
-    // C[row * {{N}} + col] = f32(row * {{N}} + col);
-    // C[row * {{N}} + col] = f32(row * {{N}});
-    // C[row * {{N}} + col] = f32(col);
     var total: f32 = 0; // A[row * {{K}}] * B[col * {{N}}];
     for (var k = 0u; k < {{K}}; k = k + 1u) {
         // B is stored as B^T, effectively column-major
-        total += A[row * {{K}} + k] * B[col * {{N}} + k];
+        total += A[row * {{K}} + k] * B[col * {{K}} + k];
     }
     C[row * {{N}} + col] = total;
-    // C[row * {{N}} + col] = A[row * {{K}} + col];
-    // C[row * {{N}} + col] = 0;
 }
 )";
 
@@ -131,7 +125,7 @@ inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
   ReplaceAll(codeString, "{{M}}", std::to_string(M));
   ReplaceAll(codeString, "{{K}}", std::to_string(K));
   ReplaceAll(codeString, "{{N}}", std::to_string(N));
-  LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
+  // LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
 }
 
@@ -140,7 +134,7 @@ int main() {
   Context ctx = createContext();
   static constexpr size_t seqLen = 24;
   static constexpr size_t batchSize = 1;
-  static constexpr size_t modelDim = 3; // 3072;
+  static constexpr size_t modelDim = 4; // 3072;
   static constexpr size_t hiddenWidth = modelDim * 2;
   static constexpr size_t qkvDim = 1; //256;
   std::mt19937 gen(314);
@@ -153,7 +147,6 @@ int main() {
                   transformer, activations, kvcache);
 
   std::array<float, modelDim> inputArr;
-  std::array<float, modelDim * 3 * qkvDim> weightsArr;
   randint(inputArr, gen, -2, 2);
   LOG(kDefLog, kInfo, "%s",
       show<float>(inputArr.data(), 1, modelDim, "Input").c_str());
@@ -174,8 +167,10 @@ int main() {
       show<float>(outputArr.data(), 1, 3 * qkvDim, "QKV Output").c_str());
 
   std::array<float, 3 * qkvDim> outputRefArr;
+  std::array<float, modelDim * 3 * qkvDim> weightsArr;
+  toCPU(ctx, transformer.qkv, weightsArr.data(), sizeof(weightsArr));
   ref::matmul_forward_cpu(
-      outputRefArr.data(), inputArr.data(), weightsArr.data(), NULL,
+      outputRefArr.data(), inputArr.data(), weightsArr.data(), nullptr,
       /* batch */ 1, /* T */ 1, /* C */ modelDim, /* OC */ 3 * qkvDim);
   LOG(kDefLog, kInfo, "Reference Output: %s",
       show<float>(outputRefArr.data(), 1, 3 * qkvDim, "QKV Output (Reference)")
