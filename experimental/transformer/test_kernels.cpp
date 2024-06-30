@@ -8,7 +8,7 @@
 #include "utils/logging.h"
 
 #include "shaders.h"
-#include "reference_impls.h"
+#include "llmc/reference_impls.h"
 
 using namespace gpu;
 

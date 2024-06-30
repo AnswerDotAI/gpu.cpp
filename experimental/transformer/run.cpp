@@ -3,7 +3,7 @@
 #include "utils/logging.h"
 #include <array>
 
-#include "reference_impls.h"
+#include "llmc/reference_impls.h"
 
 using namespace gpu;
 
