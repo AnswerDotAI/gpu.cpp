@@ -76,8 +76,14 @@ struct Tensor {
   Shape shape;
 };
 
+struct TensorView {
+  Tensor data; // non-owning view
+  size_t offset = 0;
+  size_t span = 0;
+};
+
 /**
- * @brief Represents a collection of tensors.
+ * @brief Represents a collection of non-overlapping views into tensors.
  *
  * Since Tensor wraps a WGPUBuffer and WGPUBuffer is effectively a reference to
  * a GPU buffer, performing operations on TensorList elements (writing /
@@ -86,9 +92,22 @@ struct Tensor {
 template <std::size_t N> struct TensorList {
   std::array<Tensor, N> data;
   std::array<size_t, N> viewOffsets;
-  TensorList(std::initializer_list<Tensor> init) {
+  std::array<size_t, N> viewSpans;
+  TensorList(const std::initializer_list<Tensor>& init) {
     std::copy(begin(init), end(init), begin(data));
     std::fill(begin(viewOffsets), end(viewOffsets), 0);
+    for (size_t i=0;i < N; ++i) {
+      viewSpans[i] = data[i].data.size;
+    }
+  }
+  TensorList(const std::initializer_list<TensorView>& init) {
+    size_t i = 0;
+    for (const auto& tv : init) {
+      data[i] = tv.data;
+      viewOffsets[i] = tv.offset;
+      viewSpans[i] = tv.span;
+      ++i;
+    }
   }
   Tensor &operator[](std::size_t index) { return data[index]; }
   const Tensor &operator[](std::size_t index) const { return data[index]; }

@@ -136,8 +136,8 @@ int main(int argc, char **argv) {
     resetCommandBuffer(ctx.device, /*nthreads*/ {NCOLS, NROWS, 1},
                        renderKernel);
 
-    static const char intensity[] = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/"
-                                    "\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
+    static const char intensity[] = "@B%8&WM#$Z0OQLCJUYX/"
+                                    "\\|()1{}I[]?lzcvunxrjft-+~<>i!_;:*\"^`',. ";
     // static const char intensity[] = "@%#8$X71x*+=-:^~'.` ";
 
     // Intensity = depth map, focus on depth of the objects

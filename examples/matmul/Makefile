@@ -6,9 +6,6 @@ NUM_JOBS?=$(shell nproc)
 TARGET=transformer
 CODEPATH = find . ../../utils ../../ -maxdepth 1 -type f
 
-tests:
-	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib test_kernels.cpp -ldawn -ldl -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests
-
 run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)
 
@@ -22,6 +19,3 @@ watch:
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
-
-watch-tests:
-	mkdir -p build && ls | entr -s "$(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/utils -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib test_kernels.cpp -ldawn -ldl -o ./build/run_tests && $(LIBSPEC) && ./build/run_tests"

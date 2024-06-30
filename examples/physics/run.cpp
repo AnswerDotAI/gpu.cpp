@@ -93,7 +93,7 @@ int main() {
     std::chrono::duration<double> elapsed = end - start;
     // N * 2 because there's two objects per pendulum
     rasterize(posArr.data(), N * 2, 2.0, 2.0, screen, 80, 40);
-    printf("\033[2J\033[1;1H" // clear screen and move cursor to top-left
+    printf("\033[2J\033[1;1H" // clear screen
            "# simulations: %lu\n%s",
            N, screen.c_str());
     resetCommandBuffer(ctx.device, nThreads, update); // Prepare kernel command

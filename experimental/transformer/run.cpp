@@ -53,8 +53,8 @@ fn main(
     if (row >= {{M}} || col >= {{N}}) {
         return;
     }
-    var total: f32 = 0; // A[row * {{K}}] * B[col * {{N}}];
-    for (var k = 0u; k < {{K}}; k = k + 1u) {
+    var total: f32 = A[row * {{K}}] * B[col * {{K}}]; // assumes size >= 1
+    for (var k = 1u; k < {{K}}; k = k + 1u) {
         // B is stored as B^T, effectively column-major
         total += A[row * {{K}} + k] * B[col * {{K}} + k];
     }
