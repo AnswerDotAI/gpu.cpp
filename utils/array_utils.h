@@ -15,8 +15,11 @@
 #include <array>
 #include <cmath>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <utility>
+
+#include "utils/logging.h"
 
 namespace gpu {
 
@@ -165,7 +168,7 @@ inline void flip(float* a, size_t R, size_t C, bool horizontal = true) {
 bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
   for (size_t i = 0; i < n; i++) {
     if (std::abs(a[i] - b[i]) > tol || std::isnan(a[i]) || std::isnan(b[i])) {
-      LOG(kDefLog, kInfo, "Mismatch at index %d: %f != %f", i, a[i], b[i]);
+      LOG(kDefLog, kError, "Mismatch at index %d: %f != %f", i, a[i], b[i]);
       return false;
     }
   }
