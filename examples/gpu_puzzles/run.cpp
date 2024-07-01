@@ -11,7 +11,7 @@
 
 using namespace gpu;
 
-static constexpr size_t N = 3072;
+static constexpr size_t N = 10;
 
 template <size_t N> std::array<float, N> makeData() {
   std::array<float, N> inputArr;
@@ -146,17 +146,41 @@ void puzzle4(Context &ctx) {
 // Puzzle 5 : Broadcast
 // Implement a kernel that adds a and b and stores it in out. Inputs a and b
 // are vectors. You have more threads than positions.
-const char *kPuzzle5_Broadcast = R"(
+const char *kPuzzle5 = R"(
 @group(0) @binding(0) var<storage, read_write> a: array<f32>;
-@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(1) var<storage, read_write> b : array<f32>;
 @group(0) @binding(2) var<storage, read_write> output : array<f32>;
-@compute @workgroup_size({{workgroupSize}}) (
+@group(0) @binding(3) var<uniform> params: Params;
+struct Params {
+  size: u32, // input is size x size
+};
+@compute @workgroup_size({{workgroupSize}})
 fn main(
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
   ) {
-    // TODO
+    let local_i = GlobalInvocationID.x;
+    let local_j = GlobalInvocationID.y;
+
+    if (local_i < params.size && local_j < params.size) {
+      output[local_i + local_j * params.size] = a[local_i] + b[local_j];
+    }
   }
 )";
+void puzzle5(Context &ctx) {
+  printf("\n\nPuzzle 5\n\n");
+  static constexpr size_t N = 9;
+  Tensor a = createTensor(ctx, {N, 1}, kf32, makeData<N>().data());
+  Tensor b = createTensor(ctx, {1, N}, kf32, makeData<N>().data());
+  Tensor output = createTensor(ctx, {N, N}, kf32);
+  struct Params {
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, createShader(kPuzzle5, /*workgroup size*/ {N, N, 1}),
+                   TensorList{a, b, output}, {N, N, 1}, Params{N});
+  showResult<N, N, N>(ctx, op, output);
+}
 
 // TODO
 // ...
@@ -167,5 +191,7 @@ int main(int argc, char **argv) {
   puzzle2(ctx);
   puzzle3(ctx);
   puzzle4(ctx);
+  puzzle5(ctx);
+  puzzle6(ctx);
   return 0;
 }
