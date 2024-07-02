@@ -20,7 +20,9 @@ run_setup: check-python
 all: dawnlib check-clang check-linux-vulkan
 	cd examples/gpu_puzzles && make build/gpu_puzzles
 	cd examples/hello_world && make build/hello_world
+	cd examples/matmul && make build/mm
 	cd examples/physics && make build/physics
+	cd examples/render && make build/render
 	cd examples/render && make build/render
 
 ################################################################################

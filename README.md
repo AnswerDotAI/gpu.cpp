@@ -48,7 +48,7 @@ invoked from the host using this library.
 
 using namespace gpu; // createContext, createTensor, createKernel,
                      // createShader, dispatchKernel, wait, toCPU
-                     // Tensor, Kernel, Context, Shape, kf32
+                     // Bindings, Tensor, Kernel, Context, Shape, kf32
 
 static const char *kGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(ctx, createShader(kGelu, 256, kf32),
-                           TensorList{input, output},
+                           Bindings{input, output},
                            /* nthreads */ {N, 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);

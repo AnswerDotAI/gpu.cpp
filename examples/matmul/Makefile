@@ -3,7 +3,7 @@ GPUCPP ?= $(PWD)/../..
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
-TARGET=transformer
+TARGET=mm
 CODEPATH = find . ../../utils ../../ -maxdepth 1 -type f
 
 run: ./build/$(TARGET)

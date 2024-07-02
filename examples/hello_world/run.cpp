@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(ctx, createShader(kGelu, 256, kf32),
-                           TensorList{input, output},
+                           Bindings{input, output},
                            /* nthreads */ {N, 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);

@@ -78,7 +78,7 @@ int main() {
   ShaderCode shader = createShader(kShaderUpdateSim, 256, kf32);
   printf("Shader code: %s\n", shader.data.c_str());
   Kernel update = createKernel(
-      ctx, shader, TensorList{theta1, theta2, vel1, vel2, length, pos},
+      ctx, shader, Bindings{theta1, theta2, vel1, vel2, length, pos},
       nThreads);
 
   // Main simulation update loop
@@ -96,7 +96,7 @@ int main() {
     printf("\033[2J\033[1;1H" // clear screen
            "# simulations: %lu\n%s",
            N, screen.c_str());
-    resetCommandBuffer(ctx.device, nThreads, update); // Prepare kernel command
+    resetCommandBuffer(ctx.device, update); // Prepare kernel command
                                                       // buffer for nxt iteration
     std::this_thread::sleep_for(std::chrono::milliseconds(8) - elapsed);
   }

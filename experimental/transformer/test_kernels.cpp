@@ -7,8 +7,8 @@
 #include "utils/array_utils.h"
 #include "utils/logging.h"
 
-#include "shaders.h"
 #include "llmc/reference_impls.h"
+#include "shaders.h"
 
 using namespace gpu;
 
@@ -29,14 +29,17 @@ void testResidual(Context &ctx) {
   LOG(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
   Kernel op =
       createKernel(ctx, createShader(kShaderResidual, workgroupSize, kf32),
-                   TensorList{input1, input2, output}, /* nthreads */ {N, 1, 1});
+                   Bindings{input1, input2, output}, /* nthreads */ {N, 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  LOG(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Residual Output").c_str());
+  LOG(kDefLog, kInfo, "%s",
+      show<float, N, 1>(outputArr, "Residual Output").c_str());
   std::array<float, N> outputRef;
-  ref::residual_forward_cpu(outputRef.data(), input1Arr.data(), input2Arr.data(), N);
-  LOG(kDefLog, kInfo, "%s", show<float, N, 1>(outputRef, "Residual Reference Output").c_str());
+  ref::residual_forward_cpu(outputRef.data(), input1Arr.data(),
+                            input2Arr.data(), N);
+  LOG(kDefLog, kInfo, "%s",
+      show<float, N, 1>(outputRef, "Residual Reference Output").c_str());
   assert(isclose(outputArr.data(), outputRef.data(), N));
   LOG(kDefLog, kInfo, "Done with Residual Test");
 }
@@ -58,10 +61,11 @@ void testHadamard(Context &ctx) {
   std::future<void> future = promise.get_future();
   Kernel op =
       createKernel(ctx, createShader(kShaderHadamard, workgroupSize, kf32),
-                   TensorList{input1, input2, output}, /* nthreads */ {N, 1, 1});
+                   Bindings{input1, input2, output}, /* nthreads */ {N, 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
-  LOG(kDefLog, kInfo, "%s", show<float, N, 1>(outputArr, "Hadamard Output").c_str());
+  LOG(kDefLog, kInfo, "%s",
+      show<float, N, 1>(outputArr, "Hadamard Output").c_str());
 }
 
 void testMatmul(Context &ctx) {
@@ -77,9 +81,9 @@ void testMatmul(Context &ctx) {
   Tensor input1 = createTensor(ctx, {M, K}, kf32, input1Arr.data());
   Tensor input2 = createTensor(ctx, {K, N}, kf32, input2Arr.data());
   Tensor output = createTensor(ctx, {M, N}, kf32, outputArr.data());
-  Kernel op =
-      createKernel(ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
-                   TensorList{input1, input2, output}, /* nthreads */ {M * N, 1, 1});
+  Kernel op = createKernel(
+      ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
+      Bindings{input1, input2, output}, /* nthreads */ {M * N, 1, 1});
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   dispatchKernel(ctx, op, promise);
@@ -93,8 +97,8 @@ void testMatmul(Context &ctx) {
   std::array<float, K * N> input2ArrT;
   transpose(input2Arr.data(), input2ArrT.data(), K, N);
   LOG(kDefLog, kInfo, "%s", show<float, N, K>(input2ArrT, "B'").c_str());
-  ref::matmul_forward_cpu(refOutputArr.data(), input1Arr.data(), input2ArrT.data(),
-                     nullptr, 1, M, K, N);
+  ref::matmul_forward_cpu(refOutputArr.data(), input1Arr.data(),
+                          input2ArrT.data(), nullptr, 1, M, K, N);
   LOG(kDefLog, kInfo, show<float, M, N>(refOutputArr, "C (reference)").c_str());
 
   LOG(kDefLog, kInfo, "Done with Matmul Test");
@@ -138,8 +142,10 @@ void testGelu(Context &ctx) {
   Tensor geluOut = createTensor(ctx, {N}, kf32, outputArr.data());
   LOG(kDefLog, kInfo, "Creating GELU Shader");
   ShaderCode shader = createShader(kShaderGelu, 256, kf32);
-  Kernel op = createKernel(ctx, shader, TensorList{geluIn, geluOut}, /* nthreads */ {N, 1, 1});
-  LOG(kDefLog, kInfo, "Workgroup size: %s", toString(shader.workgroupSize).c_str());
+  Kernel op = createKernel(ctx, shader, Bindings{geluIn, geluOut},
+                           /* nthreads */ {N, 1, 1});
+  LOG(kDefLog, kInfo, "Workgroup size: %s",
+      toString(shader.workgroupSize).c_str());
   LOG(kDefLog, kInfo, "dispatching GELU Shader");
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
@@ -183,7 +189,8 @@ void testLayerNorm(Context &ctx) {
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(ctx, createShader(kShaderLayerNorm1, 256, kf32),
-                           TensorList{input, weight, bias, output}, /* n threads */{N, 1, 1}, params);
+                           Bindings{input, weight, bias, output},
+                           /* n threads */ {N, 1, 1}, params);
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -196,8 +203,8 @@ void testLayerNorm(Context &ctx) {
   LOG(kDefLog, kInfo, "%s",
       show<float, N, C>(outputArr, "LayerNorm Output").c_str());
   std::array<float, N * C> refOutputArr;
-  ref::layernorm_forward_cpu(refOutputArr.data(), inputArr.data(), weightArr.data(),
-                        biasArr.data(), N, 1, C);
+  ref::layernorm_forward_cpu(refOutputArr.data(), inputArr.data(),
+                             weightArr.data(), biasArr.data(), N, 1, C);
   LOG(kDefLog, kInfo, "%s",
       show<float, N, C>(refOutputArr,
                         "LayerNorm Reference Implementation Output")
@@ -214,8 +221,8 @@ void testSoftmax(Context &ctx) {
     uint32_t N;
     uint32_t C;
   };
-  static constexpr size_t B = 6; // batch size
-  static constexpr size_t T = 8; // token index
+  static constexpr size_t B = 6;    // batch size
+  static constexpr size_t T = 8;    // token index
   static constexpr size_t C = 3072; // input channels
   std::array<float, B * T * C> inputArr;
   std::array<float, B * T * C> outputArr;
@@ -226,8 +233,9 @@ void testSoftmax(Context &ctx) {
   LOG(kDefLog, kInfo, "num threads: %d", B * T);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, createShader(kShaderSoftmax1, 256, kf32), TensorList{input,
-                           output}, /* nthreads */ Shape{B * T, 1, 1}, SoftmaxParam{B * T, C});
+  Kernel op = createKernel(
+      ctx, createShader(kShaderSoftmax1, 256, kf32), Bindings{input, output},
+      /* nthreads */ Shape{B * T, 1, 1}, SoftmaxParam{B * T, C});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));

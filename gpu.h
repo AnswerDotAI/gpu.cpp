@@ -86,38 +86,40 @@ struct TensorView {
  * @brief Represents a collection of non-overlapping views into tensors.
  *
  * Since Tensor wraps a WGPUBuffer and WGPUBuffer is effectively a reference to
- * a GPU buffer, performing operations on TensorList elements (writing /
+ * a GPU buffer, performing operations on Bindings elements (writing /
  * copying buffers) is tantamount to working with pointers to GPU buffers.
  */
-template <std::size_t N> struct TensorList {
+template <std::size_t N> struct Bindings {
   std::array<Tensor, N> data;
   std::array<size_t, N> viewOffsets;
   std::array<size_t, N> viewSpans;
-  TensorList(const std::initializer_list<Tensor>& init) {
+  Bindings(const std::initializer_list<Tensor> &init) {
     std::copy(begin(init), end(init), begin(data));
     std::fill(begin(viewOffsets), end(viewOffsets), 0);
-    for (size_t i=0;i < N; ++i) {
+    for (size_t i = 0; i < N; ++i) {
       viewSpans[i] = data[i].data.size;
     }
   }
-  TensorList(const std::initializer_list<TensorView>& init) {
+
+  Bindings(const std::initializer_list<TensorView> &init) {
     size_t i = 0;
-    for (const auto& tv : init) {
+    for (const auto &tv : init) {
       data[i] = tv.data;
       viewOffsets[i] = tv.offset;
       viewSpans[i] = tv.span;
       ++i;
     }
   }
+
   Tensor &operator[](std::size_t index) { return data[index]; }
   const Tensor &operator[](std::size_t index) const { return data[index]; }
 };
 
 /**
- * @brief Deduction guide for TensorList
+ * @brief Deduction guide for Bindings
  */
-template <std::size_t N> TensorList(std::array<Tensor, N>) -> TensorList<N>;
-template <typename... Args> TensorList(Args...) -> TensorList<sizeof...(Args)>;
+template <std::size_t N> Bindings(std::array<Tensor, N>) -> Bindings<N>;
+template <typename... Args> Bindings(Args...) -> Bindings<sizeof...(Args)>;
 
 struct Context; // Forward declaration so that TensorPool can have a pointer to
                 // Context
@@ -707,13 +709,10 @@ inline void toGPU(Context &ctx, const float *data, Tensor &tensor) {
  * both in the initial kernel creation and every time the kernel is to be
  * reused for a dispatch.
  * @param[in] device WGPUDevice instance to manage the operation
- * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
- * rank 3
  * @param[in] op Kernel instance representing the kernel to reset
- * @example resetCommandBuffer(device, {256, 1, 1}, op);
+ * @example resetCommandBuffer(device, op);
  */
-inline void resetCommandBuffer(WGPUDevice &device, const Shape &nThreads,
-                               Kernel &op) {
+inline void resetCommandBuffer(WGPUDevice &device, Kernel &op) {
   LOG(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
@@ -724,8 +723,6 @@ inline void resetCommandBuffer(WGPUDevice &device, const Shape &nThreads,
     wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
                                        nullptr);
-    LOG(kDefLog, kTrace, "Dispatching workgroups for number of threads = %s",
-        toString(nThreads).c_str());
     wgpuComputePassEncoderDispatchWorkgroups(
         computePassEncoder, op.nWorkgroups[0], op.nWorkgroups[1],
         op.nWorkgroups[2]);
@@ -741,6 +738,25 @@ inline void resetCommandBuffer(WGPUDevice &device, const Shape &nThreads,
  */
 struct NoParam {};
 template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
+
+/**
+ * @brief Ceiling division.
+ */
+inline size_t cdiv(size_t n, size_t d) { return (n + d - 1) / d; }
+
+/**
+ * @brief cdiv for shape specification. Mostly useful for evenly dividing total
+ * # threads by workgroup size dimensions.
+ */
+inline Shape cdiv(Shape total, Shape group) { 
+  assert(total.rank == group.rank);
+  Shape result;
+  result.rank = total.rank;
+  for (size_t dim = 0; dim < total.rank; ++dim) {
+    result[dim] = cdiv(total[dim], group[dim]);
+  }
+  return result;
+}
 
 /**
  * @brief A factory function to create a kernel on the GPU. The kernel is
@@ -892,11 +908,10 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
     op.computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
   }
-  op.nWorkgroups = {
-      (nThreads[0] + (shader.workgroupSize[0] - 1)) / shader.workgroupSize[0],
-      (nThreads[1] + (shader.workgroupSize[1] - 1)) / shader.workgroupSize[1],
-      (nThreads[2] + (shader.workgroupSize[2] - 1)) / shader.workgroupSize[2]};
-  resetCommandBuffer(device, nThreads, op);
+  op.nWorkgroups = {cdiv(nThreads[0], shader.workgroupSize[0]),
+                    cdiv(nThreads[1], shader.workgroupSize[1]),
+                    cdiv(nThreads[2], shader.workgroupSize[2])};
+  resetCommandBuffer(device, op);
   ctx.kernelPool.data.insert(&op);
   LOG(kDefLog, kInfo, "Exiting createKernel");
   return op;
@@ -910,7 +925,7 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
  *
  * @param[in] ctx Context instance to manage the kernel
  * @param[in] shader Shader code for the kernel
- * @param[in] dataBindings A TensorList of tensors whose GPU buffers are bound
+ * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
  * to the kernel as inputs and outputs.
  * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
  * rank 3.
@@ -922,7 +937,7 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
  */
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel createKernel(Context &ctx, const ShaderCode &shader,
-                    const TensorList<numInputs> &dataBindings,
+                    const Bindings<numInputs> &dataBindings,
                     const Shape &nThreads,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {

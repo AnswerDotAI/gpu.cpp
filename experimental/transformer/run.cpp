@@ -202,7 +202,7 @@ int main() {
     ShaderCode matmul = createMatmul(kShaderMatmul1, /*M*/ batchSize,
                                      /*K*/ modelDim, /*N*/ 3 * qkvDim);
     Kernel qkv = createKernel(
-        ctx, matmul, TensorList{input, transformer.qkv, activations.qkv},
+        ctx, matmul, Bindings{input, transformer.qkv, activations.qkv},
         /*nthreads*/ {modelDim, 1, 1});
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
@@ -237,7 +237,7 @@ int main() {
     /*
     // TODO(avh): need to pass in activation views that don't overlap here
     Kernel qk = createKernel(
-        ctx, dot, TensorList{activations.qkv, activations.qkv, activations.qk},
+        ctx, dot, Bindings{activations.qkv, activations.qkv, activations.qk},
         {batchSize * nHeads, 1, 1});
     */
     // TODO(avh): check nThreads

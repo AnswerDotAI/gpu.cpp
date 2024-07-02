@@ -106,6 +106,7 @@ int main() {
   static constexpr size_t M = 8;
   static constexpr size_t K = 8;
   static constexpr size_t N = 8;
+  int version = 1;
 
   Context ctx = createContext();
 
@@ -128,13 +129,18 @@ int main() {
 
   Tensor output = createTensor(ctx, Shape{M, N}, kf32);
 
-  ShaderCode matmul = createMatmul(kShaderMatmul1, M, K, N, {16, 1, 1});
-  Kernel kernel = createKernel(ctx, matmul, TensorList{input, weights, output},
-                                /*nthreads*/ {M, N, 1});
+  Bindings<3> bindings = {input, weights, output};
 
-  // ShaderCode matmul = createMatmul(kShaderMatmul2, M, K, N, {16, 1, 1});
-  // Kernel kernel = createKernel(ctx, matmul, TensorList{input, weights, output},
-  //                                /*nthreads*/ {M * N, 1, 1});
+  Kernel kernel;
+  if (version == 1) {
+    ShaderCode matmul = createMatmul(kShaderMatmul1, M, K, N, {16, 1, 1});
+    kernel = createKernel(ctx, matmul, bindings,
+                                  /*nthreads*/ {M, N, 1});
+  } else if (version == 2) {
+    ShaderCode matmul = createMatmul(kShaderMatmul2, M, K, N, {16, 1, 1});
+    kernel = createKernel(ctx, matmul, bindings,
+  /*nthreads*/ {M * N, 1, 1});
+  }
 
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
