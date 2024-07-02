@@ -178,7 +178,7 @@ void puzzle5(Context &ctx) {
 
   Kernel op =
       createKernel(ctx, createShader(kPuzzle5, /*workgroup size*/ {N, N, 1}),
-                   TensorList{a, b, output}, {N, N, 1}, Params{N});
+                   Bindings{a, b, output}, {N, N, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 
@@ -192,6 +192,6 @@ int main(int argc, char **argv) {
   puzzle3(ctx);
   puzzle4(ctx);
   puzzle5(ctx);
-  puzzle6(ctx);
+  // puzzle6(ctx);
   return 0;
 }
