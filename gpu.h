@@ -946,13 +946,13 @@ Kernel createKernel(Context &ctx, const ShaderCode &shader,
                     const Shape &nWorkgroups,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
-    LOG(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
+    // LOG(kDefLog, kTrace, "Using params of size %d bytes", sizeof(ParamsType));
     return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), nWorkgroups,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType));
   } else {
-    LOG(kDefLog, kInfo, "No params");
+    // LOG(kDefLog, kTrace , "No params");
     return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), nWorkgroups, nullptr, 0);
   }
