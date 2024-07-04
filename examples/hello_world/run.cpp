@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(ctx, createShader(kGelu, 256, kf32),
                            Bindings{input, output},
-                           /* nWorkgroups */ {N / 256, 1, 1});
+                           /* nWorkgroups */ {cdiv(N, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
