@@ -120,7 +120,8 @@ int main(int argc, char **argv) {
 
   ShaderCode shader = createShader(kSDF, Shape{16, 16, 1});
   Kernel renderKernel =
-      createKernel(ctx, shader, Bindings{devScreen}, {NCOLS, NROWS, 1}, params);
+      createKernel(ctx, shader, Bindings{devScreen},
+                   cdiv({NCOLS, NROWS, 1}, shader.workgroupSize), params);
   while (true) {
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
@@ -135,8 +136,9 @@ int main(int argc, char **argv) {
                          static_cast<void *>(&params), sizeof(params));
     resetCommandBuffer(ctx.device, renderKernel);
 
-    static const char intensity[] = "@B%8&WM#$Z0OQLCJUYX/"
-                                    "\\|()1{}I[]?lzcvunxrjft-+~<>i!_;:*\"^`',. ";
+    static const char intensity[] =
+        "@B%8&WM#$Z0OQLCJUYX/"
+        "\\|()1{}I[]?lzcvunxrjft-+~<>i!_;:*\"^`',. ";
     // static const char intensity[] = "@%#8$X71x*+=-:^~'.` ";
 
     // Intensity = depth map, focus on depth of the objects

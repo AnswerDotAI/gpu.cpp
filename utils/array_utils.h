@@ -95,15 +95,20 @@ inline void transpose(float* input, float* output, size_t M, size_t N) {
   }
 }
 
-void range(float* input, size_t N, float start = 0.0) {
+void range(float* input, size_t N, float start = 0.0, float step = 1.0) {
+  // TODO(avh): currently unused - check
+  float curr = start;
   for (size_t i = 0; i < N; i++) {
-    input[i] = start + static_cast<float>(i);
+    input[i] = curr;
+    curr += step;
   }
 }
 
-template <size_t N> void range(std::array<float, N> &input, int start = 0) {
+template <size_t N> void range(std::array<float, N> &input, float start = 0.0, float step = 1.0) {
+  float curr = start;
   for (size_t i = start; i < N; i++) {
-    input[i] = static_cast<float>(i);
+    input[i] = curr;
+    curr += step;
   }
 }
 

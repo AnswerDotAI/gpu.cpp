@@ -53,7 +53,7 @@ void puzzle1(Context &ctx) {
   Tensor input = createTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = createTensor(ctx, {N}, kf32);
   Kernel op = createKernel(ctx, createShader(kPuzzle1, 256), Bindings{input, output},
-                           /*nthreads*/ {N, 1, 1});
+                           /*nWorkgroups */ {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -80,7 +80,7 @@ void puzzle2(Context &ctx) {
   Tensor b = createTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = createTensor(ctx, {N}, kf32);
   Kernel op = createKernel(ctx, createShader(kPuzzle2, 256), Bindings{a, b, output},
-                           {N, 1, 1});
+                           {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -105,7 +105,7 @@ void puzzle3(Context &ctx) {
   Tensor input = createTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = createTensor(ctx, {N}, kf32);
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle3, 4), Bindings{input, output}, {N, 1, 1});
+      createKernel(ctx, createShader(kPuzzle3, 4), Bindings{input, output}, {N / 4, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -139,7 +139,7 @@ void puzzle4(Context &ctx) {
   };
   Kernel op =
       createKernel(ctx, createShader(kPuzzle4, /*workgroup size*/ {N, N, 1}),
-                   Bindings{input, output}, {N, N, 1}, Params{N});
+                   Bindings{input, output}, /* nWorkgroups */ {1, 1, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 
@@ -178,7 +178,7 @@ void puzzle5(Context &ctx) {
 
   Kernel op =
       createKernel(ctx, createShader(kPuzzle5, /*workgroup size*/ {N, N, 1}),
-                   Bindings{a, b, output}, {N, N, 1}, Params{N});
+                   Bindings{a, b, output}, {1, 1, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 

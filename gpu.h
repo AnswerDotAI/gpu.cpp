@@ -771,6 +771,7 @@ inline Shape cdiv(Shape total, Shape group) {
  * @param[in] shader Shader code for the kernel
  * @param[in] dataBindings Pointer to a span of tensors bound to the kernel
  * @param[in] numInputs Number of tensors pointed to by dataBindings
+ * TODO(avh): switch from nThreads to nWorkgroups
  * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
  * rank 3
  * @param[in] params Optional parameters for the kernel. If the kernel does not
@@ -783,10 +784,10 @@ inline Shape cdiv(Shape total, Shape group) {
  */
 inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
                            const Tensor *dataBindings, size_t numTensors,
-                           const size_t *viewOffsets, const Shape &nThreads,
+                           const size_t *viewOffsets, const Shape &nWorkgroups,
                            const void *params = nullptr,
                            size_t paramsSize = 0) {
-  assert(nThreads.rank == 3);
+  assert(nWorkgroups.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op;
@@ -908,9 +909,14 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
     op.computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
   }
+  /*
   op.nWorkgroups = {cdiv(nThreads[0], shader.workgroupSize[0]),
                     cdiv(nThreads[1], shader.workgroupSize[1]),
                     cdiv(nThreads[2], shader.workgroupSize[2])};
+  */
+  op.nWorkgroups = {nWorkgroups[0],
+                    nWorkgroups[1],
+                    nWorkgroups[2]};
   resetCommandBuffer(device, op);
   ctx.kernelPool.data.insert(&op);
   LOG(kDefLog, kInfo, "Exiting createKernel");
@@ -927,29 +933,28 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
  * @param[in] shader Shader code for the kernel
  * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
  * to the kernel as inputs and outputs.
- * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
- * rank 3.
+ * @param[in] nWorkgroups Number of workgroups in the x, y, z grid, must be a Shape of rank == 3.
  * @param[in] params Optional parameters for the kernel. If the kernel does not
  * have any parameters, use NoParam.
  * @return Kernel instance representing the created kernel
  * @example Kernel kernel = createKernel(ctx, shader, tensorData, output,
- * nThreads, params);
+ * nWorkgroups, params);
  */
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel createKernel(Context &ctx, const ShaderCode &shader,
                     const Bindings<numInputs> &dataBindings,
-                    const Shape &nThreads,
+                    const Shape &nWorkgroups,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     LOG(kDefLog, kInfo, "Using params of size %d bytes", sizeof(ParamsType));
     return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), nThreads,
+                        dataBindings.viewOffsets.data(), nWorkgroups,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType));
   } else {
     LOG(kDefLog, kInfo, "No params");
     return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), nThreads, nullptr, 0);
+                        dataBindings.viewOffsets.data(), nWorkgroups, nullptr, 0);
   }
 }
 

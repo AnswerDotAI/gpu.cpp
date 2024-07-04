@@ -4,8 +4,8 @@
 #include <future>
 #include <thread>
 
-#include "gpu.h"
 #include "experimental/tui.h" // rasterize
+#include "gpu.h"
 
 using namespace gpu;
 
@@ -72,14 +72,13 @@ int main() {
   std::array<float, 2 * 2 * N> posArr; // x, y outputs for each pendulum
   std::string screen(80 * 40, ' ');
   Tensor pos = createTensor(ctx, Shape{N * 4}, kf32);
-  Shape nThreads{N, 1, 1};
 
   // Prepare computation
   ShaderCode shader = createShader(kShaderUpdateSim, 256, kf32);
   printf("Shader code: %s\n", shader.data.c_str());
   Kernel update = createKernel(
       ctx, shader, Bindings{theta1, theta2, vel1, vel2, length, pos},
-      nThreads);
+      /* nWorkgroups */ cdiv({N, 1, 1}, shader.workgroupSize));
 
   // Main simulation update loop
   while (true) {
@@ -97,7 +96,7 @@ int main() {
            "# simulations: %lu\n%s",
            N, screen.c_str());
     resetCommandBuffer(ctx.device, update); // Prepare kernel command
-                                                      // buffer for nxt iteration
+                                            // buffer for nxt iteration
     std::this_thread::sleep_for(std::chrono::milliseconds(8) - elapsed);
   }
 }
