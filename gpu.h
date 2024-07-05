@@ -713,13 +713,11 @@ inline void toGPU(Context &ctx, const float *data, Tensor &tensor) {
  * @example resetCommandBuffer(device, op);
  */
 inline void resetCommandBuffer(WGPUDevice &device, Kernel &op) {
-  LOG(kDefLog, kTrace, "Create command buffer 0x%x", op.commandBuffer);
   {
     WGPUCommandEncoder commandEncoder =
         wgpuDeviceCreateCommandEncoder(device, nullptr);
     WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    LOG(kDefLog, kTrace, "Set pipeline %x", op.computePipeline);
     wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
                                        nullptr);
@@ -728,7 +726,6 @@ inline void resetCommandBuffer(WGPUDevice &device, Kernel &op) {
         op.nWorkgroups[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
 }
 

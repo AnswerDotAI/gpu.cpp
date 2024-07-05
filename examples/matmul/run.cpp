@@ -47,13 +47,13 @@ fn main(
     let localCol = localIdx % {{tileSize}};
     let row = groupID.x * {{tileSize}} + localRow;
     let col = groupID.y * {{tileSize}} + localCol;
+    let aRow = groupID.x * {{tileSize}} + localRow;
+    let bRow = groupID.y * {{tileSize}} + localCol;
     var total: f32 = 0.0;
     for (var tile = 0u;
          tile < ({{K}} + {{tileSize}} - 1) / {{tileSize}};
          tile = tile + 1u) {
-      let aRow = groupID.x * {{tileSize}} + localRow;
       let aCol = tile * {{tileSize}} + localCol;
-      let bRow = groupID.y * {{tileSize}} + localCol;
       let bCol = tile * {{tileSize}} + localRow;
       // We can skip masking here *iff* tileSize is evenly
       // divisible into M, K, and N dimensions
@@ -99,28 +99,30 @@ inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
 int main() {
   // Configuration
   static constexpr size_t M = 2048;
-  static constexpr size_t K = 3072;
-  static constexpr size_t N = 3072;
+  static constexpr size_t K = 4096;
+  static constexpr size_t N = 2 * 4096;
   int version = 2; // 1 == naive implementation
                    // 2 == tiled
-  Context ctx = createContext();
-  std::mt19937 gen(314159);
 
-  // Initialize Data
+  // Initialize Data (host side)
   std::unique_ptr<float[]> inputPtr = std::make_unique<float[]>(M * K);
   std::unique_ptr<float[]> weightsPtr = std::make_unique<float[]>(N * K);
+  std::mt19937 gen(314159);
   randn(inputPtr.get(), M * K, gen);
   randn(weightsPtr.get(), N * K, gen);
   LOG(kDefLog, kInfo, "%s", show<float>(inputPtr.get(), M, K, "Input").c_str());
   LOG(kDefLog, kInfo, "Allocating GPU buffer and copying data");
   LOG(kDefLog, kInfo, "%s",
       show<float>(weightsPtr.get(), N, K, "Weights").c_str());
+
+  // Allocate GPU buffers and copy data
+  Context ctx = createContext();
   Tensor input = createTensor(ctx, Shape{M, K}, kf32, inputPtr.get());
   Tensor weights =
       createTensor(ctx, Shape{N, K}, kf32, weightsPtr.get()); // column-major
   Tensor output = createTensor(ctx, Shape{M, N}, kf32);
 
-  // Initialize Kernel
+  // Initialize Kernel and bind GPU buffers
   LOG(kDefLog, kInfo, "Creating Kernel");
   Kernel kernel;
   if (version == 1) {
@@ -141,21 +143,35 @@ int main() {
 
   // Dispatch kernel execution
   LOG(kDefLog, kInfo, "Dispatching + waiting");
+
+  // pre-allocate promises and futures for async dispatch
+  // TODO(avh): implement a pooling mechanism for promises/futures
+  constexpr size_t nIter = 10;
+  std::array<std::promise<void>, nIter> promises;
+  std::array<std::future<void>, nIter> futures;
+  for (int i = 0; i < nIter; i++) {
+    futures[i] = promises[i].get_future();
+  }
+  
+  // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  dispatchKernel(ctx, kernel, promise);
-  wait(ctx, future);
+  for (int i = 0; i < nIter; i++) {
+    dispatchKernel(ctx, kernel, promises[i]);
+    wait(ctx, futures[i]);
+    resetCommandBuffer(ctx.device, kernel);
+  }
   auto end = std::chrono::high_resolution_clock::now();
+
+  // Report performance
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   float gigaflops =
       2 * M * N * K / // factor of 2 for multiplication & accumulation
-      (static_cast<float>(duration.count()) / 1000.0) / 1000000000.0;
+      (static_cast<float>(duration.count()) / 1000.0) / 1000000000.0 * static_cast<float>(nIter);
   LOG(kDefLog, kInfo,
-      "Execution Time: (M = %d, K = %d, N = %d) :  %d milliseconds ~ %.2f "
-      "GFLOPS",
-      M, K, N, duration.count(), gigaflops);
+      "Execution Time: (M = %d, K = %d, N = %d) x %d iterations :  %.1f milliseconds / dispatch ~ %.2f "
+      "GFLOPS/s",
+      M, K, N, nIter, duration.count() / static_cast<float>(nIter), gigaflops);
   std::unique_ptr<float[]> outputPtr = std::make_unique<float[]>(M * N);
   LOG(kDefLog, kInfo, "Copying result to CPU");
   toCPU(ctx, output, outputPtr.get(), M * N * sizeof(float));
