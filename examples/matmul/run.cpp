@@ -32,13 +32,13 @@ fn main(
 }
 )";
 
-// Tiling with 1D global and local indexing
+// Shared memory cache-blocking
 static const char *kShaderMatmul2 = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<f32>;
 @group(0) @binding(1) var<storage, read_write> B: array<f32>;
 @group(0) @binding(2) var<storage, read_write> C: array<f32>;
-var<workgroup> tileA: array<f32, {{tileSize}} * {{tileSize}}>;
-var<workgroup> tileB: array<f32, {{tileSize}} * {{tileSize}}>;
+var<workgroup> As: array<f32, {{tileSize}} * {{tileSize}}>;
+var<workgroup> Bs: array<f32, {{tileSize}} * {{tileSize}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
   @builtin(local_invocation_index) localIdx : u32,
@@ -57,16 +57,16 @@ fn main(
       let bCol = tile * {{tileSize}} + localRow;
       // We can skip masking here *iff* tileSize is evenly
       // divisible into M, K, and N dimensions
-      tileA[localRow * {{tileSize}} + localCol] =
+      As[localRow * {{tileSize}} + localCol] =
         A[aRow * {{K}} + aCol];
         // A[aRow * {{K}} + aCol] * f32(aRow < {{M}} && aCol < {{K}}); // masked version
-      tileB[localCol * {{tileSize}} + localRow] =
+      Bs[localCol * {{tileSize}} + localRow] =
         B[bRow * {{K}} + bCol];
         // B[bRow * {{K}} + bCol] * f32(bRow < {{N}} && bCol < {{K}}); // masked version
       workgroupBarrier();
       for (var k = 0u; k < {{tileSize}}; k = k + 1u) {
-        total += tileA[localRow * {{tileSize}} + k] *
-                 tileB[localCol * {{tileSize}} + k];
+        total += As[localRow * {{tileSize}} + k] *
+                 Bs[localCol * {{tileSize}} + k];
       }
       workgroupBarrier();
     }
@@ -74,6 +74,91 @@ fn main(
       return;
     }
     C[row * {{N}} + col] = total;
+}
+)";
+
+/* 1D block-tiling
+ * This is a more advanced version of the tile-based approach
+ * that uses 1D workgroups to map to 2D tiles.
+ *
+ * - A block tile in C is of size BM x BN
+ * - Each workgroup computes a BM x BN block of C
+ * - The BM rows of a block tile in As are split into TM x TK
+ *   tiles, where TM is the number of rows in a workgroup
+ *
+ * In other words a single thread computing a single value will iterate over
+ * block tiles of BM x BN, within which it iterates over tiles TM x BK in As
+ * and BK x BN in Bs.
+ *
+ * There are three nested loops in the kernel:
+ * - The outer loop over block tiles which increments
+ *   from 0..K by increments of BK
+ *
+ *   In this outer loop we load BM x BK tiles shared by
+ *   the threads in the workgroup.
+ *
+ * - The second loop which iterates from 0..BK aggregating the partial dot
+ *   product contribution of a single tile
+ *
+ *  - The innermost loop iterates from 0..TM. Each thread in the workgroup
+ *  computes a different row of the block tile in C.
+ *
+ */
+static const char *kShaderMatmul3 = R"(
+@group(0) @binding(0) var<storage, read_write> A: array<f32>;
+@group(0) @binding(1) var<storage, read_write> B: array<f32>;
+@group(0) @binding(2) var<storage, read_write> C: array<f32>;
+
+var<workgroup> As: array<f32, {{BM}} * {{BK}}>;
+var<workgroup> Bs: array<f32, {{BK}} * {{BN}}>;
+
+@compute @workgroup_size({{BN * (BM / TM)}})
+fn main(
+  @builtin(local_invocation_id) localId: vec3<u32>,
+  @builtin(workgroup_id) groupId: vec3<u32>,
+  @builtin(global_invocation_id) globalId: vec3<u32>
+) {
+    let tileCol = groupId.x;
+    let tileRow = groupId.y;
+    let threadCol = localId.x % {{BN}};
+    let threadRow = localId.x / {{BN}};
+    
+    let innerColA = localId.x % {{BK}};
+    let innerRowA = localId.x / {{BK}};
+    let innerColB = localId.x % {{BN}};
+    let innerRowB = localId.x / {{BN}};
+
+    var aptr = (tileRow * {{BM}}) * {{K}};
+    var bptr = tileCol * {{BN}};
+    let cptr = (tileRow * {{BM}}) * {{N}} + tileCol * {{BN}};
+
+    var threadResults: array<f32, {{TM}}>;
+    for (var i = 0u; i < {{TM}}; i = i + 1u) {
+        threadResults[i] = 0.0;
+    }
+
+    for (var tileIdx = 0u; tileIdx < {{K}}; tileIdx = tileIdx + {{BK}}) {
+        As[innerRowA * {{BK}} + innerColA] = A[aptr + {{K}} * innerRowA + innerColA];
+        Bs[innerRowB * {{BN}} + innerColB] = B[bptr + {{N}} * innerRowB + innerColB];
+        
+        workgroupBarrier();
+
+        aptr = aptr + {{BK}};
+        bptr = bptr + {{BK}} * {{N}};
+
+        for (var k = 0u; k < {{BK}}; k = k + 1u) {
+            let tmp = Bs[k * {{BN}} + threadCol];
+            for (var resIdx = 0u; resIdx < {{TM}}; resIdx = resIdx + 1u) {
+                threadResults[resIdx] = threadResults[resIdx] + As[(threadRow * {{TM}} + resIdx) * {{BK}} + k] * tmp;
+            }
+        }
+
+        workgroupBarrier();
+    }
+
+    for (var resIdx = 0u; resIdx < {{TM}}; resIdx = resIdx + 1u) {
+        C[cptr + {{N}} * (threadRow * {{TM}} + resIdx) + threadCol] = threadResults[resIdx];
+    }
 }
 )";
 
@@ -98,11 +183,15 @@ inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
 
 int main() {
   // Configuration
-  static constexpr size_t M = 2048;
-  static constexpr size_t K = 4096;
-  static constexpr size_t N = 2 * 4096;
-  int version = 2; // 1 == naive implementation
-                   // 2 == tiled
+  // static constexpr size_t M = 4096;
+  // static constexpr size_t K = 4096;
+  // static constexpr size_t N = 2 * 4096;
+  static constexpr size_t M = 8;
+  static constexpr size_t K = 16;
+  static constexpr size_t N = 8;
+  int version = 3; // 1 == naive
+                   // 2 == tile-based
+                   // 3 == 1D blocktiling
 
   // Initialize Data (host side)
   std::unique_ptr<float[]> inputPtr = std::make_unique<float[]>(M * K);
@@ -139,20 +228,22 @@ int main() {
     kernel =
         createKernel(ctx, matmul, Bindings{input, weights, output},
                      /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
+  } else if (version == 3) {
+    // TODO(avh)
   }
 
   // Dispatch kernel execution
   LOG(kDefLog, kInfo, "Dispatching + waiting");
 
   // pre-allocate promises and futures for async dispatch
-  // TODO(avh): implement a pooling mechanism for promises/futures
-  constexpr size_t nIter = 10;
+  // TODO(avh): implement a pooling mechanism for promises/futures in gpu.h
+  constexpr size_t nIter = 4;
   std::array<std::promise<void>, nIter> promises;
   std::array<std::future<void>, nIter> futures;
   for (int i = 0; i < nIter; i++) {
     futures[i] = promises[i].get_future();
   }
-  
+
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < nIter; i++) {
@@ -165,11 +256,13 @@ int main() {
   // Report performance
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-  float gigaflops =
-      2 * M * N * K / // factor of 2 for multiplication & accumulation
-      (static_cast<float>(duration.count()) / 1000.0) / 1000000000.0 * static_cast<float>(nIter);
+  float gigaflops = 2 * M * N *
+                    K / // factor of 2 for multiplication & accumulation
+                    (static_cast<float>(duration.count()) / 1000.0) /
+                    1000000000.0 * static_cast<float>(nIter);
   LOG(kDefLog, kInfo,
-      "Execution Time: (M = %d, K = %d, N = %d) x %d iterations :  %.1f milliseconds / dispatch ~ %.2f "
+      "Execution Time: (M = %d, K = %d, N = %d) x %d iterations :  %.1f "
+      "milliseconds / dispatch ~ %.2f "
       "GFLOPS/s",
       M, K, N, nIter, duration.count() / static_cast<float>(nIter), gigaflops);
   std::unique_ptr<float[]> outputPtr = std::make_unique<float[]>(M * N);
