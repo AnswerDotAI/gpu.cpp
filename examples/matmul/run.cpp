@@ -162,12 +162,12 @@ fn main(
 }
 )";
 
+
 inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
                                const size_t K, const size_t N,
                                const Shape &workgroupSize = {256, 1, 1},
                                NumType precision = kf32) {
   std::string codeString(shaderTemplate);
-
   ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
   ReplaceAll(
       codeString, "{{tileSize}}",
@@ -181,15 +181,35 @@ inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
   return ShaderCode{codeString, workgroupSize};
 }
 
+inline ShaderCode createMatmul3(const char *shaderTemplate, const size_t M,
+                               const size_t K, const size_t N,
+                               const size_t BM, const size_t BK, const size_t BN,
+                               const size_t TM,
+                               const Shape &workgroupSize = {256, 1, 1},
+                               NumType precision = kf32) {
+  std::string codeString(shaderTemplate);
+  ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
+  ReplaceAll(codeString, "{{precision}}", toString(precision));
+  ReplaceAll(codeString, "{{M}}", std::to_string(M));
+  ReplaceAll(codeString, "{{K}}", std::to_string(K));
+  ReplaceAll(codeString, "{{N}}", std::to_string(N));
+  ReplaceAll(codeString, "{{BM}}", std::to_string(BM));
+  ReplaceAll(codeString, "{{BK}}", std::to_string(BK));
+  ReplaceAll(codeString, "{{BN}}", std::to_string(BN));
+  ReplaceAll(codeString, "{{TM}}", std::to_string(TM));
+  LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
+  return ShaderCode{codeString, workgroupSize};
+}
+
 int main() {
   // Configuration
-  // static constexpr size_t M = 4096;
-  // static constexpr size_t K = 4096;
-  // static constexpr size_t N = 2 * 4096;
-  static constexpr size_t M = 8;
-  static constexpr size_t K = 16;
-  static constexpr size_t N = 8;
-  int version = 3; // 1 == naive
+  static constexpr size_t M = 4096;
+  static constexpr size_t K = 4096;
+  static constexpr size_t N = 2 * 4096;
+  // static constexpr size_t M = 8;
+  // static constexpr size_t K = 16;
+  // static constexpr size_t N = 8;
+  int version = 2; // 1 == naive
                    // 2 == tile-based
                    // 3 == 1D blocktiling
 
@@ -229,7 +249,14 @@ int main() {
         createKernel(ctx, matmul, Bindings{input, weights, output},
                      /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
   } else if (version == 3) {
-    // TODO(avh)
+    static constexpr size_t BM = 64;
+    static constexpr size_t BK = 64;
+    static constexpr size_t BN = 8;
+    static constexpr size_t TM = 4;
+    ShaderCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
+                                      /*wgSize*/ {256, 1, 1});
+    kernel = createKernel(ctx, matmul, Bindings{input, weights, output},
+                          /*nWorkgroups*/ cdiv({M, N, 1}, {BM, BN, 1}));
   }
 
   // Dispatch kernel execution
