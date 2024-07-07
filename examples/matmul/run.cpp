@@ -105,60 +105,54 @@ fn main(
  *
  */
 static const char *kShaderMatmul3 = R"(
+
 @group(0) @binding(0) var<storage, read_write> A: array<f32>;
 @group(0) @binding(1) var<storage, read_write> B: array<f32>;
 @group(0) @binding(2) var<storage, read_write> C: array<f32>;
+var<workgroup> tileA: array<f32, {{BM}} * {{BK}}>;
+var<workgroup> tileB: array<f32, {{BK}} * {{BN}}>;
 
-var<workgroup> As: array<f32, {{BM}} * {{BK}}>;
-var<workgroup> Bs: array<f32, {{BK}} * {{BN}}>;
-
-@compute @workgroup_size({{BN * (BM / TM)}})
+@compute @workgroup_size({{workgroupSize}})
 fn main(
-  @builtin(local_invocation_id) localId: vec3<u32>,
-  @builtin(workgroup_id) groupId: vec3<u32>,
-  @builtin(global_invocation_id) globalId: vec3<u32>
-) {
-    let tileCol = groupId.x;
-    let tileRow = groupId.y;
-    let threadCol = localId.x % {{BN}};
-    let threadRow = localId.x / {{BN}};
-    
-    let innerColA = localId.x % {{BK}};
-    let innerRowA = localId.x / {{BK}};
-    let innerColB = localId.x % {{BN}};
-    let innerRowB = localId.x / {{BN}};
-
-    var aptr = (tileRow * {{BM}}) * {{K}};
-    var bptr = tileCol * {{BN}};
-    let cptr = (tileRow * {{BM}}) * {{N}} + tileCol * {{BN}};
+    @builtin(global_invocation_id) globalID : vec3<u32>,
+    @builtin(local_invocation_id) localID : vec3<u32>,
+    @builtin(local_invocation_index) localIdx : u32,
+    @builtin(workgroup_id) groupID : vec3<u32>) {
 
     var threadResults: array<f32, {{TM}}>;
-    for (var i = 0u; i < {{TM}}; i = i + 1u) {
-        threadResults[i] = 0.0;
-    }
 
-    for (var tileIdx = 0u; tileIdx < {{K}}; tileIdx = tileIdx + {{BK}}) {
-        As[innerRowA * {{BK}} + innerColA] = A[aptr + {{K}} * innerRowA + innerColA];
-        Bs[innerRowB * {{BN}} + innerColB] = B[bptr + {{N}} * innerRowB + innerColB];
-        
-        workgroupBarrier();
+    let localColA = localID.x % {{BK}};
+    let localRowA = localID.x / {{BK}};
+    // note that B is stored as B^T
+    let localColB = localID.x % {{BK}};
+    let localRowB = localID.x / {{BK}};
 
-        aptr = aptr + {{BK}};
-        bptr = bptr + {{BK}} * {{N}};
+    var aPtr = groupID.x * {{BM}} * {{K}};
+    var bPtr = (/*row = */ groupID.y * {{BN}}) * {{K}}; 
+    var cPtr = groupID.x * {{BM}} * {{N}} + groupID.y * {{BN}};
 
-        for (var k = 0u; k < {{BK}}; k = k + 1u) {
-            let tmp = Bs[k * {{BN}} + threadCol];
-            for (var resIdx = 0u; resIdx < {{TM}}; resIdx = resIdx + 1u) {
-                threadResults[resIdx] = threadResults[resIdx] + As[(threadRow * {{TM}} + resIdx) * {{BK}} + k] * tmp;
-            }
+    for (var bkIdx = 0; bkIdx < {{K}}; bkIdx += {{BK}}) {
+      tileA[localRowA * {{BK}} + localColA] = A[aPtr + localRowA * {{K}} + localColA];
+      tileB[localRowB * {{BK}} + localColB] = B[bPtr + localRowB * {{K}} + localColB];
+
+      workgroupBarrier();
+
+      aPtr += {{BK}};
+      bPtr += {{BK}};
+
+      for (var dotIdx = 0; dotIdx < {{BK}}; dotIdx = dotIdx + 1) {
+        // TODO(avh)
+        for (var resIdx = 0; resIdx < {{TM}}; resIdx = resIdx + 1) {
+          // TODO(avh)
         }
-
-        workgroupBarrier();
+      }
+      workgroupBarrier();
     }
 
-    for (var resIdx = 0u; resIdx < {{TM}}; resIdx = resIdx + 1u) {
-        C[cptr + {{N}} * (threadRow * {{TM}} + resIdx) + threadCol] = threadResults[resIdx];
+    for (var resIdx = 0; resIdx < {{TM}}; resIdx = resIdx + 1) {
+      // TODO(avh): write to C
     }
+    
 }
 )";
 
@@ -206,11 +200,8 @@ int main() {
   static constexpr size_t M = 4096;
   static constexpr size_t K = 4096;
   static constexpr size_t N = 2 * 4096;
-  // static constexpr size_t M = 8;
-  // static constexpr size_t K = 16;
-  // static constexpr size_t N = 8;
   int version = 2; // 1 == naive
-                   // 2 == tile-based
+                   // 2 == tiling
                    // 3 == 1D blocktiling
 
   // Initialize Data (host side)
@@ -249,12 +240,13 @@ int main() {
         createKernel(ctx, matmul, Bindings{input, weights, output},
                      /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
   } else if (version == 3) {
-    static constexpr size_t BM = 64;
-    static constexpr size_t BK = 64;
-    static constexpr size_t BN = 8;
-    static constexpr size_t TM = 4;
+    static constexpr size_t BM = 32;
+    static constexpr size_t BK = 8;
+    static constexpr size_t BN = 32;
+    static constexpr size_t TM = 8;
+    // BM * BN values per workgroup, TM rows per thread => BM * BN / TM threads
     ShaderCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
-                                      /*wgSize*/ {256, 1, 1});
+                                      /*wgSize*/ {BM * BN / TM, 1, 1});
     kernel = createKernel(ctx, matmul, Bindings{input, weights, output},
                           /*nWorkgroups*/ cdiv({M, N, 1}, {BM, BN, 1}));
   }
