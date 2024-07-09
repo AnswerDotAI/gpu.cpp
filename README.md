@@ -254,23 +254,27 @@ convenient API with both both native (e.g. Dawn) and browser implementations.
 It uses WebGPU as a portable GPU API first and foremost, with the possibility
 of running in the browser being support being a convenient bonus.
 
-For additional background on WebGPU as a portable native GPU API, see Elie
-Michel's talk [WebGPU is Not Just about the
-Web](https://www.youtube.com/watch?v=qHrx41aOTUQ).
-
 Finally, the focus of gpu.cpp is general-purpose GPU computation rather than
 rendering/graphics on the GPU, although it might be useful for compute shaders
-in graphics projects - one of the examples is a small compute renderer,
-rendered to the terminal.
+in graphics projects. We may explore directions with graphics usage in the
+future, but for now the focus is on compute.
 
 ## Limitations and Upcoming Features
 
-gpu.cpp is a work-in-progress and there are many features and improvements to
-come. At this early stage, we expect the API design to evolve as we identify
-improvements / needs from use cases.
 
-In spite of using WebGPU we haven't tested builds/targeting the browser yet
-though that is planned. 
+*API Changes*  gpu.cpp is a work-in-progress and there are many features and
+improvements to come. At this early stage, we expect the API design to evolve
+as we identify improvements / needs from use cases.
+
+*Browser Targets* In spite of using WebGPU we haven't tested builds/targeting
+the browser yet though that is planned. 
+
+*Reusable Compute Ops* Currently the core library is strictly the operations
+and types for interfacing with the WebGPU API, with some specific use case
+example implementations in `examples/`. Initially we don't have a library of
+compute primitives. Over time, as they mature we may migrate some of the
+reusable computation operations (for math, ML, simulation) from specific
+examples into a small reusable library.
 
 ## Acknowledgements
 
