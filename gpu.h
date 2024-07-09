@@ -828,7 +828,6 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
   op.buffers = std::make_unique<WGPUBuffer[]>(numBindings);
   op.bufferSizes = std::make_unique<size_t[]>(numBindings);
   op.numBindings = numBindings;
-  LOG(kDefLog, kInfo, "Create the bind group layout");
   std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBindings);
   // Create layout entries for input buffers
   for (size_t i = 0; i < numTensors; ++i) {
@@ -855,7 +854,6 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
             },
     };
   }
-  LOG(kDefLog, kInfo, "Create the bind group layout descriptor");
   WGPUBindGroupLayoutDescriptor bgLayoutDesc = {
       .entryCount = static_cast<uint32_t>(bgLayoutEntries.size()),
       .entries = bgLayoutEntries.data(),
@@ -881,7 +879,6 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
   } else {
     LOG(kDefLog, kInfo, "No params buffer needed");
   }
-  LOG(kDefLog, kInfo, "Create the bind group");
   std::vector<WGPUBindGroupEntry> bindGroupEntries(numBindings);
   for (size_t i = 0; i < numTensors; ++i) {
     bindGroupEntries[i] = WGPUBindGroupEntry{

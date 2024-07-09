@@ -24,7 +24,7 @@
 namespace gpu {
 
 static constexpr int kShowMaxRows = 32;
-static constexpr int kShowMaxCols = 8;
+static constexpr int kShowMaxCols = 10;
 
 template <typename numtype>
 std::string show(const numtype *a, size_t rows, size_t cols,
@@ -68,7 +68,7 @@ std::string show(const numtype *a, size_t rows, size_t cols,
             a[i * cols + j] == 0.0) {
           sprintf(buffer, "%8.2f", a[i * cols + j]);
         } else
-          sprintf(buffer, "%8.2e", a[i * cols + j]);
+          sprintf(buffer, "%10.2e", a[i * cols + j]);
       } else {
         throw std::runtime_error("Unsupported number type for show()");
       }
