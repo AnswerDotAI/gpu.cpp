@@ -156,17 +156,17 @@ inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
                                const Shape &workgroupSize = {256, 1, 1},
                                NumType precision = kf32) {
   std::string codeString(shaderTemplate);
-  ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
-  ReplaceAll(codeString, "{{workgroupSizeX}}",
+  replaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
+  replaceAll(codeString, "{{workgroupSizeX}}",
              std::to_string(workgroupSize[0]));
-  ReplaceAll(codeString, "{{workgroupSizeY}}",
+  replaceAll(codeString, "{{workgroupSizeY}}",
              std::to_string(workgroupSize[1]));
-  ReplaceAll(codeString, "{{workgroupSizeZ}}",
+  replaceAll(codeString, "{{workgroupSizeZ}}",
              std::to_string(workgroupSize[2]));
-  ReplaceAll(codeString, "{{precision}}", toString(precision));
-  ReplaceAll(codeString, "{{M}}", std::to_string(M));
-  ReplaceAll(codeString, "{{K}}", std::to_string(K));
-  ReplaceAll(codeString, "{{N}}", std::to_string(N));
+  replaceAll(codeString, "{{precision}}", toString(precision));
+  replaceAll(codeString, "{{M}}", std::to_string(M));
+  replaceAll(codeString, "{{K}}", std::to_string(K));
+  replaceAll(codeString, "{{N}}", std::to_string(N));
   // LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
 }

@@ -6,15 +6,15 @@
 #include "gpu.h"
 
 #include "array_utils.h"
-#include "llmc/reference_impls.h"
+#include "llmc/reference_impls.h" // for CPU reference implementation
 #include "utils/logging.h"
 
 using namespace gpu;
 
 static const char *kShaderMatmul1 = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<f32>;
-@group(0) @binding(1) var<storage, read_write> B: array<f32>;
-@group(0) @binding(2) var<storage, read_write> C: array<f32>;
+@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
     @builtin(global_invocation_id) globalID : vec3<u32>) {
@@ -23,7 +23,7 @@ fn main(
     if (row >= {{M}} || col >= {{N}}) {
         return;
     }
-    var total: f32 = A[row * {{K}}] * B[col * {{K}}]; // assumes size >= 1
+    var total: {{precision}} = A[row * {{K}}] * B[col * {{K}}]; // assumes size >= 1
     for (var k = 1u; k < {{K}}; k = k + 1u) {
         // B is stored as B^T, effectively column-major
         total += A[row * {{K}} + k] * B[col * {{K}} + k];
@@ -32,13 +32,28 @@ fn main(
 }
 )";
 
+inline ShaderCode createMatmul1(const char *shaderTemplate, const size_t M,
+                                const size_t K, const size_t N,
+                                const Shape &workgroupSize = {256, 1, 1},
+                                NumType precision = kf32) {
+  std::string codeString(shaderTemplate);
+
+  replaceAll(codeString, {{"{{workgroupSize}}", toString(workgroupSize)},
+                          {"{{precision}}", toString(precision)},
+                          {"{{M}}", toString(M)},
+                          {"{{K}}", toString(K)},
+                          {"{{N}}", toString(N)}});
+
+  return ShaderCode{codeString, workgroupSize};
+}
+
 // Shared memory cache-blocking
 static const char *kShaderMatmul2 = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<f32>;
-@group(0) @binding(1) var<storage, read_write> B: array<f32>;
-@group(0) @binding(2) var<storage, read_write> C: array<f32>;
-var<workgroup> As: array<f32, {{tileSize}} * {{tileSize}}>;
-var<workgroup> Bs: array<f32, {{tileSize}} * {{tileSize}}>;
+@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
+var<workgroup> As: array<{{precision}}, {{tileSize}} * {{tileSize}}>;
+var<workgroup> Bs: array<{{precision}}, {{tileSize}} * {{tileSize}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
   @builtin(local_invocation_index) localIdx : u32,
@@ -49,7 +64,7 @@ fn main(
     let col = groupID.y * {{tileSize}} + loadCol;
     let aRow = groupID.x * {{tileSize}} + loadRow;
     let bRow = groupID.y * {{tileSize}} + loadCol;
-    var total: f32 = 0.0;
+    var total: {{precision}} = 0.0;
     for (var tile = 0u;
          tile < ({{K}} + {{tileSize}} - 1) / {{tileSize}};
          tile = tile + 1u) {
@@ -59,10 +74,10 @@ fn main(
       // divisible into M, K, and N dimensions
       As[loadRow * {{tileSize}} + loadCol] =
         A[aRow * {{K}} + aCol];
-        // A[aRow * {{K}} + aCol] * f32(aRow < {{M}} && aCol < {{K}}); // masked version
+        // A[aRow * {{K}} + aCol] * {{precision}}(aRow < {{M}} && aCol < {{K}}); // masked version
       Bs[loadCol * {{tileSize}} + loadRow] =
         B[bRow * {{K}} + bCol];
-        // B[bRow * {{K}} + bCol] * f32(bRow < {{N}} && bCol < {{K}}); // masked version
+        // B[bRow * {{K}} + bCol] * {{precision}}(bRow < {{N}} && bCol < {{K}}); // masked version
       workgroupBarrier();
       for (var k = 0u; k < {{tileSize}}; k = k + 1u) {
         total += As[loadRow * {{tileSize}} + k] *
@@ -76,6 +91,22 @@ fn main(
     C[row * {{N}} + col] = total;
 }
 )";
+
+inline ShaderCode createMatmul2(const char *shaderTemplate, const size_t M,
+                                const size_t K, const size_t N,
+                                const Shape &workgroupSize = {256, 1, 1},
+                                NumType precision = kf32) {
+  std::string codeString(shaderTemplate);
+  replaceAll(codeString,
+             {{"{{workgroupSize}}", toString(workgroupSize)},
+              {"{{precision}}", toString(precision)},
+              {"{{M}}", toString(M)},
+              {"{{K}}", toString(K)},
+              {"{{N}}", toString(N)},
+              {"{{tileSize}}",
+               toString(static_cast<size_t>(sqrt(workgroupSize[0])))}});
+  return ShaderCode{codeString, workgroupSize};
+}
 
 /* 1D block-tiling
  *
@@ -100,11 +131,11 @@ fn main(
  */
 static const char *kShaderMatmul3 = R"(
 
-@group(0) @binding(0) var<storage, read_write> A: array<f32>;
-@group(0) @binding(1) var<storage, read_write> B: array<f32>;
-@group(0) @binding(2) var<storage, read_write> C: array<f32>;
-var<workgroup> tileA: array<f32, {{BM}} * {{BK}}>;
-var<workgroup> tileB: array<f32, {{BK}} * {{BN}}>;
+@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
+var<workgroup> tileA: array<{{precision}}, {{BM}} * {{BK}}>;
+var<workgroup> tileB: array<{{precision}}, {{BK}} * {{BN}}>;
 
 @compute @workgroup_size({{workgroupSize}})
 fn main(
@@ -113,7 +144,7 @@ fn main(
     @builtin(local_invocation_index) localIdx : u32,
     @builtin(workgroup_id) groupID : vec3<u32>) {
 
-    var threadResults: array<f32, {{TM}}>;
+    var threadResults: array<{{precision}}, {{TM}}>;
 
     let cRow: u32 = groupID.x;
     let cCol: u32 = groupID.y;
@@ -151,7 +182,7 @@ fn main(
       for (var dotIdx: u32 = 0; dotIdx < {{BK}}; dotIdx = dotIdx + 1) {
         let tmp = tileB[threadCol * {{BK}} + dotIdx];
         for (var resIdx: u32 = 0; resIdx < {{TM}}; resIdx = resIdx + 1) {
-          let mask = f32(threadRow * {{TM}} + resIdx < {{BM}} 
+          let mask = {{precision}}(threadRow * {{TM}} + resIdx < {{BM}} 
                           && threadCol < {{BN}}
                           && threadRow * {{TM}} + resIdx < {{M}}
                           && cCol * {{BN}} + threadCol < {{N}}
@@ -172,24 +203,6 @@ fn main(
 }
 )";
 
-inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
-                               const size_t K, const size_t N,
-                               const Shape &workgroupSize = {256, 1, 1},
-                               NumType precision = kf32) {
-  std::string codeString(shaderTemplate);
-  ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
-  ReplaceAll(
-      codeString, "{{tileSize}}",
-      std::to_string(static_cast<size_t>(
-          sqrt(workgroupSize[0])))); // assumes 1D workgroup spread onto 2D tile
-  ReplaceAll(codeString, "{{precision}}", toString(precision));
-  ReplaceAll(codeString, "{{M}}", std::to_string(M));
-  ReplaceAll(codeString, "{{K}}", std::to_string(K));
-  ReplaceAll(codeString, "{{N}}", std::to_string(N));
-  LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
-  return ShaderCode{codeString, workgroupSize};
-}
-
 inline ShaderCode createMatmul3(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N, const size_t BM,
                                 const size_t BK, const size_t BN,
@@ -197,16 +210,15 @@ inline ShaderCode createMatmul3(const char *shaderTemplate, const size_t M,
                                 const Shape &workgroupSize = {256, 1, 1},
                                 NumType precision = kf32) {
   std::string codeString(shaderTemplate);
-  ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
-  ReplaceAll(codeString, "{{precision}}", toString(precision));
-  ReplaceAll(codeString, "{{M}}", std::to_string(M));
-  ReplaceAll(codeString, "{{K}}", std::to_string(K));
-  ReplaceAll(codeString, "{{N}}", std::to_string(N));
-  ReplaceAll(codeString, "{{BM}}", std::to_string(BM));
-  ReplaceAll(codeString, "{{BK}}", std::to_string(BK));
-  ReplaceAll(codeString, "{{BN}}", std::to_string(BN));
-  ReplaceAll(codeString, "{{TM}}", std::to_string(TM));
-  // LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
+  replaceAll(codeString, {{"{{workgroupSize}}", toString(workgroupSize)},
+                          {"{{precision}}", toString(precision)},
+                          {"{{M}}", toString(M)},
+                          {"{{K}}", toString(K)},
+                          {"{{N}}", toString(N)},
+                          {"{{BM}}", toString(BM)},
+                          {"{{BK}}", toString(BK)},
+                          {"{{BN}}", toString(BN)},
+                          {"{{TM}}", toString(TM)}});
   return ShaderCode{codeString, workgroupSize};
 }
 
@@ -218,6 +230,19 @@ void initData(size_t M, size_t K, size_t N, std::unique_ptr<float[]> &inputPtr,
   LOG(kDefLog, kInfo, "%s", show<float>(inputPtr.get(), M, K, "Input").c_str());
   LOG(kDefLog, kInfo, "%s",
       show<float>(weightsPtr.get(), N, K, "Weights").c_str());
+}
+
+void checkCPU(size_t M, size_t K, size_t N, std::unique_ptr<float[]> &inputPtr,
+              std::unique_ptr<float[]> &weightsPtr,
+              std::unique_ptr<float[]> &outputPtr) {
+  LOG(kDefLog, kInfo, "Computing CPU reference implementation");
+  std::unique_ptr<float[]> outputRefPtr = std::make_unique<float[]>(M * N);
+  ref::matmul_forward_cpu(outputRefPtr.get(), inputPtr.get(), weightsPtr.get(),
+                          nullptr, 1, M, K, N);
+  // LOG(kDefLog, kInfo, "Reference Output: %s",
+  // show<float>(outputRefPtr.get(), M, N, "Output (Reference)").c_str());
+  LOG(kDefLog, kInfo,
+      isclose(outputPtr.get(), outputRefPtr.get(), M * N) ? "PASS" : "FAIL");
 }
 
 void runTest(int version, size_t M, size_t K, size_t N,
@@ -239,13 +264,13 @@ void runTest(int version, size_t M, size_t K, size_t N,
     Shape wgSize = {16, 16, 1};
     LOG(kDefLog, kInfo, "wgSize: %s", toString(wgSize).c_str());
     ShaderCode matmul =
-        createMatmul(kShaderMatmul1, M, K, N, /*wgsize*/ wgSize);
+        createMatmul1(kShaderMatmul1, M, K, N, /*wgsize*/ wgSize);
     kernel = createKernel(ctx, matmul, Bindings{input, weights, output},
                           /*nWorkgroups*/ cdiv({M, N, 1}, wgSize));
   } else if (version == 2) {
     static constexpr size_t tileSize = 16;
-    ShaderCode matmul = createMatmul(kShaderMatmul2, M, K, N,
-                                     /*wgSize*/ {tileSize * tileSize, 1, 1});
+    ShaderCode matmul = createMatmul2(kShaderMatmul2, M, K, N,
+                                      /*wgSize*/ {tileSize * tileSize, 1, 1});
     kernel =
         createKernel(ctx, matmul, Bindings{input, weights, output},
                      /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
@@ -288,47 +313,41 @@ void runTest(int version, size_t M, size_t K, size_t N,
   // Report performance
   auto duration =
       std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-  float gigaflops = 2 * M * N *
-                    K / // factor of 2 for multiplication & accumulation
-                    (static_cast<float>(duration.count()) / 1000.0) /
-                    1000000000.0 * static_cast<float>(nIter);
+  float gflops = 2 * M * N *
+                 K / // factor of 2 for multiplication & accumulation
+                 (static_cast<float>(duration.count()) / 1000.0) /
+                 1000000000.0 * static_cast<float>(nIter);
   LOG(kDefLog, kInfo,
       "Execution Time: (M = %d, K = %d, N = %d) x %d iterations :  %.1f "
       "milliseconds / dispatch ~ %.2f "
       "GFLOPS/s",
-      M, K, N, nIter, duration.count() / static_cast<float>(nIter), gigaflops);
+      M, K, N, nIter, duration.count() / static_cast<float>(nIter), gflops);
   LOG(kDefLog, kInfo, "Copying result to CPU");
   toCPU(ctx, output, outputPtr.get(), M * N * sizeof(float));
   LOG(kDefLog, kInfo, "%s",
       show<float>(outputPtr.get(), M, N, "Output").c_str());
 }
 
-void checkCPU(size_t M, size_t K, size_t N, std::unique_ptr<float[]> &inputPtr,
-              std::unique_ptr<float[]> &weightsPtr,
-              std::unique_ptr<float[]> &outputPtr) {
-  LOG(kDefLog, kInfo, "Computing CPU reference implementation");
-  std::unique_ptr<float[]> outputRefPtr = std::make_unique<float[]>(M * N);
-  ref::matmul_forward_cpu(outputRefPtr.get(), inputPtr.get(), weightsPtr.get(),
-                          nullptr, 1, M, K, N);
-  // LOG(kDefLog, kInfo, "Reference Output: %s",
-  // show<float>(outputRefPtr.get(), M, N, "Output (Reference)").c_str());
-  LOG(kDefLog, kInfo,
-      isclose(outputPtr.get(), outputRefPtr.get(), M * N) ? "PASS" : "FAIL");
-}
-
 int main() {
   static constexpr int kTestSize = 1;
   size_t M, K, N;
   if constexpr (kTestSize == 0) {
-    M = 256; // 4096;
-    K = 128; // 4096;
-    N = 512; // 2 * 4096;
+    // Tiny test
+    M = 16;
+    K = 4;
+    N = 8;
+  } else if constexpr (kTestSize == 1) {
+    // Small test
+    M = 256;
+    K = 128;
+    N = 512;
   } else {
-    M = 2048;
+    // Large test
+    M = 4096;
     K = 4096;
     N = 2 * 4096;
   }
-  int version = 2; // 1 == naive
+  int version = 3; // 1 == naive
                    // 2 == tiling
                    // 3 == 1D blocktiling (WIP)
 
@@ -338,7 +357,9 @@ int main() {
 
   initData(M, K, N, inputPtr, weightsPtr);
   runTest(version, M, K, N, inputPtr, weightsPtr, outputPtr);
-  if constexpr (kTestSize == 0) {
+
+  if constexpr (kTestSize <= 0) {
+    // Check result with CPU reference implementation for tiny/small tests
     checkCPU(M, K, N, inputPtr, weightsPtr, outputPtr);
   }
 

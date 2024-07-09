@@ -12,6 +12,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
+#include <utility> // std::pair
 
 #include "utils/logging.h"
 #include "webgpu/webgpu.h"
@@ -125,7 +126,7 @@ struct Context; // Forward declaration so that TensorPool can have a pointer to
                 // Context
 
 struct TensorPool {
-  inline TensorPool(Context *ctx) : ctx(ctx), data(){};
+  inline TensorPool(Context *ctx) : ctx(ctx), data() {};
   Context *ctx;
   std::unordered_map<WGPUBuffer, Tensor> data;
   ~TensorPool();
@@ -161,6 +162,13 @@ inline std::string toString(const Shape &shape) {
   }
   return str;
 }
+
+/**
+ * @brief Converts size_t to string. Wraps std::to_string for consistency,
+ * instead of having to remember to switch between std::to_string and toString
+ * depending on the type.
+ */
+inline std::string toString(size_t value) { return std::to_string(value); }
 
 /**
  * @brief Represents a shader code.
@@ -412,7 +420,7 @@ inline TensorPool::~TensorPool() {
 }
 
 /**
- * @brief simple string replacement helper function for substituting
+ * @brief simple in-place string replacement helper function for substituting
  * placeholders in a shader string template.
  *
  * Note this is not meant to be used in performance-critical code paths and
@@ -422,14 +430,31 @@ inline TensorPool::~TensorPool() {
  * @param[in] str String to mutate with substitution replacements.
  * @param[in] from Substring to replace
  * @param[in] to Substring to replace with
- * @example ReplaceAll(str, "{{workgroupSize}}", "256");
+ * @example replaceAll(str, "{{workgroupSize}}", "256");
  */
-inline void ReplaceAll(std::string &str, const std::string &from,
+inline void replaceAll(std::string &str, const std::string &from,
                        const std::string &to) {
   size_t start_pos = 0;
   while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
     str.replace(start_pos, from.length(), to);
     start_pos += to.length();
+  }
+}
+
+/**
+ * @brief Overload of the string replacement helper function to replace
+ * multiple substrings in a string with multiple replacements.
+ *
+ * @param[in] str String to mutate with substitution replacements.
+ * @param[in] reps Vector of pairs of substrings to replace and their
+ * replacements.
+ * @example replaceAll(str, {{"{{workgroupSize}}", "256"}, {"{{precision}}",
+ * "f32"}});
+ */
+inline void replaceAll(std::string &str,
+                       const std::vector<std::pair<std::string, std::string>> &reps) {
+  for (const auto &rep : reps) {
+    replaceAll(str, rep.first, rep.second);
   }
 }
 
@@ -454,8 +479,8 @@ inline ShaderCode createShader(const char *shaderTemplate,
                                const Shape &workgroupSize = {256, 1, 1},
                                NumType precision = kf32) {
   std::string codeString(shaderTemplate);
-  ReplaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
-  ReplaceAll(codeString, "{{precision}}", toString(precision));
+  replaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
+  replaceAll(codeString, "{{precision}}", toString(precision));
   LOG(kDefLog, kInfo, "Shader code:\n%s", codeString.c_str());
   return ShaderCode{codeString, workgroupSize};
 }
@@ -745,7 +770,7 @@ inline size_t cdiv(size_t n, size_t d) { return (n + d - 1) / d; }
  * @brief cdiv for shape specification. Mostly useful for evenly dividing total
  * # threads by workgroup size dimensions.
  */
-inline Shape cdiv(Shape total, Shape group) { 
+inline Shape cdiv(Shape total, Shape group) {
   assert(total.rank == group.rank);
   Shape result;
   result.rank = total.rank;
@@ -911,9 +936,7 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
                     cdiv(nThreads[1], shader.workgroupSize[1]),
                     cdiv(nThreads[2], shader.workgroupSize[2])};
   */
-  op.nWorkgroups = {nWorkgroups[0],
-                    nWorkgroups[1],
-                    nWorkgroups[2]};
+  op.nWorkgroups = {nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]};
   resetCommandBuffer(device, op);
   ctx.kernelPool.data.insert(&op);
   LOG(kDefLog, kInfo, "Exiting createKernel");
@@ -930,7 +953,8 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
  * @param[in] shader Shader code for the kernel
  * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
  * to the kernel as inputs and outputs.
- * @param[in] nWorkgroups Number of workgroups in the x, y, z grid, must be a Shape of rank == 3.
+ * @param[in] nWorkgroups Number of workgroups in the x, y, z grid, must be a
+ * Shape of rank == 3.
  * @param[in] params Optional parameters for the kernel. If the kernel does not
  * have any parameters, use NoParam.
  * @return Kernel instance representing the created kernel
@@ -943,7 +967,8 @@ Kernel createKernel(Context &ctx, const ShaderCode &shader,
                     const Shape &nWorkgroups,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
-    // LOG(kDefLog, kTrace, "Using params of size %d bytes", sizeof(ParamsType));
+    // LOG(kDefLog, kTrace, "Using params of size %d bytes",
+    // sizeof(ParamsType));
     return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), nWorkgroups,
                         reinterpret_cast<const void *>(&params),
@@ -951,7 +976,8 @@ Kernel createKernel(Context &ctx, const ShaderCode &shader,
   } else {
     // LOG(kDefLog, kTrace , "No params");
     return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), nWorkgroups, nullptr, 0);
+                        dataBindings.viewOffsets.data(), nWorkgroups, nullptr,
+                        0);
   }
 }
 
