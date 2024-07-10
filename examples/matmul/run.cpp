@@ -3,11 +3,12 @@
 #include <future>
 #include <random>
 
-#include "gpu.h"
+#include "gpu.h" // createContext, createTensor, createKernel, dispatchKernel,
+                 // wait, resetCommandBuffer, toCPU
 
-#include "array_utils.h"
 #include "llmc/reference_impls.h" // for CPU reference implementation
-#include "utils/logging.h"
+#include "utils/array_utils.h"    // show, isclose, randn, randint
+#include "utils/logging.h"        // LOG
 
 using namespace gpu;
 
@@ -267,6 +268,51 @@ void checkCPU(size_t M, size_t K, size_t N, std::unique_ptr<float[]> &inputPtr,
                                                           : "CPU Check: FAIL");
 }
 
+Kernel selectMatmul(Context &ctx, int version,
+                    const Bindings</* input, weights, output */ 3> &bindings,
+                    size_t M, size_t K, size_t N) {
+  Kernel kernel;
+  if (version == 1) {
+    Shape wgSize = {16, 16, 1};
+    LOG(kDefLog, kInfo, "wgSize: %s", toString(wgSize).c_str());
+    ShaderCode matmul =
+        createMatmul1(kShaderMatmul1, M, K, N, /*wgsize*/ wgSize);
+    kernel = createKernel(ctx, matmul, bindings,
+                          /*nWorkgroups*/ cdiv({M, N, 1}, wgSize));
+  } else if (version == 2) {
+    static constexpr size_t tileSize = 16;
+    ShaderCode matmul = createMatmul2(kShaderMatmul2, M, K, N,
+                                      /*wgSize*/ {tileSize * tileSize, 1, 1});
+    kernel =
+        createKernel(ctx, matmul, bindings,
+                     /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
+  } else if (version == 3) {
+    static constexpr size_t BM = 64;
+    static constexpr size_t BK = 4;
+    static constexpr size_t BN = BM;
+    static constexpr size_t TM =
+        BN / BK; //  BM * BN / TM == BM * BK, therefore TM == BN / BK
+    Shape wgSize = {BM * BN / TM, 1,
+                    1}; // BM * BN values per workgroup, TM values per thread
+    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
+    LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
+    LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d", BM, BK, BN, TM);
+    LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
+    LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
+    ShaderCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
+                                      /*wgSize*/ wgSize);
+    kernel = createKernel(ctx, matmul, bindings,
+                          /*nWorkgroups*/ nWorkgroups);
+  } else if (version == 4) {
+    Shape wgSize = {256, 1, 1};
+    Shape nWorkgroups = cdiv({M, N, 1}, {16, 16, 1});
+    ShaderCode matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
+    kernel = createKernel(ctx, matmul, bindings,
+                          /*nWorkgroups*/ nWorkgroups);
+  }
+  return kernel;
+}
+
 void runTest(int version, size_t M, size_t K, size_t N,
              std::unique_ptr<float[]> &inputPtr,
              std::unique_ptr<float[]> &weightsPtr,
@@ -279,55 +325,18 @@ void runTest(int version, size_t M, size_t K, size_t N,
       createTensor(ctx, Shape{N, K}, kf32, weightsPtr.get()); // column-major
   Tensor output = createTensor(ctx, Shape{M, N}, kf32);
 
+  constexpr size_t nIter = 5;
+
   // Initialize Kernel and bind GPU buffers
   LOG(kDefLog, kInfo, "Creating Kernel");
-  Kernel kernel;
-  if (version == 1) {
-    Shape wgSize = {16, 16, 1};
-    LOG(kDefLog, kInfo, "wgSize: %s", toString(wgSize).c_str());
-    ShaderCode matmul =
-        createMatmul1(kShaderMatmul1, M, K, N, /*wgsize*/ wgSize);
-    kernel = createKernel(ctx, matmul, Bindings{input, weights, output},
-                          /*nWorkgroups*/ cdiv({M, N, 1}, wgSize));
-  } else if (version == 2) {
-    static constexpr size_t tileSize = 16;
-    ShaderCode matmul = createMatmul2(kShaderMatmul2, M, K, N,
-                                      /*wgSize*/ {tileSize * tileSize, 1, 1});
-    kernel =
-        createKernel(ctx, matmul, Bindings{input, weights, output},
-                     /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
-  } else if (version == 3) {
-    static constexpr size_t BM = 64;
-    static constexpr size_t BK = 4;
-    static constexpr size_t BN = BM;
-    static constexpr size_t TM =
-        BN / BK; //  BM * BN / TM == BM * BK, therefore TM == BN / BK
-
-    Shape wgSize = {BM * BN / TM, 1,
-                    1}; // BM * BN values per workgroup, TM values per thread
-    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
-    LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
-    LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d", BM, BK, BN, TM);
-    LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
-    LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    ShaderCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
-                                      /*wgSize*/ wgSize);
-    kernel = createKernel(ctx, matmul, Bindings{input, weights, output},
-                          /*nWorkgroups*/ nWorkgroups);
-  } else if (version == 4) {
-    Shape wgSize = {256, 1, 1};
-    Shape nWorkgroups = cdiv({M, N, 1}, {16, 16, 1});
-    ShaderCode matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
-    kernel = createKernel(ctx, matmul, Bindings{input, weights, output},
-                          /*nWorkgroups*/ nWorkgroups);
-  }
+  Kernel kernel = selectMatmul(ctx, version, {input, weights, output}, M, K, N);
 
   // Dispatch kernel execution
-  LOG(kDefLog, kInfo, "Dispatching + waiting");
+  LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...", version,
+      nIter);
 
   // pre-allocate promises and futures for async dispatch
   // TODO(avh): implement a pooling mechanism for promises/futures in gpu.h
-  constexpr size_t nIter = 10;
   std::array<std::promise<void>, nIter> promises;
   std::array<std::future<void>, nIter> futures;
   for (int i = 0; i < nIter; i++) {
@@ -353,7 +362,7 @@ void runTest(int version, size_t M, size_t K, size_t N,
   LOG(kDefLog, kInfo,
       "Execution Time: (M = %d, K = %d, N = %d) x %d iterations :  %.1f "
       "milliseconds / dispatch ~ %.2f "
-      "GFLOPS/s",
+      "GFLOPS",
       M, K, N, nIter, duration.count() / static_cast<float>(nIter), gflops);
   LOG(kDefLog, kInfo, "Copying result to CPU");
   toCPU(ctx, output, outputPtr.get(), M * N * sizeof(float));

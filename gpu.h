@@ -262,7 +262,7 @@ struct Context {
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
   ~Context() {
-    LOG(kDefLog, kInfo, "Destroying context");
+    LOG(kDefLog, kTrace, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
       wgpuInstanceProcessEvents(instance);
@@ -286,7 +286,7 @@ struct Context {
     } else {
       LOG(kDefLog, kWarn, "Instance is null");
     }
-    LOG(kDefLog, kInfo, "Destroyed context");
+    LOG(kDefLog, kInfo, "Context destroyed");
   }
 };
 
@@ -864,7 +864,6 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
     op.buffers[i] = dataBindings[i].data.buffer;
     op.bufferSizes[i] = dataBindings[i].data.size;
   }
-  LOG(kDefLog, kInfo, "Create the params buffer");
   // Create a buffer for the Params struct
   if (paramsSize > 0) {
     WGPUBufferDescriptor paramsBufferDesc = {
@@ -875,9 +874,9 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
     op.buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
     op.bufferSizes[paramIndex] = paramsSize;
     wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params, paramsSize);
-    LOG(kDefLog, kInfo, "Params buffer written");
+    LOG(kDefLog, kTrace, "Params buffer written");
   } else {
-    LOG(kDefLog, kInfo, "No params buffer needed");
+    LOG(kDefLog, kTrace, "No params buffer needed");
   }
   std::vector<WGPUBindGroupEntry> bindGroupEntries(numBindings);
   for (size_t i = 0; i < numTensors; ++i) {
@@ -898,7 +897,7 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
         .size = paramsSize,
     };
   }
-  LOG(kDefLog, kInfo, "BG Entries Size: %d", numBindings);
+  LOG(kDefLog, kTrace, "BG Entries Size: %d", numBindings);
   WGPUBindGroupDescriptor bindGroupDesc = {
       .layout = bgLayout,
       .entryCount = static_cast<uint32_t>(numBindings),
@@ -936,7 +935,6 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
   op.nWorkgroups = {nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]};
   resetCommandBuffer(device, op);
   ctx.kernelPool.data.insert(&op);
-  LOG(kDefLog, kInfo, "Exiting createKernel");
   return op;
 }
 

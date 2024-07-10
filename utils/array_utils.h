@@ -66,7 +66,7 @@ std::string show(const numtype *a, size_t rows, size_t cols,
         if (std::abs(a[i * cols + j]) < 1000 &&
                 std::abs(a[i * cols + j]) > 0.01 ||
             a[i * cols + j] == 0.0) {
-          sprintf(buffer, "%8.2f", a[i * cols + j]);
+          sprintf(buffer, "%9.2f", a[i * cols + j]);
         } else
           sprintf(buffer, "%10.2e", a[i * cols + j]);
       } else {
