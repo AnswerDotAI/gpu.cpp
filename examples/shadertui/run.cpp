@@ -14,6 +14,10 @@ using namespace gpu;
 template <size_t rows, size_t cols>
 void rasterize(const std::array<float, rows * cols> &values,
                std::array<char, rows *(cols + 1)> &raster) {
+  // Can experiment with the rasterization characters here but fewer characters
+  // looks better by imposing temporal coherence whereas more characters can
+  // start to look like noise.
+  // static const char intensity[] = " `.-':_,^=;><+!ngrc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
   static const char intensity[] = " .`'^-+=*x17X$8#%@";
   for (size_t i = 0; i < rows; ++i) {
     for (size_t j = 0; j < cols; ++j) {
@@ -53,8 +57,8 @@ void loadShaderCode(const std::string &filename, std::string &codeString) {
 int main() {
 
   Context ctx = createContext();
-  static constexpr size_t kRows = 40;
-  static constexpr size_t kCols = 70;
+  static constexpr size_t kRows = 50;
+  static constexpr size_t kCols = 90;
 
   LOG(kDefLog, kInfo, "Creating screen tensor");
 
@@ -116,7 +120,8 @@ int main() {
     std::chrono::duration<float> frameElapsed = frameEnd - frameStart;
     elapsed = frameEnd - start;
     std::this_thread::sleep_for(std::chrono::milliseconds(20) - frameElapsed);
-    printf("\033[H\033[J%s\nReloaded file %zu times\n", raster.data(), ticks);
+    printf("\033[H\033[J%s\nRender loop running ...\nEdit and save shader.wgsl to see changes here.\nReloaded shader.wgsl %zu times\n", raster.data(), ticks);
+    fflush(stdout);
   }
 
   LOG(kDefLog, kInfo, "Done");
