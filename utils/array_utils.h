@@ -26,6 +26,19 @@ namespace gpu {
 static constexpr int kShowMaxRows = 32;
 static constexpr int kShowMaxCols = 10;
 
+/**
+ * @brief Show a 2D array as a string, base implementation.
+ *
+ * @param numtype The type of the array elements. Must be int or float.
+ * @param a The array to show.
+ * @param rows The number of rows in the array.
+ * @param cols The number of columns in the array.
+ * @param name The name of the array to show.
+ * @return std::string The string representation of the array.
+ * @example
+ *   std::array<float, 4> a = {1.0, 2.0, 3.0, 4.0};
+ *   printf("%s", show<float>(a.data(), 2, 2, "a").c_str());
+ */
 template <typename numtype>
 std::string show(const numtype *a, size_t rows, size_t cols,
                  const std::string &name = "") {
@@ -80,18 +93,45 @@ std::string show(const numtype *a, size_t rows, size_t cols,
   return output;
 }
 
+/**
+ * @brief Overload of `show()` for std::array.
+ *
+ * @param numtype The type of the array elements. Must be int or float.
+ * @param a The array to show.
+ * @param name The name of the array to show.
+ * @return std::string The string representation of the array.
+ * @example
+ *  std::array<float, 4> a = {1.0, 2.0, 3.0, 4.0};
+ *  printf("%s", show<float>(a, "a").c_str());
+ */
 template <typename numtype, size_t rows, size_t cols>
 std::string show(const std::array<numtype, rows * cols> &a,
                  const std::string &name = "") {
   return show<numtype>(a.data(), rows, cols, name);
 }
 
+/**
+ * @brief Overload of `show()` for float std::array.
+ * @param a The array to show.
+ * @return std::string The string representation of the array.
+ * @example
+ * std::array<float, 4> a = {1.0, 2.0, 3.0, 4.0};
+ * printf("%s", show(a, "a").c_str());
+ */
 template <size_t rows, size_t cols>
 std::string show(const std::array<float, rows * cols> &a,
                  const std::string &name = "") {
   return show<float, rows, cols>(a, name);
 }
 
+/**
+ * @brief Populate the array with a range of values. This is mostly for testing
+ * purposes.
+ * @param input The array to populate.
+ * @param N The number of elements in the array.
+ * @param start The starting value.
+ * @param step The step size.
+ */
 void range(float *input, size_t N, float start = 0.0, float step = 1.0) {
   // TODO(avh): currently unused - check
   float curr = start;
@@ -101,6 +141,12 @@ void range(float *input, size_t N, float start = 0.0, float step = 1.0) {
   }
 }
 
+/**
+ * @brief Overload of `range()` for std::array.
+ * @param input The array to populate.
+ * @param start The starting value.
+ * @param step The step size.
+ */
 template <size_t N>
 void range(std::array<float, N> &input, float start = 0.0, float step = 1.0) {
   float curr = start;
@@ -110,6 +156,14 @@ void range(std::array<float, N> &input, float start = 0.0, float step = 1.0) {
   }
 }
 
+/**
+ * @brief Populate the array with random integers.
+ * @param a The array to populate.
+ * @param N The number of elements in the array.
+ * @param gen The random number generator.
+ * @param min The minimum value for the random integers.
+ * @param max The maximum value for the random integers.
+ */
 void randint(float *a, size_t N, std::mt19937 &gen, int min = -1, int max = 1) {
   std::uniform_int_distribution<> dist(min, max);
   for (int i = 0; i < N; i++) {
@@ -117,6 +171,13 @@ void randint(float *a, size_t N, std::mt19937 &gen, int min = -1, int max = 1) {
   }
 }
 
+/**
+ * @brief Overload of `randint()` for std::array.
+ * @param a The array to populate.
+ * @param gen The random number generator.
+ * @param min The minimum value for the random integers.
+ * @param max The maximum value for the random integers.
+ */
 template <typename numtype, size_t size>
 void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min = -1,
              int max = 1) {
@@ -126,6 +187,14 @@ void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min = -1,
   }
 }
 
+/**
+ * @brief Populate the array with random floats, generated from a Gaussian distribution.
+ * @param a The array to populate.
+ * @param N The number of elements in the array.
+ * @param gen The random number generator.
+ * @param mean The mean of the Gaussian distribution.
+ * @param std The standard deviation of the Gaussian distribution.
+ */
 void randn(float *a, size_t N, std::mt19937 &gen, float mean = 0.0,
            float std = 1.0) {
   std::normal_distribution<float> dist(mean, std);
@@ -134,6 +203,13 @@ void randn(float *a, size_t N, std::mt19937 &gen, float mean = 0.0,
   }
 }
 
+/**
+ * @brief Overload of `randn()` for std::array.
+ * @param a The array to populate.
+ * @param gen The random number generator.
+ * @param mean The mean of the Gaussian distribution.
+ * @param std The standard deviation of the Gaussian distribution.
+ */
 template <size_t size>
 void randn(std::array<float, size> &a, std::mt19937 &gen, float mean = 0.0,
            float std = 1.0) {
@@ -143,6 +219,11 @@ void randn(std::array<float, size> &a, std::mt19937 &gen, float mean = 0.0,
   }
 }
 
+/**
+ * @brief Populate a square matrix with the identity matrix.
+ * @param a The array to populate.
+ * @param N The number of rows and columns in the square matrix.
+ */
 inline void eye(float *a, size_t N) {
   for (size_t i = 0; i < N; i++) {
     for (size_t j = 0; j < N; j++) {
@@ -154,6 +235,13 @@ inline void eye(float *a, size_t N) {
 // Note transformation operations here are purely for testing - they are not
 // optimized to be used in hot paths.
 
+/**
+ * @brief Transpose a matrix.
+ * @param input The input matrix.
+ * @param output The output matrix.
+ * @param M The number of rows in the input matrix.
+ * @param N The number of columns in the input matrix.
+ */
 inline void transpose(float *input, float *output, size_t M, size_t N) {
   for (size_t i = 0; i < M; i++) {
     for (size_t j = 0; j < N; j++) {
@@ -162,6 +250,13 @@ inline void transpose(float *input, float *output, size_t M, size_t N) {
   }
 }
 
+/**
+ * @brief Flip a matrix horizontally or vertically.
+ * @param a The matrix to flip.
+ * @param R The number of rows in the matrix.
+ * @param C The number of columns in the matrix.
+ * @param horizontal Whether to flip horizontally (true) or vertically (false).
+ */
 inline void flip(float *a, size_t R, size_t C, bool horizontal = true) {
   if (horizontal) {
     for (size_t i = 0; i < R; i++) {
@@ -178,6 +273,14 @@ inline void flip(float *a, size_t R, size_t C, bool horizontal = true) {
   }
 }
 
+/**
+ * @brief Determine if the values of two arrays are close to each other.
+ * @param a The first array.
+ * @param b The second array.
+ * @param n The number of elements in the arrays.
+ * @param tol The tolerance for closeness.
+ * @return bool True if the arrays are close, false otherwise.
+ */
 bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
   for (size_t i = 0; i < n; i++) {
     if (std::abs(a[i] - b[i]) > tol || std::isnan(a[i]) || std::isnan(b[i])) {

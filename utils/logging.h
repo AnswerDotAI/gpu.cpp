@@ -10,6 +10,12 @@ enum LogLevel { kError = 0, kWarn = 1, kInfo = 2, kTrace = 3 };
 
 static const char *kLevelStr[] = {"error", "warn", "info", "trace"};
 
+/**
+ * @brief Logger struct for logging messages.
+ * stream: The stream to log to.
+ * buffer: A buffer to store the formatted message.
+ * level: The log level to log messages at.
+ */
 struct Logger {
   FILE *stream;
   char buffer[1024];
@@ -17,6 +23,14 @@ struct Logger {
 };
 
 #ifndef NDEBUG
+/**
+ * @brief Log a message to the logger. If NDEBUG is defined in a source or as a
+ * compiler flag, this is a no-op.
+ *
+ * @param logger The logger to log to.
+ * @param level The log level of the message.
+ * @param message The message to log.
+ */
 inline void LOG(Logger& logger, int level, const char *message, ...) {
   static const char *orange = "\033[0;33m";
   static const char *red = "\033[0;31m";
@@ -42,6 +56,11 @@ inline void LOG(Logger& logger, int level, const char *message, ...) {
 #define LOG(logger, level, message, ...) ((void)0)
 #endif
 
+/**
+ * @brief Default logger for logging messages to stdout at the info level.
+ * Output stream and logging level for the default logger can be globally
+ * changed on a per-program basis.
+ */
 static Logger kDefLog = {stdout, "", kInfo};
 
 } // namespace gpu

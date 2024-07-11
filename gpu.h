@@ -171,10 +171,10 @@ inline std::string toString(const Shape &shape) {
 inline std::string toString(size_t value) { return std::to_string(value); }
 
 /**
- * @brief Represents a shader code.
- * workgroup size and precision are stored since they are specified in the
- * shader code and making the values available helps keep parameters
- * consistent.
+ * @brief Represents shader code. Wrapper type around the code string with
+ * additional metadata for workgroup size and precision since they are
+ * specified in the shader code. Additionally, label and entryPoint are used by
+ * `createKernel()` to specify the label and entry point of the shader.
  */
 struct ShaderCode {
   inline ShaderCode(const std::string &data = "", size_t workgroupSize = 256,
@@ -694,7 +694,7 @@ inline void toCPU(Context &ctx, Tensor &tensor, float *data,
  * @example toCPU(ctx, tensor, data);
  */
 template <size_t N>
-void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> data) {
+void toCPU(Context &ctx, Tensor &tensor, std::array<float, N>& data) {
   toCPU(ctx, tensor, data.data(), sizeof(data));
 }
 
@@ -922,8 +922,8 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
     computePipelineDesc.layout = pipelineLayout;
     computePipelineDesc.compute.module =
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
-    computePipelineDesc.compute.entryPoint = "main";
-    computePipelineDesc.label = "compute pipeline";
+    computePipelineDesc.compute.entryPoint = shader.entryPoint.c_str();
+    computePipelineDesc.label = shader.label.c_str();
     op.computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
   }

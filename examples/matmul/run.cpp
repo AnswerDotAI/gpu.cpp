@@ -354,10 +354,10 @@ void runTest(int version, size_t M, size_t K, size_t N,
 
   // Report performance
   auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+      std::chrono::duration_cast<std::chrono::seconds>(end - start);
   float gflops = 2 * M * N *
                  K / // factor of 2 for multiplication & accumulation
-                 (static_cast<float>(duration.count()) / 1000.0) /
+                 (static_cast<float>(duration.count())) /
                  1000000000.0 * static_cast<float>(nIter);
   LOG(kDefLog, kInfo,
       "Execution Time: (M = %d, K = %d, N = %d) x %d iterations :  %.1f "
