@@ -1,6 +1,7 @@
 import os
 import platform
 import sys
+import ssl
 import urllib.request
 from pathlib import Path
 
@@ -28,13 +29,14 @@ def download_file(url, output_filename):
         print(f"\rDownloaded {total_downloaded // (1024 * 1024)} MB", end="")
 
     try:
+        ssl._create_default_https_context = ssl._create_stdlib_context
         urllib.request.urlretrieve(url, output_filename, reporthook=report_progress)
         print(f"\nDownloaded {output_filename}")
         return True
     except Exception as e:
         print(f"\nFailed to download {output_filename}")
         print(f"Error: {str(e)}")
-        return False
+        sys.exit(1)
 
 def check_os(os_name):
     print("\nChecking System")
@@ -63,7 +65,7 @@ def download_dawn(os_name):
 
     if not outfile or not url:
         print(f"No download information for {os_name}")
-        return
+        sys.exit(1)
 
     print(f"  URL              : {url}")
     print(f"  Download File    : {outfile}\n")
@@ -71,7 +73,7 @@ def download_dawn(os_name):
 
     if Path(outfile).exists():
         print(f"  File {outfile} already exists, skipping.")
-        return
+        sys.exit(0)
 
     Path(outfile).parent.mkdir(parents=True, exist_ok=True)
     download_file(url, outfile)

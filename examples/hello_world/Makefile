@@ -6,11 +6,26 @@ NUM_JOBS?=$(shell nproc)
 FLAGS=-stdlib=libc++ -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn
 TARGET=hello_world
 
-run: ./build/$(TARGET)
+run: ./build/$(TARGET) dawnlib
 	$(LIBSPEC) && ./build/$(TARGET)
+
+dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
+
+run_setup: check-python
+	cd $(GPUCPP) && python3 setup.py
+
+all: dawnlib check-clang check-linux-vulkan
+	cd examples/gpu_puzzles && make build/gpu_puzzles
+	cd examples/hello_world && make build/hello_world
+	cd examples/matmul && make build/mm
+	cd examples/physics && make build/physics
+	cd examples/render && make build/render
 
 build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o ./build/$(TARGET)
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
+
+check-python:
+	@command -v python3 >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 

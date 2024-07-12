@@ -1,7 +1,7 @@
 NUM_JOBS=$(shell nproc)
 CXX=clang++
 
-.PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-entr check-clang clean-build clean all watch-tests
+.PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-entr check-clang clean-build clean all watch-tests docs
 
 GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
@@ -24,7 +24,7 @@ all: dawnlib check-clang check-linux-vulkan
 	cd examples/physics && make build/physics
 	cd examples/render && make build/render
 
-docs:
+docs: Doxyfile
 	doxygen Doxyfile
 
 ################################################################################
