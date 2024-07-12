@@ -231,13 +231,18 @@ Finally, the focus of gpu.cpp is general-purpose GPU computation rather than ren
 
 ## Acknowledgements
 
-We use:
+gpu.cpp makes use of:
+
 - [Dawn](https://dawn.googlesource.com/dawn) as the WebGPU implementation
 - [webgpu-dawn-binaries](https://github.com/jspanchu/webgpu-dawn-binaries) by
   @jspanchu to build a binary artifact of Dawn.
 - [webgpu-distribution](https://github.com/eliemichel/WebGPU-distribution) by
   @eliemichel for cmake builds.
 
+Thanks also to fellow colleagues at Answer.AI team for their support, testing help, and feedback.
+
 ## Discord Community and Contributing
 
-Join our community in the `#gpu-cpp` channel on the [AnswerDotAI Discord with this invite link](https://discord.gg/zmJVhXsC7f). Feedback, issues and pull requests are welcome.
+Join our community in the `#gpu-cpp` channel on the [AnswerDotAI Discord with this invite link](https://discord.gg/zmJVhXsC7f). Feel free to get in touch via X [@austinvhuang](https://twitter.com/austinvhuang) as well.
+
+Feedback, issues and pull requests are welcome.
