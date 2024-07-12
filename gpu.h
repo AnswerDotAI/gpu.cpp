@@ -726,7 +726,19 @@ inline void toGPU(Context &ctx, const float *data, Tensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
 }
-// Separate this out since WGPUCommandBuffer is destroyed upon submission
+
+
+template <typename Params>
+inline void toGPU(Context &ctx, Params &params, Kernel &op) {
+  // TODO(avh): Maintain params metadata in Kernel and check for consistency.
+  // If a kernel does not have parameters this will quietly overwrite
+  // the last buffer in the bind group with the parameters buffer.
+  if (op.numBindings > 0) {
+    wgpuQueueWriteBuffer(ctx.queue,
+                         op.buffers[op.numBindings - 1], 0,
+                         static_cast<void *>(&params), sizeof(params));
+  }
+}
 
 /**
  * @brief Resets the command buffer in preparation for a kernel dispatch.

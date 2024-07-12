@@ -23,8 +23,8 @@
 
 namespace gpu {
 
-static constexpr int kShowMaxRows = 32;
-static constexpr int kShowMaxCols = 10;
+static constexpr int kShowMaxRows = 8;
+static constexpr int kShowMaxCols = 8;
 
 /**
  * @brief Show a 2D array as a string, base implementation.

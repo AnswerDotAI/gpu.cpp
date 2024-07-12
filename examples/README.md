@@ -13,11 +13,7 @@ In order of beginning to advanced:
 | [hello_world](hello_world) | Minimal example to get started with gpu.cpp, implements a GELU neural network activation function. |
 | [gpu_puzzles](gpu_puzzles) | (WIP) Implementation of Sasha Rush's GPU puzzles
 | [render](render) | GPU rendering of a signed distance function for a 3D sphere. |
+| [shadertui](shadertui) | A terminal UI taker on shadertoy demonstrating runtime live reloading of WGSL. |
 | [physics](physics) | Parallel physics simulation of a double pendulum with each thread starting at a different initial condition. |
 | [matmul](matmul) | Tiled matrix multiplication. |
 | [webgpu_from_scratch](webgpu_from_scratch) | A minimal from-scratch example of how to use WebGPU directly without this library. This is useful to understand the code internals of gpu.cpp. Note this takes a while to build as it compiles the WebGPU C API implementation. |
-
-Future examples that may be added (collaborations welcome):
-
-- Matrix multiplication worklog / tutorial
-- A transformer block for a neural network (see `experimental/` WIP)

@@ -130,10 +130,7 @@ int main(int argc, char **argv) {
     toCPU(ctx, devScreen, screen.data(), sizeof(screen));
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
 
-    // write params to the last buffer
-    wgpuQueueWriteBuffer(ctx.queue,
-                         renderKernel.buffers[renderKernel.numBindings - 1], 0,
-                         static_cast<void *>(&params), sizeof(params));
+    toGPU(ctx, params, renderKernel);
     resetCommandBuffer(ctx.device, renderKernel);
 
     static const char intensity[] =

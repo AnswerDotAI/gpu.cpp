@@ -332,8 +332,8 @@ void runTest(int version, size_t M, size_t K, size_t N,
   Kernel kernel = selectMatmul(ctx, version, {input, weights, output}, M, K, N);
 
   // Dispatch kernel execution
-  LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...", version,
-      nIter);
+  LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...",
+      version, nIter);
 
   // pre-allocate promises and futures for async dispatch
   // TODO(avh): implement a pooling mechanism for promises/futures in gpu.h
@@ -354,20 +354,25 @@ void runTest(int version, size_t M, size_t K, size_t N,
 
   // Report performance
   auto duration =
-      std::chrono::duration_cast<std::chrono::seconds>(end - start);
+      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   float gflops = 2 * M * N *
                  K / // factor of 2 for multiplication & accumulation
-                 (static_cast<float>(duration.count())) /
+                 (static_cast<float>(duration.count()) / 1000.0) /
                  1000000000.0 * static_cast<float>(nIter);
-  LOG(kDefLog, kInfo,
-      "Execution Time: (M = %d, K = %d, N = %d) x %d iterations :  %.1f "
-      "milliseconds / dispatch ~ %.2f "
-      "GFLOPS",
-      M, K, N, nIter, duration.count() / static_cast<float>(nIter), gflops);
+
   LOG(kDefLog, kInfo, "Copying result to CPU");
   toCPU(ctx, output, outputPtr.get(), M * N * sizeof(float));
   LOG(kDefLog, kInfo, "%s",
       show<float>(outputPtr.get(), M, N, "Output").c_str());
+
+  LOG(kDefLog, kInfo,
+      "\n\n===================================================================="
+      "============\nExecution Time: (M = %d, K = %d, N = %d) x %d iterations "
+      ":\n%.1f "
+      "milliseconds / dispatch ~ %.2f "
+      "GFLOPS\n================================================================"
+      "================\n\n",
+      M, K, N, nIter, duration.count() / static_cast<float>(nIter), gflops);
 }
 
 int main() {

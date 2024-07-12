@@ -105,9 +105,7 @@ int main() {
       }
     }
     params.time = getCurrentTimeInMilliseconds(start);
-    wgpuQueueWriteBuffer(ctx.queue,
-                         renderKernel.buffers[renderKernel.numBindings - 1], 0,
-                         static_cast<void *>(&params), sizeof(params));
+    toGPU(ctx, params, renderKernel);
     auto frameStart = std::chrono::high_resolution_clock::now();
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
