@@ -151,17 +151,22 @@ illustrate how to use gpu.cpp as a library.
 
 After you have run `make` in the top-level directory which retrieves the prebuilt Dawn shared library, you can run each example by navigating to its directory and running `make` from the example's directory.
 
-An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's now-famous [How to Opitmize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It is only weakly optimized (up to 1D blocktiling, kernel number 4), but nonetheless already achieves an estimated ~ 1.2+ TFLOPs on a Macbook Pro M1 laptop, which has a theoretical peak of 10.4 TFLOPs. Contributions to optimize this further are welcome - kernels 5-9 of Simon's post would be a natural starting point.
-
-![](docs/images/matmul.png)
+An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It is only weakly optimized (up to 1D blocktiling, kernel number 4) at ~ 1.2+ TFLOPs on a Macbook Pro M1 laptop, which has a theoretical peak of 10.4 TFLOPs. Contributions to optimize this further are welcome - kernels 5-9 of Simon's post would be a natural starting point.
 
 A parallel physics simulation of N double pendulums running simultaneously on the GPU is shown in [examples/physics](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/physics).
 
-![](docs/images/pendulum.gif)
+<div align="center">
+<img src="docs/images/matmul.png" alt="matmul example output" width=40%>
+<img src="docs/images/pendulum.gif" alt="physics example animated gif" width=42%>
+</div>
 
-We also show some examples of signed distance function computations, rendered in the terminal as ascii. A 3D SDF of spheres is shown in [examples/render](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/render]) and a shadertoy-like live-reloading example is in [examples/shadertui](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/shadertui). Interestingly, with a starting example, LLMs such as Claude 3.5 Sonnet can be quite capable at writing low-level WGSL code for you - the other shaders in the shadertui example are written by the LLM.
+We also show some examples of signed distance function computations, rendered in the terminal as ascii. A 3D SDF of spheres is shown in [examples/render](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/render]) and a shadertoy-like live-reloading example is in [examples/shadertui](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/shadertui).
 
-![](docs/images/shadertui.gif)
+Interestingly, with a starting example, LLMs such as Claude 3.5 Sonnet can be quite capable at writing low-level WGSL code for you - the other shaders in the shadertui example are written by the LLM.
+
+<div align="center">
+  <img src="docs/images/shadertui.gif" alt="shadertui example animated gif" width=80%>
+</div>
 
 ## Troubleshooting
 
