@@ -153,15 +153,15 @@ After you have run `make` in the top-level directory which retrieves the prebuil
 
 An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's now-famous [How to Opitmize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It is only weakly optimized (up to 1D blocktiling, kernel number 4), but nonetheless already achieves an estimated ~ 1.2+ TFLOPs on a Macbook Pro M1 laptop, which has a theoretical peak of 10.4 TFLOPs. Contributions to optimize this further are welcome - kernels 5-9 of Simon's post would be a natural starting point.
 
-![](docs/images/matmul.png){width=88% fig-align="center"}
+![](docs/images/matmul.png)
 
 A parallel physics simulation of N double pendulums running simultaneously on the GPU is shown in [examples/physics](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/physics).
 
-![](docs/images/pendulum.gif){width=66% fig-align="center"}
+![](docs/images/pendulum.gif)
 
 We also show some examples of signed distance function computations, rendered in the terminal as ascii. A 3D SDF of spheres is shown in [examples/render](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/render]) and a shadertoy-like live-reloading example is in [examples/shadertui](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/shadertui). Interestingly, with a starting example, LLMs such as Claude 3.5 Sonnet can be quite capable at writing low-level WGSL code for you - the other shaders in the shadertui example are written by the LLM.
 
-![](docs/images/shadertui.gif){width=100% fig-align="center"}
+![](docs/images/shadertui.gif)
 
 ## Troubleshooting
 
