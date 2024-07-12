@@ -153,7 +153,7 @@ After you have run `make` in the top-level directory which retrieves the prebuil
 
 An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It is only weakly optimized (up to 1D blocktiling, kernel number 4) at ~ 1.2+ TFLOPs on a Macbook Pro M1 laptop, which has a theoretical peak of 10.4 TFLOPs. Contributions to optimize this further are welcome - kernels 5-9 of Simon's post would be a natural starting point.
 
-A parallel physics simulation of N double pendulums running simultaneously on the GPU is shown in [examples/physics](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/physics).
+A parallel physics simulation of an ensemble of double pendulums simulated in parallel with different initial conditions on the GPU is shown in [examples/physics](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/physics).
 
 <div align="center">
 <img src="docs/images/matmul.png" alt="matmul example output" width=40%>
@@ -165,7 +165,7 @@ We also show some examples of signed distance function computations, rendered in
 Interestingly, with a starting example, LLMs such as Claude 3.5 Sonnet can be quite capable at writing low-level WGSL code for you - the other shaders in the shadertui example are written by the LLM.
 
 <div align="center">
-  <img src="docs/images/shadertui.gif" alt="shadertui example animated gif" width=80%>
+  <img src="docs/images/shadertui.gif" alt="shadertui example animated gif" width=88%>
 </div>
 
 ## Troubleshooting
