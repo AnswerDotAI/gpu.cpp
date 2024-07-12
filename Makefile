@@ -24,6 +24,9 @@ all: dawnlib check-clang check-linux-vulkan
 	cd examples/physics && make build/physics
 	cd examples/render && make build/render
 
+docs:
+	doxygen Doxyfile
+
 ################################################################################
 # cmake targets (optional - precompiled binaries is preferred)
 ################################################################################

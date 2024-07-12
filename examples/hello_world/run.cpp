@@ -45,7 +45,7 @@ int main(int argc, char **argv) {
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 16; ++i) {
+  for (int i = 0; i < 12; ++i) {
     printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }
   printf("  ...\n\n");
