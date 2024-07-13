@@ -182,16 +182,261 @@ void puzzle5(Context &ctx) {
   showResult<N, N, N>(ctx, op, output);
 }
 
+// Puzzle 6 : Blocks
+// Implement a kernel that adds 10 to each position of a and stores it in out.
+// You have fewer threads per block than the size of a.
+
+const char *kPuzzle6 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output : array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+struct Params {
+  size: u32, // input is size x size
+};
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
+  ) {
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+
+    if (idx < params.size) {
+      output[idx] = a[idx] + 10;
+    }
+  }
+)";
+void puzzle6(Context &ctx) {
+  printf("\n\nPuzzle 6\n\n");
+  static constexpr size_t N = 9;
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor output = createTensor(ctx, {N}, kf32);
+  struct Params {
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, createShader(kPuzzle6, {4, 1, 1}),
+                   Bindings{a, output}, {3, 1, 1}, Params{N});
+  showResult<N>(ctx, op, output);
+}
+
+// Puzzle 7 : Blocks 2D
+// Implement the same kernel in 2D. 
+// You have fewer threads per block than the size of a in both directions.
+
+const char *kPuzzle7 = R"(
+@group(0)@binding(0) var<storage, read_write> a: array<f32>;
+@group(0)@binding(1) var<storage, read_write> output : array<f32>;
+@group(0)@binding(2) var<uniform> params: Params;
+struct Params {
+  size: u32, // input is size x size
+};
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
+  ) {
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+
+    if (idx < arrayLength(&a)) {
+      output[idx] = a[idx] + 10;
+    }
+  }
+)";
+void puzzle7(Context &ctx) {
+  printf("\n\nPuzzle 7\n\n");
+  static constexpr size_t N = 5;
+  Tensor a = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor output = createTensor(ctx, {N, N}, kf32);
+  struct Params {
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, createShader(kPuzzle7, {3, 3, 1}),
+                   Bindings{a, output}, {2, 2, 1}, Params{N});
+  showResult<N, N, N>(ctx, op, output);
+}
+
+// Puzzle 8 : Shared
+// Implement a kernel that adds 10 to each position of a and stores it in out.
+// You have fewer threads per block than the size of a.
+
+// (This example does not really need shared memory or syncthreads, but it is a demo.)
+
+const char *kPuzzle8 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output : array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+struct Params {
+  size: u32, 
+};
+var<workgroup> sharedData: array<f32, 256>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
+  ) {
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    sharedData[idx] = a[idx];
+
+    workgroupBarrier();
+
+    if (idx < params.size) {
+      output[idx] = sharedData[idx] + 10;
+    }
+  }
+)";
+void puzzle8(Context &ctx) {
+  printf("\n\nPuzzle 8\n\n");
+  static constexpr size_t N = 8;
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor output = createTensor(ctx, {N}, kf32);
+  struct Params {
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, createShader(kPuzzle8, {4, 1, 1}),
+                   Bindings{a, output}, {2, 1, 1}, Params{N});
+  showResult<N>(ctx, op, output);
+}
+
+// Puzzle 9 : Pooling
+// Implement a kernel that sums together the last 3 position of a and stores it in out.
+// You have 1 thread per position. You only need 1 global read and 1 global write per thread.
+
+const char *kPuzzle9 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output : array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+struct Params {
+  size: u32, // input is size x size
+};
+var<workgroup> sharedData: array<f32, 256>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = GlobalInvocationID.x;
+
+    if (idx < arrayLength(&a)) {
+      sharedData[local_idx] = a[idx];
+    }
+
+    workgroupBarrier();
+
+    if (idx == 0) {
+      output[idx] = sharedData[idx];
+    }
+    else if (idx == 1) {
+      output[idx] = sharedData[idx] + sharedData[idx - 1];
+    }
+    else {
+      output[idx] = sharedData[idx] + sharedData[idx - 1] + sharedData[idx - 2];
+    }
+  }
+)";
+void puzzle9(Context &ctx) {
+  printf("\n\nPuzzle 9\n\n");
+  static constexpr size_t N = 8;
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor output = createTensor(ctx, {N}, kf32);
+  struct Params {
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, createShader(kPuzzle9, {N, 1, 1}),
+                   Bindings{a, output}, {1, 1, 1}, Params{N});
+  showResult<N>(ctx, op, output);
+}
+
+// Puzzle 10 : Dot Product
+// Implement a kernel that computes the dot-product of a and b and stores it in out.
+// You have 1 thread per position. You only need 2 global reads and 1 global write per thread.
+
+const char *kPuzzle10 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> output : array<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+struct Params {
+  size: u32, // input is size x size
+};
+var<workgroup> sharedData: array<f32, 256>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = GlobalInvocationID.x;
+
+    if (idx < arrayLength(&a)) {
+      sharedData[local_idx] = a[idx] * b[idx];
+    }
+
+    workgroupBarrier();
+
+    if (local_idx == 0) {
+      var sum = 0.0;
+      for (var i: u32 = 0u; i < arrayLength(&a); i = i + 1u) {
+        sum = sum + sharedData[i];
+      }
+      output[idx] = sum;
+    }
+  }
+)";
+void puzzle10(Context &ctx) {
+  printf("\n\nPuzzle 10\n\n");
+  static constexpr size_t N = 8;
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor b = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor output = createTensor(ctx, {1}, kf32);
+  struct Params {
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, createShader(kPuzzle10, {N, 1, 1}),
+                   Bindings{a, b, output}, {1, 1, 1}, Params{N});
+  showResult<1>(ctx, op, output);
+}
+
+// Puzzle 11 : Convolution
+// Implement a kernel that computes a 1D convolution between a and b and stores it in out.
+// You need to handle the general case. You only need 2 global reads and 1 global write per thread.
+
+const char *kPuzzle11 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> output : array<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+struct Params {
+  size: u32, // input is size x size
+};
+var<workgroup> shared_a: array<f32, 256>;
+var<workgroup> shared_b: array<f32, 256>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = GlobalInvocationID.x;
+
+    // TBD
+  }
+)";
+
 // TODO
 // ...
 
 int main(int argc, char **argv) {
   Context ctx = createContext();
-  puzzle1(ctx);
-  puzzle2(ctx);
-  puzzle3(ctx);
-  puzzle4(ctx);
-  puzzle5(ctx);
+  // puzzle1(ctx);
+  // puzzle2(ctx);
+  // puzzle3(ctx);
+  // puzzle4(ctx);
+  // puzzle5(ctx);
   // puzzle6(ctx);
+  // puzzle7(ctx);
+  // puzzle8(ctx);
+  // puzzle9(ctx);
+  puzzle10(ctx);
   return 0;
 }
