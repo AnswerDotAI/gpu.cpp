@@ -107,6 +107,7 @@ int main() {
             createKernel(ctx, shader, Bindings{screen},
                          cdiv({kCols, kRows, 1}, shader.workgroupSize), params);
         ticks++;
+      // start = std::chrono::high_resolution_clock::now();
       }
     }
     params.time = getCurrentTimeInMilliseconds(start);
