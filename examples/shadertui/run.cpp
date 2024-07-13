@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <fstream>
 #include <future>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -57,13 +58,17 @@ void loadShaderCode(const std::string &filename, std::string &codeString) {
 int main() {
 
   Context ctx = createContext();
-  static constexpr size_t kRows = 50;
-  static constexpr size_t kCols = 90;
+  // static constexpr size_t kRows = 50;
+  // static constexpr size_t kCols = 110;
+  static constexpr size_t kRows = 96;
+  static constexpr size_t kCols = 128;
 
   LOG(kDefLog, kInfo, "Creating screen tensor");
 
   std::array<float, kRows * kCols> screenArr;
-  std::fill(begin(screenArr), end(screenArr), 0.0);
+  // std::fill(begin(screenArr), end(screenArr), 0.0);
+  auto gen = std::mt19937{std::random_device{}()};
+  randint(screenArr, gen, 0, 1);
   Tensor screen = createTensor(ctx, {kRows, kCols}, kf32, screenArr.data());
 
   std::promise<void> promise;
