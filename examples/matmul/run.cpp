@@ -2,6 +2,7 @@
 #include <chrono>
 #include <future>
 #include <random>
+#include <cstdlib>
 
 #include "gpu.h" // createContext, createTensor, createKernel, dispatchKernel,
                  // wait, resetCommandBuffer, toCPU
@@ -501,11 +502,14 @@ void runTest(int version, size_t M, size_t K, size_t N,
 }
 
 int main() {
-  int version = 4; // 1 == naive matmul
-                   // 2 == tiling
-                   // 3 == 1D blocktiling
-                   // 4 == 2D blocktiling
-                   // 5 == No-Op
+  char* version_str = getenv("MATMUL_VERSION");
+  int version = version_str == NULL ? 3 : atoi(version_str);
+    // 1 == naive matmul
+    // 2 == tiling
+    // 3 == 1D blocktiling
+    // 4 == 2D blocktiling
+    // 5 == No-Op
+
   size_t M, K, N;  // Matrix dimensions
   static constexpr int kTestSize = 2;
   if constexpr (kTestSize == 0) {
