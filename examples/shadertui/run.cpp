@@ -58,10 +58,11 @@ void loadShaderCode(const std::string &filename, std::string &codeString) {
 int main() {
 
   Context ctx = createContext();
-  // static constexpr size_t kRows = 50;
-  // static constexpr size_t kCols = 110;
-  static constexpr size_t kRows = 96;
-  static constexpr size_t kCols = 128;
+  
+  static constexpr size_t kRows = 64;
+  static constexpr size_t kCols = 96;
+  // static constexpr size_t kRows = 96;
+  // static constexpr size_t kCols = 128;
 
   LOG(kDefLog, kInfo, "Creating screen tensor");
 
@@ -107,7 +108,7 @@ int main() {
             createKernel(ctx, shader, Bindings{screen},
                          cdiv({kCols, kRows, 1}, shader.workgroupSize), params);
         ticks++;
-      // start = std::chrono::high_resolution_clock::now();
+        start = std::chrono::high_resolution_clock::now();
       }
     }
     params.time = getCurrentTimeInMilliseconds(start);
@@ -124,7 +125,7 @@ int main() {
     std::chrono::duration<float> frameElapsed = frameEnd - frameStart;
     elapsed = frameEnd - start;
     std::this_thread::sleep_for(std::chrono::milliseconds(20) - frameElapsed);
-    printf("\033[H\033[J%s\nRender loop running ...\nEdit and save shader.wgsl to see changes here.\nReloaded shader.wgsl %zu times\n", raster.data(), ticks);
+    printf("\033[H\033[J%s\nRender loop running (full screen recommended) ...\nEdit and save shader.wgsl to see changes here.\nReloaded shader.wgsl %zu times\n", raster.data(), ticks);
     fflush(stdout);
   }
 

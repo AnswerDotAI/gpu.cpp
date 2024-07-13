@@ -19,7 +19,7 @@ fn main(@builtin(global_invocation_id) globalID : vec3<u32>) {
     let uv = (vec2<f32>(globalID.xy) - 0.5 * resolution) / min(resolution.x, resolution.y);
     
     // Animate the Julia set parameters
-    let t = params.time * 0.2;
+    let t = params.time * 0.28;
     let c = 0.7885 * vec2<f32>(cos(t), sin(t));
     
     var z = uv * 3.0;
