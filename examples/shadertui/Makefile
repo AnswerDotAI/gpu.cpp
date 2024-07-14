@@ -5,8 +5,13 @@ LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
 TARGET=shadertui
 # FLAGS=-stdlib=libc++ -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn 
-FLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn 
 CODEPATH = find . ../../utils ../../ -maxdepth 1 -type f
+ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
+    STDLIB :=
+else
+    STDLIB := -stdlib=libc++
+endif
+FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn
 
 run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)

@@ -1,7 +1,7 @@
 NUM_JOBS=$(shell nproc)
 CXX=clang++
 
-.PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-entr check-clang clean-build clean all watch-tests docs
+.PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-clang clean-build clean all watch-tests docs
 
 GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
@@ -73,9 +73,6 @@ clean-all:
 # check for the existence of clang++ and cmake
 check-clang:
 	@command -v clang++ >/dev/null 2>&1 || { echo >&2 "Please install clang++ with 'sudo apt-get install clang' or 'brew install llvm'"; exit 1; }
-
-check-entr:
-	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
 
 check-cmake:
 	@command -v cmake >/dev/null 2>&1 || { echo >&2 "Please install cmake with 'sudo apt-get install cmake' or 'brew install cmake'"; exit 1; }
