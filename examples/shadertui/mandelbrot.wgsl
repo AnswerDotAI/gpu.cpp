@@ -19,7 +19,7 @@ fn main(@builtin(global_invocation_id) globalID : vec3<u32>) {
     var uv = (vec2<f32>(globalID.xy) - 0.5 * resolution) / min(resolution.x, resolution.y);
     
     // Zoom parameters
-    let t = params.time * 0.1;
+    let t = params.time * 0.3;
     let zoom = pow(2.0, t);
     let center = vec2<f32>(-0.745, 0.186);
     

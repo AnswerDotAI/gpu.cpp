@@ -4,7 +4,8 @@ LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
 TARGET=shadertui
-FLAGS=-stdlib=libc++ -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn 
+# FLAGS=-stdlib=libc++ -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn 
+FLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn 
 CODEPATH = find . ../../utils ../../ -maxdepth 1 -type f
 
 run: ./build/$(TARGET)

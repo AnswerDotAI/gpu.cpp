@@ -15,9 +15,9 @@ using namespace gpu;
 template <size_t rows, size_t cols>
 void rasterize(const std::array<float, rows * cols> &values,
                std::array<char, rows *(cols + 1)> &raster) {
-  // Can experiment with the rasterization characters here but fewer characters
-  // looks better by imposing temporal coherence whereas more characters can
-  // start to look like noise.
+  // Note: We can experiment with the rasterization characters here but fewer
+  // characters looks better by imposing temporal coherence whereas more
+  // characters can start to look like noise.
   // static const char intensity[] = " `.-':_,^=;><+!ngrc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
   static const char intensity[] = " .`'^-+=*x17X$8#%@";
   for (size_t i = 0; i < rows; ++i) {
@@ -45,7 +45,7 @@ void loadShaderCode(const std::string &filename, std::string &codeString) {
   FILE *file = fopen(filename.c_str(), "r");
   while (!file) {
     fclose(file);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     file = fopen(filename.c_str(), "r");
   }
   char buffer[4096];
@@ -59,10 +59,10 @@ int main() {
 
   Context ctx = createContext();
   
+  // static constexpr size_t kRows = 64;
+  // static constexpr size_t kCols = 96;
   static constexpr size_t kRows = 64;
-  static constexpr size_t kCols = 96;
-  // static constexpr size_t kRows = 96;
-  // static constexpr size_t kCols = 128;
+  static constexpr size_t kCols = 128;
 
   LOG(kDefLog, kInfo, "Creating screen tensor");
 
@@ -101,6 +101,7 @@ int main() {
   size_t ticks = 0;
   while (true) {
     if (elapsed.count() - static_cast<float>(ticks) > 1.0) {
+      // TODO(avh): Recover from shader compilation errors without exiting
       loadShaderCode("shader.wgsl", codeString);
       if (codeString != shader.data) {
         shader = createShader(codeString.c_str(), Shape{16, 16, 1});
