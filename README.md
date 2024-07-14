@@ -234,9 +234,9 @@ gpu.cpp lets us implement and drop-in any algorithm with fine-grained control of
 
 gpu.cpp is meant for developers with some familiarity with C++ and GPU programming. It is not a high-level numerical computing or machine learning framework or inference engine, though it can be used in support of such implementations.
 
-Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. gpu.cpp leverages WebGPU as a portable *native* GPU API first and foremost, with the possibility of running in the browser being being a convenient additional benefit in the future. 
+Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. gpu.cpp leverages WebGPU as a portable *native* GPU API first and foremost, with the possibility of running in the browser being a convenient additional benefit in the future. 
 
-If you find it counerintuitive, as many do, that WebGPU is a native technology and not just for the web, watch Elie Michel's excellent talk ["WebGPU is Not Just About the Web"](https://www.youtube.com/watch?v=qHrx41aOTUQ).
+If you find it counterintuitive, as many do, that WebGPU is a native technology and not just for the web, watch Elie Michel's excellent talk ["WebGPU is Not Just About the Web"](https://www.youtube.com/watch?v=qHrx41aOTUQ).
 
 Finally, the focus of gpu.cpp is general-purpose GPU computation rather than rendering/graphics on the GPU, although it can be useful for offline rendering or video processing use cases. We may explore directions with graphics in the future, but for now our focus is GPU compute.
 
