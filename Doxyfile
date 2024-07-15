@@ -1008,12 +1008,12 @@ RECURSIVE              = NO
 # Note that relative paths are relative to the directory from which doxygen is
 # run.
 
-EXCLUDE                =
-EXCLUDE_PATTERNS       = "*/third_party/* */docs/* */examples/* "
+EXCLUDE                = "./setup.py" "./examples"
+EXCLUDE_PATTERNS       = "*/third_party/* */docs/* */examples/* *.py"
 EXCLUDE_SYMLINKS       = NO
 EXCLUDE_SYMBOLS        = "third_party/ docs/ examples/"
 
-EXAMPLE_PATH           = "examples/"
+ EXAMPLE_PATH           = "examples/"
 
 EXAMPLE_PATTERNS       = *
 EXAMPLE_RECURSIVE      = YES
