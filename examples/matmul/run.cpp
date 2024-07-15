@@ -3,7 +3,6 @@
 #include <future>
 #include <random>
 #include <cstdlib>
-#include <regex>
 
 #include "gpu.h" // createContext, createTensor, createKernel, dispatchKernel,
                  // wait, resetCommandBuffer, toCPU
@@ -11,35 +10,9 @@
 #include "llmc/reference_impls.h" // for CPU reference implementation
 #include "utils/array_utils.h"    // show, isclose, randn, randint
 #include "utils/logging.h"        // LOG
+#include "experimental/wgsl.h"    // loopUnrolling
 
 using namespace gpu;
-
-// For loop unroller function
-std::string unroll(const std::string& code) {
-  std::regex forLoopPattern(R"(for\s*\(\s*var\s+(\w+):\s*u32\s*=\s*(\d+)\s*;\s*\1\s*<\s*(\d+)\s*;\s*\1\+\+\s*\)\s*\{\s*([^{}]*)\})");
-
-  std::smatch match;
-  std::string unrolledCode = code;
-  while (std::regex_search(unrolledCode, match, forLoopPattern)) {
-    std::string varName = match[1];
-    int start = std::stoi(match[2]);
-    int end = std::stoi(match[3]);
-    std::string loopBody = match[4];
-    LOG(kDefLog, kInfo, "Unroll loop(var: %s, start:%d, end:%d, body:%s)", varName.c_str(), start, end, loopBody.c_str());
-
-    std::string unrolledLoop;
-    for (int i = start; i < end; ++i) {
-      std::string unrolledIteration = loopBody;
-      std::regex varPattern(varName);
-      unrolledIteration = std::regex_replace(unrolledIteration, varPattern, std::to_string(i));
-      unrolledLoop += unrolledIteration;
-    }
-
-    unrolledCode = unrolledCode.substr(0, match.position()) + unrolledLoop + unrolledCode.substr(match.position() + match.length());
-  }
-
-  return unrolledCode;
-}
 
 static const char *kShaderMatmul1 = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
@@ -247,7 +220,7 @@ inline ShaderCode createMatmul3(const char *shaderTemplate, const size_t M,
                           {"{{BN}}", toString(BN)},
                           {"{{TM}}", toString(TM)}});
   if (unrolling) {
-    std::string unrolledCode = unroll(codeString);
+    std::string unrolledCode = loopUnrolling(codeString);
     LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return ShaderCode{unrolledCode, workgroupSize};
   } else {
@@ -376,7 +349,7 @@ inline ShaderCode createMatmul4(const char *shaderTemplate, const size_t M,
                           {"{{NUM_TILEB}}", toString(BN * BK / num_threads)}
                           });
   if (unrolling) {
-    std::string unrolledCode = unroll(codeString);
+    std::string unrolledCode = loopUnrolling(codeString);
     LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return ShaderCode{unrolledCode, workgroupSize};
   } else {
