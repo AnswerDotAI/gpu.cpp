@@ -40,6 +40,7 @@ const char *kPuzzle1 = R"(
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
+  @builtin(local_invocation_id) LocalInvocationID: vec3<u32>) {
    // Your code here
   }
 )";
