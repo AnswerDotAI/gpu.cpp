@@ -386,6 +386,7 @@ a.anchor {
 #projectname {
     font-size: var(--title-font-size);
     font-weight: 600;
+    visibility: hidden; /* workaround so that project name doesn't overlap with search when menu tabs are disabled */
 }
 
 #projectnumber {

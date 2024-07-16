@@ -496,12 +496,13 @@ void runTest(int version, size_t M, size_t K, size_t N,
   }
   auto end = std::chrono::high_resolution_clock::now();
 
-  // Report performance
+  // Report performance.
+  // Use microsecond for more accurate time measurement
   auto duration =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+      std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   float gflops = 2 * M * N *
                  K / // factor of 2 for multiplication & accumulation
-                 (static_cast<float>(duration.count()) / 1000.0) /
+                 (static_cast<double>(duration.count()) / 1000000.0) /
                  1000000000.0 * static_cast<float>(nIter);
 
   LOG(kDefLog, kInfo, "Copying result to CPU");
@@ -509,19 +510,18 @@ void runTest(int version, size_t M, size_t K, size_t N,
   LOG(kDefLog, kInfo, "%s",
       show<float>(outputPtr.get(), M, N, "Output").c_str());
 
-  LOG(kDefLog, kInfo,
-      "\n\n===================================================================="
+  LOG(kDefLog, kInfo, "\n\n===================================================================="
       "============\nExecution Time: (M = %d, K = %d, N = %d) x %d iterations "
       ":\n%.1f "
       "milliseconds / dispatch ~ %.2f "
       "GFLOPS\n================================================================"
       "================\n\n",
-      M, K, N, nIter, duration.count() / static_cast<float>(nIter), gflops);
+      M, K, N, nIter, duration.count() / static_cast<double>(nIter) / 1000.0 /* us -> ms */, gflops);
 }
 
 int main() {
   char* version_str = getenv("MATMUL_VERSION");
-  int version = version_str == NULL ? 3 : atoi(version_str);
+  int version = version_str == NULL ? 6 : atoi(version_str);
     // 1 == naive matmul
     // 2 == tiling
     // 3 == 1D blocktiling
