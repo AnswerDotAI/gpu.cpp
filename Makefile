@@ -9,6 +9,13 @@ LIBSPEC ?= . $(GPUCPP)/source
 
 default: examples/hello_world/build/hello_world
 
+pch:
+	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -x c++-header gpu.h -o build/gpu.h.pch
+
+# TODO(avh): change extension based on platform
+lib:
+	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/libgpucpp.dylib
+
 examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
 	$(LIBSPEC) && cd examples/hello_world && make build/hello_world && ./build/hello_world
 
@@ -17,7 +24,7 @@ dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dyli
 run_setup: check-python
 	python3 setup.py
 
-all: dawnlib check-clang check-linux-vulkan
+all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/gpu_puzzles && make build/gpu_puzzles
 	cd examples/hello_world && make build/hello_world
 	cd examples/matmul && make build/mm
@@ -62,6 +69,8 @@ clean:
 	rm -rf examples/matmul/build/mm
 	rm -rf examples/physics/build/*
 	rm -rf examples/render/build/*
+	rm -f build/gpu.h.pch
+	rm -f build/libgpucpp.so
 
 clean-all:
 	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/* third_party/gpu-build third_party/gpu-subbuild third_party/gpu-src third_party/lib/libdawn.so third_party/lib/libdawn.dylib

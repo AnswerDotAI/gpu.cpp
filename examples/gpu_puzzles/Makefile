@@ -10,12 +10,19 @@ else
     STDLIB := -stdlib=libc++
 endif
 FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn
+FLAGS_KEY=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib key.cpp -ldl -ldawn
 
 run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)
 
+run-key: ./build/key
+	$(LIBSPEC) && ./build/key
+
 build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -o ./build/$(TARGET)
+
+build/key: key.cpp
+	mkdir -p build && $(CXX) $(FLAGS_KEY) -o ./build/key
 
 watch:
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }

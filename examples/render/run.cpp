@@ -118,10 +118,11 @@ int main(int argc, char **argv) {
   Tensor devScreen = createTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
   uint32_t zeroTime = getCurrentTimeInMilliseconds();
 
-  ShaderCode shader = createShader(kSDF, Shape{16, 16, 1});
-  Kernel renderKernel =
-      createKernel(ctx, shader, Bindings{devScreen},
-                   cdiv({NCOLS, NROWS, 1}, shader.workgroupSize), params);
+  Shape wgSize = {16, 16, 1};
+  KernelCode code = {kSDF, wgSize};
+  Kernel renderKernel = createKernel(ctx, code, Bindings{devScreen},
+                                     cdiv({NCOLS, NROWS, 1}, wgSize), params);
+  printf("\033[2J\033[H");
   while (true) {
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
@@ -176,11 +177,10 @@ int main(int argc, char **argv) {
       sprintf(offset + col + 1, "-");
     }
     sprintf(offset + NCOLS + 1, "+\n");
-    printf("\033[2J\033[H");
-    printf("Workgroup size: %zu %zu %zu \n", shader.workgroupSize[0],
-           shader.workgroupSize[1], shader.workgroupSize[2]);
-    printf("Number of Threads: %zu %zu %d \n", devScreen.shape[1],
-           devScreen.shape[0], 1);
-    printf("%s", buffer);
+    printf("\033[H\033[HWorkgroup size: %zu %zu %zu \nNumber of Threads: %zu "
+           "%zu %d \n%s",
+           code.workgroupSize[0], code.workgroupSize[1], code.workgroupSize[2],
+           devScreen.shape[1], devScreen.shape[0], 1, buffer);
+    fflush(stdout);
   }
 }

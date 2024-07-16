@@ -53,7 +53,7 @@ void puzzle1(Context &ctx) {
   static constexpr size_t N = 4;
   Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = createTensor(ctx, {N}, kf32);
-  Kernel op = createKernel(ctx, createShader(kPuzzle1, N), Bindings{a, output},
+  Kernel op = createKernel(ctx, {kPuzzle1, N}, Bindings{a, output},
                            /*nWorkgroups */ {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
@@ -81,7 +81,7 @@ void puzzle2(Context &ctx) {
   Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor b = createTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = createTensor(ctx, {N}, kf32);
-  Kernel op = createKernel(ctx, createShader(kPuzzle2, N), Bindings{a, b, output},
+  Kernel op = createKernel(ctx, {kPuzzle2, N}, Bindings{a, b, output},
                            {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
@@ -104,10 +104,10 @@ fn main(
 void puzzle3(Context &ctx) {
   printf("\n\nPuzzle 3\n\n");
   static constexpr size_t N = 8;
-  Tensor input = createTensor(ctx, {N/2}, kf32, makeData<N>().data());
-  Tensor output = createTensor(ctx, {N/2}, kf32);
+  Tensor input = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor output = createTensor(ctx, {N}, kf32);
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle3, N), Bindings{input, output}, {1, 1, 1});
+      createKernel(ctx, {kPuzzle3, N}, Bindings{input, output}, {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -145,7 +145,7 @@ void puzzle4(Context &ctx) {
     uint32_t size = N;
   };
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle4, /*workgroup size*/ {Wx, Wy, 1}),
+      createKernel(ctx, {kPuzzle4, /*workgroup size*/ {Wx, Wy, 1}},
                    Bindings{input, output}, /* nWorkgroups */ {1, 1, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
@@ -186,7 +186,7 @@ void puzzle5(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle5, /*workgroup size*/ {Wx, Wy, 1}),
+      createKernel(ctx, {kPuzzle5, /*workgroup size*/ {Wx, Wy, 1}},
                    Bindings{a, b, output}, {1, 1, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
@@ -225,7 +225,7 @@ void puzzle6(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle6, {Wx, 1, 1}),
+      createKernel(ctx, {kPuzzle6, {Wx, 1, 1}},
                    Bindings{a, output}, {Bx, 1, 1}, Params{N});
   showResult<N>(ctx, op, output);
 }
@@ -268,7 +268,7 @@ void puzzle7(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle7, {Wx, Wy, 1}),
+      createKernel(ctx, {kPuzzle7, {Wx, Wy, 1}},
                    Bindings{a, output}, {Bx, By, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
@@ -318,7 +318,7 @@ void puzzle8(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle8, {Wx, 1, 1}),
+      createKernel(ctx, {kPuzzle8, {Wx, 1, 1}},
                    Bindings{a, output}, {Bx, 1, 1}, Params{N, 8});
   showResult<N>(ctx, op, output);
 }
@@ -370,7 +370,7 @@ void puzzle9(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle9, {Wx, 1, 1}),
+      createKernel(ctx, {kPuzzle9, {Wx, 1, 1}},
                    Bindings{a, output}, {1, 1, 1}, Params{N});
   showResult<N>(ctx, op, output);
 }
@@ -422,7 +422,7 @@ void puzzle10(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle10, {Wx, 1, 1}),
+      createKernel(ctx, {kPuzzle10, {Wx, 1, 1}},
                    Bindings{a, b, output}, {1, 1, 1}, Params{N});
   showResult<1>(ctx, op, output);
 }
@@ -493,7 +493,7 @@ void puzzle11(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle11, {N, 1, 1}),
+      createKernel(ctx, {kPuzzle11, {N, 1, 1}},
                    Bindings{a, b, output}, {Wx, 1, 1}, Params{N});
   showResult<N>(ctx, op, output);
 }
@@ -552,7 +552,7 @@ void puzzle12(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, createShader(kPuzzle12, {N, 1, 1}),
+      createKernel(ctx, {kPuzzle12, {N, 1, 1}},
                    Bindings{a, output}, {1, 1, 1}, Params{N});
   showResult<1>(ctx, op, output);
 }

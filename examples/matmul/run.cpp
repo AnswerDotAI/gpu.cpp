@@ -35,7 +35,7 @@ fn main(
 }
 )";
 
-inline ShaderCode createMatmul1(const char *shaderTemplate, const size_t M,
+inline KernelCode createMatmul1(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N,
                                 const Shape &workgroupSize = {256, 1, 1},
                                 NumType precision = kf32) {
@@ -45,7 +45,7 @@ inline ShaderCode createMatmul1(const char *shaderTemplate, const size_t M,
                           {"{{M}}", toString(M)},
                           {"{{K}}", toString(K)},
                           {"{{N}}", toString(N)}});
-  return ShaderCode{codeString, workgroupSize};
+  return {codeString, workgroupSize};
 }
 
 // Shared memory cache-blocking
@@ -93,7 +93,7 @@ fn main(
 }
 )";
 
-inline ShaderCode createMatmul2(const char *shaderTemplate, const size_t M,
+inline KernelCode createMatmul2(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N,
                                 const Shape &workgroupSize = {256, 1, 1},
                                 NumType precision = kf32) {
@@ -106,7 +106,7 @@ inline ShaderCode createMatmul2(const char *shaderTemplate, const size_t M,
               {"{{N}}", toString(N)},
               {"{{tileSize}}",
                toString(static_cast<size_t>(sqrt(workgroupSize[0])))}});
-  return ShaderCode{codeString, workgroupSize};
+  return {codeString, workgroupSize};
 }
 
 /* 1D block-tiling
@@ -195,7 +195,7 @@ fn main(
 }
 )";
 
-inline ShaderCode createMatmul3(const char *shaderTemplate, const size_t M,
+inline KernelCode createMatmul3(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N, const size_t BM,
                                 const size_t BK, const size_t BN,
                                 const size_t TM,
@@ -222,9 +222,9 @@ inline ShaderCode createMatmul3(const char *shaderTemplate, const size_t M,
   if (unrolling) {
     std::string unrolledCode = loopUnrolling(codeString);
     LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
-    return ShaderCode{unrolledCode, workgroupSize};
+    return {unrolledCode, workgroupSize};
   } else {
-    return ShaderCode{codeString, workgroupSize};
+    return {codeString, workgroupSize};
   }
 }
 
@@ -320,7 +320,7 @@ fn main(
 }
 )";
 
-inline ShaderCode createMatmul4(const char *shaderTemplate, const size_t M,
+inline KernelCode createMatmul4(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N, const size_t BM,
                                 const size_t BK, const size_t BN,
                                 const size_t TM, const size_t TN,
@@ -351,19 +351,19 @@ inline ShaderCode createMatmul4(const char *shaderTemplate, const size_t M,
   if (unrolling) {
     std::string unrolledCode = loopUnrolling(codeString);
     LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
-    return ShaderCode{unrolledCode, workgroupSize};
+    return {unrolledCode, workgroupSize};
   } else {
-    return ShaderCode{codeString, workgroupSize};
+    return {codeString, workgroupSize};
   }
 }
 
-inline ShaderCode createNoOp(const char *shaderTemplate,
+inline KernelCode createNoOp(const char *shaderTemplate,
                              const Shape &workgroupSize = {256, 1, 1},
                              NumType precision = kf32) {
   std::string codeString(shaderTemplate);
   replaceAll(codeString, {{"{{workgroupSize}}", toString(workgroupSize)},
                           {"{{precision}}", toString(precision)}});
-  return ShaderCode{codeString, workgroupSize};
+  return {codeString, workgroupSize};
 }
 
 void initData(size_t M, size_t K, size_t N, std::unique_ptr<float[]> &inputPtr,
@@ -399,13 +399,13 @@ Kernel selectMatmul(Context &ctx, int version,
   if (version == 1) {
     Shape wgSize = {16, 16, 1};
     LOG(kDefLog, kInfo, "wgSize: %s", toString(wgSize).c_str());
-    ShaderCode matmul =
+    KernelCode matmul =
         createMatmul1(kShaderMatmul1, M, K, N, /*wgsize*/ wgSize);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ cdiv({M, N, 1}, wgSize));
   } else if (version == 2) {
     static constexpr size_t tileSize = 16;
-    ShaderCode matmul = createMatmul2(kShaderMatmul2, M, K, N,
+    KernelCode matmul = createMatmul2(kShaderMatmul2, M, K, N,
                                       /*wgSize*/ {tileSize * tileSize, 1, 1});
     kernel =
         createKernel(ctx, matmul, bindings,
@@ -423,7 +423,7 @@ Kernel selectMatmul(Context &ctx, int version,
     LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d", BM, BK, BN, TM);
     LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
     LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    ShaderCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
+    KernelCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
                                       /*wgSize*/ wgSize,
 				      kf32,
 				      /*Loop unrolling*/ version == 5 ? true: false);
@@ -441,7 +441,7 @@ Kernel selectMatmul(Context &ctx, int version,
     LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d, TN: %d", BM, BK, BN, TM, TN);
     LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
     LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    ShaderCode matmul = createMatmul4(kShaderMatmul4, M, K, N, BM, BK, BN, TM, TN,
+    KernelCode matmul = createMatmul4(kShaderMatmul4, M, K, N, BM, BK, BN, TM, TN,
                                       /*wgSize*/ wgSize,
 				      kf32,
 				      /*Loop unrolling*/ version == 6 ? true: false);
@@ -450,7 +450,7 @@ Kernel selectMatmul(Context &ctx, int version,
   } else if (version == 7) {
     Shape wgSize = {256, 1, 1};
     Shape nWorkgroups = cdiv({M, N, 1}, {16, 16, 1});
-    ShaderCode matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
+    KernelCode matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
   }

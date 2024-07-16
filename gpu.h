@@ -116,9 +116,10 @@ struct TensorView {
 /**
  * @brief Represents an ordered collection of WGPUBuffers (wrapped as tensors,
  * non-overlapping views, or arrays) for the purpose of binding them to a
- * kernel operation to make them accessible to the shader code.
+ * kernel operation to make them accessible to the GPU kernel.
  *
- * The ordering of the bindings should match the binding indices in the shader.
+ * The ordering of the bindings should match the binding indices in the WGSL
+ * code.
  */
 template <std::size_t N> struct Bindings {
   std::array<Tensor, N> data;
@@ -194,9 +195,8 @@ inline std::string toString(NumType type) {
 }
 
 /**
- * @brief Converts Shape to string. The string formatting isn't arbitrary but
- * is meant to be slotted into shader code (hence no additional parentheses or
- * brackets).
+ * @brief Converts Shape to string. The string formatting is meant to be
+ * slotted into WGSL code (hence no additional parentheses or brackets).
  */
 inline std::string toString(const Shape &shape) {
   std::string str;
@@ -217,26 +217,113 @@ inline std::string toString(const Shape &shape) {
 inline std::string toString(size_t value) { return std::to_string(value); }
 
 /**
- * @brief Represents shader code. Wrapper type around the code string with
- * additional metadata for workgroup size and precision since they are
- * specified in the shader code. Additionally, label and entryPoint are used by
- * `createKernel()` to specify the label and entry point of the shader.
+ * @brief simple in-place string replacement helper function for substituting
+ * placeholders in a WGSL string template.
+ *
+ * Note this is not meant to be used in performance-critical code paths and
+ * should be used ahead-of-time before any performance-critical codepath to
+ * preprocess WGSL code strings.
+ *
+ * @param[in] str String to mutate with substitution replacements.
+ * @param[in] from Substring to replace
+ * @param[in] to Substring to replace with
+ * 
+ * @code
+ * replaceAll(str, "{{workgroupSize}}", "256");
+ * @endcode
  */
-struct ShaderCode {
-  inline ShaderCode(const std::string &data = "", size_t workgroupSize = 256,
-                    NumType precision = kf32)
-      : data(data), workgroupSize({workgroupSize, 1, 1}), precision(precision) {
+inline void replaceAll(std::string &str, const std::string &from,
+                       const std::string &to) {
+  size_t start_pos = 0;
+  while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
+    str.replace(start_pos, from.length(), to);
+    start_pos += to.length();
   }
-  inline ShaderCode(const std::string &data,
+}
+
+/**
+ * @brief KernelCode is the representation of WGSL GPU code with template
+ * substitutions applied. It is a type around the code string with additional
+ * metadata for workgroup size and precision since they are specified in the
+ * WGSL code. Additionally, label and entryPoint are used by `createKernel()`
+ * to specify the label and entry point of the kernel.
+ */
+struct KernelCode {
+  /**
+   * @brief Constructor to create a code object from a template
+   * string and optional workgroup size and precision.
+   *
+   * @param[in] pData Shader template string with placeholders
+   * @param[in] workgroupSize Shape of the workgroup. Unlike tensor shapes which
+   * can be of arbitrary rank, workgroup size is always of rank 3 corresponding
+   * to x y and z. workgroupSize is stored as a field in the KernelCode instance
+   * that is returned by createShader().
+   * @param[in] precision Data type precision to be substituted for
+   * {{precision}} in the WGSL code. As with workgroupSize, precision is stored
+   * as a field in the KernelCode instance that is returned by createShader().
+   * @code
+   * KernelCode code = {kShaderText, {256, 1, 1}, kf32};
+   * @endcode
+   */
+  inline KernelCode(const std::string &pData = "", size_t workgroupSize = 256,
+                    NumType precision = kf32)
+      : data(pData), workgroupSize({workgroupSize, 1, 1}), precision(precision) {
+
+    replaceAll(data, "{{workgroupSize}}", toString({workgroupSize, 1, 1}));
+    replaceAll(data, "{{precision}}", toString(precision));
+    LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
+  }
+
+  /**
+   * @brief Overload of the constructor to create a code object from a
+   * template string and workgroup size. Unlike the main factory function,
+   * this overload takes a single size_t workgroupSize parameter instead of a
+   * 3D shape for the workgroup size and instantiates a 3D shape with the
+   * workgroupSize in the x dimension and 1 in the y and z dimensions.
+   *
+   * @param[in] pData Shader template string with placeholders
+   * @param[in] workgroupSize Workgroup size in the x dimension
+   * @param[in] precision Data type precision for the shader
+   * 
+   * @code
+   * KernelCode code = {kPuzzle1, 256, kf32};
+   * @endcode
+   */
+
+  inline KernelCode(const std::string &pData,
                     const Shape &workgroupSize = {256, 1, 1},
                     NumType precision = kf32)
-      : data(data), workgroupSize(workgroupSize), precision(precision) {}
+      : data(pData), workgroupSize(workgroupSize), precision(precision) {
+        replaceAll(data, "{{workgroupSize}}", toString(workgroupSize));
+        replaceAll(data, "{{precision}}", toString(precision));
+        LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
+      }
   std::string data;
   Shape workgroupSize;
   NumType precision = kf32;
-  std::string label = "shader";
+  std::string label = "kernel";
   std::string entryPoint = "main";
 };
+
+/**
+ * @brief Overload of the string replacement helper function to replace
+ * multiple substrings in a string with multiple replacements.
+ *
+ * @param[in] str String to mutate with substitution replacements.
+ * @param[in] reps Vector of pairs of substrings to replace and their
+ * replacements.
+ * 
+ * @code
+ * replaceAll(str, {{"{{workgroupSize}}", "256"}, {"{{precision}}",
+ * @endcode
+ * "f32"}});
+ */
+inline void replaceAll(std::string &str,
+                       const std::vector<std::pair<std::string, std::string>> &reps) {
+  for (const auto &rep : reps) {
+    replaceAll(str, rep.first, rep.second);
+  }
+}
 
 /**
  * @brief Used for on-done callback data for asynchronous operations sduch as
@@ -475,101 +562,6 @@ inline TensorPool::~TensorPool() {
     FreeTensor(*this, data[key]);
     LOG(kDefLog, kTrace, "Freed tensor");
   }
-}
-
-/**
- * @brief simple in-place string replacement helper function for substituting
- * placeholders in a shader string template.
- *
- * Note this is not meant to be used in performance-critical code paths and
- * should be used ahead-of-time before any performance-critical codepath to
- * preprocess shader code strings.
- *
- * @param[in] str String to mutate with substitution replacements.
- * @param[in] from Substring to replace
- * @param[in] to Substring to replace with
- * 
- * @code
- * replaceAll(str, "{{workgroupSize}}", "256");
- * @endcode
- */
-inline void replaceAll(std::string &str, const std::string &from,
-                       const std::string &to) {
-  size_t start_pos = 0;
-  while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
-    str.replace(start_pos, from.length(), to);
-    start_pos += to.length();
-  }
-}
-
-/**
- * @brief Overload of the string replacement helper function to replace
- * multiple substrings in a string with multiple replacements.
- *
- * @param[in] str String to mutate with substitution replacements.
- * @param[in] reps Vector of pairs of substrings to replace and their
- * replacements.
- * 
- * @code
- * replaceAll(str, {{"{{workgroupSize}}", "256"}, {"{{precision}}",
- * @endcode
- * "f32"}});
- */
-inline void replaceAll(std::string &str,
-                       const std::vector<std::pair<std::string, std::string>> &reps) {
-  for (const auto &rep : reps) {
-    replaceAll(str, rep.first, rep.second);
-  }
-}
-
-/**
- * @brief Factory function to create a shader code object from a shader template
- * string and optional workgroup size and precision.
- *
- * This function replaces placeholders in the shader template string with the
- * provided workgroup size and precision, and returns a ShaderCode object.
- *
- * @param[in] shaderTemplate Shader template string with placeholders
- * @param[in] workgroupSize Shape of the workgroup. Unlike tensor shapes which
- * can be of arbitrary rank, workgroup size is always of rank 3 corresponding
- * to x y and z. workgroupSize is stored as a field in the ShaderCode instance
- * that is returned by createShader().
- * @param[in] precision Data type precision for the shader. As with
- * workgroupSize, precision is stored as a field in the ShaderCode instance
- * that is returned by createShader().
- * 
- * @code
- * ShaderCode code = createShader(kPuzzle1, {256, 1, 1}, kf32);
- * @endcode
- */
-inline ShaderCode createShader(const char *shaderTemplate,
-                               const Shape &workgroupSize = {256, 1, 1},
-                               NumType precision = kf32) {
-  std::string codeString(shaderTemplate);
-  replaceAll(codeString, "{{workgroupSize}}", toString(workgroupSize));
-  replaceAll(codeString, "{{precision}}", toString(precision));
-  LOG(kDefLog, kInfo, "Shader code:\n%s", codeString.c_str());
-  return ShaderCode{codeString, workgroupSize};
-}
-
-/**
- * @brief Overload of the factory function to create a shader code object from a
- * shader template string and workgroup size. Unlike the main factory function,
- * this overload takes a single size_t workgroupSize parameter instead of a
- * 3D shape for the workgroup size and instantiates a 3D shape with the
- * workgroupSize in the x dimension and 1 in the y and z dimensions.
- *
- * @param[in] shaderTemplate Shader template string with placeholders
- * @param[in] workgroupSize Workgroup size in the x dimension
- * @param[in] precision Data type precision for the shader
- * 
- * @code
- * ShaderCode code = createShader(kPuzzle1, 256, kf32);
- * @endcode
- */
-inline ShaderCode createShader(const char *shaderTemplate, size_t workgroupSize,
-                               NumType precision = kf32) {
-  return createShader(shaderTemplate, Shape{workgroupSize, 1, 1}, precision);
 }
 
 /**
@@ -890,7 +882,7 @@ inline Shape cdiv(Shape total, Shape group) {
 
 /**
  * @brief A factory function to create a kernel on the GPU. The kernel is
- * created with the given shader code, input tensors, output tensor, and
+ * created with the given WGSL code, input tensors, output tensor, and
  * optional parameters.
  *
  * Note that the values of the input tensors are not used here, only the
@@ -898,10 +890,9 @@ inline Shape cdiv(Shape total, Shape group) {
  * buffers.
  *
  * @param[in] ctx Context instance to manage the kernel
- * @param[in] shader Shader code for the kernel
+ * @param[in] code WGSL code for the kernel
  * @param[in] dataBindings Pointer to a span of tensors bound to the kernel
  * @param[in] numInputs Number of tensors pointed to by dataBindings
- * TODO(avh): switch from nThreads to nWorkgroups
  * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
  * rank 3
  * @param[in] params Optional parameters for the kernel. If the kernel does not
@@ -911,11 +902,11 @@ inline Shape cdiv(Shape total, Shape group) {
  * @return Kernel instance representing the created kernel
  * 
  * @code
- * Kernel kernel = createKernel(ctx, shader, dataBindings, numInputs,
+ * Kernel kernel = createKernel(ctx, code, dataBindings, numInputs,
  * @endcode
  * output, nThreads, params, paramsSize);
  */
-inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
+inline Kernel createKernel(Context &ctx, const KernelCode &code,
                            const Tensor *dataBindings, size_t numTensors,
                            const size_t *viewOffsets, const Shape &nWorkgroups,
                            const void *params = nullptr,
@@ -1023,25 +1014,25 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
     WGPUPipelineLayout pipelineLayout =
         wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
     WGPUShaderModuleWGSLDescriptor wgslDesc = {
-        .code = shader.data.c_str(),
+        .code = code.data.c_str(),
     };
     wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
     WGPUShaderModuleDescriptor shaderModuleDesc = {};
     shaderModuleDesc.nextInChain = &wgslDesc.chain;
-    shaderModuleDesc.label = "shader";
+    shaderModuleDesc.label = code.label.c_str();
     WGPUComputePipelineDescriptor computePipelineDesc = {};
     computePipelineDesc.layout = pipelineLayout;
     computePipelineDesc.compute.module =
         wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
-    computePipelineDesc.compute.entryPoint = shader.entryPoint.c_str();
-    computePipelineDesc.label = shader.label.c_str();
+    computePipelineDesc.compute.entryPoint = code.entryPoint.c_str();
+    computePipelineDesc.label = code.label.c_str();
     op.computePipeline =
         wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
   }
   /*
-  op.nWorkgroups = {cdiv(nThreads[0], shader.workgroupSize[0]),
-                    cdiv(nThreads[1], shader.workgroupSize[1]),
-                    cdiv(nThreads[2], shader.workgroupSize[2])};
+  op.nWorkgroups = {cdiv(nThreads[0], code.workgroupSize[0]),
+                    cdiv(nThreads[1], code.workgroupSize[1]),
+                    cdiv(nThreads[2], code.workgroupSize[2])};
   */
   op.nWorkgroups = {nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]};
   resetCommandBuffer(device, op);
@@ -1056,7 +1047,7 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
  * of casting params to a void pointer.
  *
  * @param[in] ctx Context instance to manage the kernel
- * @param[in] shader Shader code for the kernel
+ * @param[in] code WGSL code for the kernel
  * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
  * to the kernel as inputs and outputs.
  * @param[in] nWorkgroups Number of workgroups in the x, y, z grid, must be a
@@ -1066,25 +1057,25 @@ inline Kernel createKernel(Context &ctx, const ShaderCode &shader,
  * @return Kernel instance representing the created kernel
  * 
  * @code
- * Kernel kernel = createKernel(ctx, shader, tensorData, output,
+ * Kernel kernel = createKernel(ctx, code, tensorData, output,
  * @endcode
  * nWorkgroups, params);
  */
 template <typename ParamsType = NoParam, size_t numInputs>
-Kernel createKernel(Context &ctx, const ShaderCode &shader,
+Kernel createKernel(Context &ctx, const KernelCode &code,
                     const Bindings<numInputs> &dataBindings,
                     const Shape &nWorkgroups,
                     const ParamsType &params = ParamsType{}) {
   if constexpr (!IsNoParam<ParamsType>) {
     // LOG(kDefLog, kTrace, "Using params of size %d bytes",
     // sizeof(ParamsType));
-    return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
+    return createKernel(ctx, code, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), nWorkgroups,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType));
   } else {
     // LOG(kDefLog, kTrace , "No params");
-    return createKernel(ctx, shader, dataBindings.data.data(), numInputs,
+    return createKernel(ctx, code, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), nWorkgroups, nullptr,
                         0);
   }

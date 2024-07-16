@@ -9,7 +9,7 @@
 
 using namespace gpu;
 
-const char *kShaderUpdateSim = R"(
+const char *kUpdateSim = R"(
 const G: f32 = 9.81;
 const dt: f32 = 0.03;
 @group(0) @binding(0) var<storage, read_write> theta1: array<f32>;
@@ -74,13 +74,14 @@ int main() {
   Tensor pos = createTensor(ctx, Shape{N * 4}, kf32);
 
   // Prepare computation
-  ShaderCode shader = createShader(kShaderUpdateSim, 256, kf32);
-  printf("Shader code: %s\n", shader.data.c_str());
+  KernelCode kernel{kUpdateSim, 256, kf32};
+  printf("WGSL code: %s\n", kernel.data.c_str());
   Kernel update = createKernel(
-      ctx, shader, Bindings{theta1, theta2, vel1, vel2, length, pos},
-      /* nWorkgroups */ cdiv({N, 1, 1}, shader.workgroupSize));
+      ctx, kernel, Bindings{theta1, theta2, vel1, vel2, length, pos},
+      /* nWorkgroups */ cdiv({N, 1, 1}, kernel.workgroupSize));
 
   // Main simulation update loop
+  printf("\033[2J\033[H");
   while (true) {
     auto start = std::chrono::high_resolution_clock::now();
     std::promise<void> promise;
@@ -92,7 +93,7 @@ int main() {
     std::chrono::duration<double> elapsed = end - start;
     // N * 2 because there's two objects per pendulum
     rasterize(posArr.data(), N * 2, 2.0, 2.0, screen, 80, 40);
-    printf("\033[2J\033[1;1H" // clear screen
+    printf("\033[1;1H" // reset cursor
            "# simulations: %lu\n%s",
            N, screen.c_str());
     resetCommandBuffer(ctx.device, update); // Prepare kernel command
