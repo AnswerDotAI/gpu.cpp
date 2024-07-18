@@ -35,5 +35,6 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/gpu.cmake")
 message(STATUS "CMAKE_CURRENT_SOURCE_DIR: ${CMAKE_CURRENT_SOURCE_DIR}")
 message(STATUS "Include directories for wgpu: ${CMAKE_CURRENT_SOURCE_DIR}/third_party/headers")
 
-# Add subdirectories for examples
-add_subdirectory(examples/hello_world)
+add_library(gpudoth SHARED gpu.h)
+set_target_properties(gpudoth PROPERTIES LINKER_LANGUAGE CXX)
+install(TARGETS gpudoth)
