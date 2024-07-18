@@ -18,7 +18,7 @@ else
 endif
 
 # Determine the architecture
-ifeq ($(DETECTED_OS), Windows_NT)
+ifeq ($(DETECTED_OS), Windows)
 	ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
 		ARCH := x64
 	else
@@ -36,7 +36,7 @@ endif
 # Paths
 GPUCPP ?= $(shell pwd)
 
-default: build_$(TARGET)_debug
+default: build_$(TARGET)_release
 
 run: build_$(TARGET)_debug dawnlib examples_$(TARGET)_build_$(TARGET)
 

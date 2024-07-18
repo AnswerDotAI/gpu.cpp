@@ -36,7 +36,7 @@ endif
 # Paths
 GPUCPP ?= $(shell pwd)
 
-default: build_$(TARGET)_debug
+default: build_$(TARGET)_release
 
 run: build_$(TARGET)_debug dawnlib examples_$(TARGET)_build_$(TARGET)
 
