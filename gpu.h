@@ -465,7 +465,6 @@ createTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
       .data = Array{.buffer = buffer, .usage = usage, .size = size},
       .shape = shape,
   };
-  wgpuDeviceCreateBuffer(device, &bufferDesc);
   return pool.data[buffer];
 }
 
