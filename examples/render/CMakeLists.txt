@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.11)
-project(gpu_puzzles)
+project(render)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with LSP
 set(CMAKE_CXX_STANDARD 20)
