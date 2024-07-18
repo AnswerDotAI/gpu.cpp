@@ -2,7 +2,6 @@
 #include <chrono>
 #include <cstdio>
 #include <future>
-#include <algorithm>
 
 #include "gpu.h"
 #include "utils/array_utils.h"
