@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.28)
 project(hello_world)
 
 set(FILENAME "gpu.h")

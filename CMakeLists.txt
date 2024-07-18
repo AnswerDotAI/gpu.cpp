@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.28)
 project(gpu)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/webgpu.cmake")

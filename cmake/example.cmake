@@ -1,7 +1,3 @@
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with LSP
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
 get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
 

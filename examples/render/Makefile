@@ -36,13 +36,13 @@ endif
 # Paths
 GPUCPP ?= $(shell pwd)
 
-default: build_$(TARGET)_debug
+default: build_$(TARGET)_release
 
 run: build_$(TARGET)_debug dawnlib examples_$(TARGET)_build_$(TARGET)
 
 build_$(TARGET)_release:
 ifeq ($(OS),Windows_NT)
-	@if not exist "build" $(MKDIR_CMD) && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build . --config Release
+	@if not exist "build" $(MKDIR_CMD) && cd build && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++ .. && cmake --build . --config Release
 else
 	@command mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build .
 endif
