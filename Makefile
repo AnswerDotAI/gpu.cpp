@@ -67,8 +67,11 @@ else
 endif
 
 run_setup: check-python
-	python3 setup.py | python setup.py
-
+ifeq ($(DETECTED_OS), Windows)
+	python3 setup.py
+else
+	python3 >/dev/null 2>&1 && python3 setup.py
+endif
 
 all: dawnlib check-clang check-linux-vulkan
 	cd examples$(SLASH)gpu_puzzles && make build$(SLASH)gpu_puzzles
