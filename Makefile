@@ -23,7 +23,7 @@ else
 endif
 
 # Determine the architecture
-ifeq ($(DETECTED_OS), Windows)
+ifeq ($(OS),Windows_NT)
     ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
         ARCH := x64
     else
@@ -50,7 +50,7 @@ LIBSPEC ?= . $(GPUCPP)$(SLASH)source
 default: examples_hello_world_build_hello_world
 
 examples_hello_world_build_hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
-ifeq ($(DETECTED_OS), Windows)
+ifeq ($(OS),Windows_NT)
 	cd examples$(SLASH)hello_world && $(MAKE) build_hello_world_$(LOWER_BUILD_TYPE)
 else
 	$(LIBSPEC) && cd examples$(SLASH)hello_world && $(MAKE) build_hello_world_$(LOWER_BUILD_TYPE)
@@ -58,7 +58,7 @@ endif
 
 # We use the custom "shell" based condition to check files cross-platform
 dawnlib: 
-ifeq ($(DETECTED_OS), Windows)
+ifeq ($(OS),Windows_NT)
 	@if not exist "$(LIBDIR)$(SLASH)libdawn_$(ARCH)_$(BUILD_TYPE).dll" if not exist "$(LIBDIR)$(SLASH)libdawn.dll" $(MAKE) run_setup
 else
 	@if [ ! -f "$(LIBDIR)$(SLASH)libdawn_$(ARCH)_$(BUILD_TYPE).so" ] && [ ! -f "$(LIBDIR)$(SLASH)libdawn.so" ] && [ ! -f "$(LIBDIR)$(SLASH)libdawn_$(ARCH)_$(BUILD_TYPE).dylib" ]; then \
@@ -67,7 +67,7 @@ else
 endif
 
 run_setup: check-python
-ifeq ($(DETECTED_OS), Windows)
+ifeq ($(OS),Windows_NT)
 	python3 setup.py
 else
 	python3 >/dev/null 2>&1 && python3 setup.py
@@ -112,7 +112,7 @@ clean-dawnlib:
 	$(RMDIR_CMD) $(LIBDIR)$(SLASH)libdawn*.*
 
 clean:
-ifeq ($(DETECTED_OS), Windows)
+ifeq ($(OS),Windows_NT)
 	@if exist build $(RMDIR_CMD) build /s /q
 	@if exist examples$(SLASH)gpu_puzzles$(SLASH)build $(RMDIR_CMD) examples$(SLASH)gpu_puzzles$(SLASH)build /s /q
 	@if exist examples$(SLASH)hello_world$(SLASH)build $(RMDIR_CMD) examples$(SLASH)hello_world$(SLASH)build /s /q
@@ -130,7 +130,7 @@ else
 endif
 
 clean-all:
-ifeq ($(DETECTED_OS), Windows)
+ifeq ($(OS),Windows_NT)
 	@if exist build $(RMDIR_CMD) build /s /q
 	$(RMDIR_CMD) third_party$(SLASH)fetchcontent /s /q
 	$(RMDIR_CMD) third_party$(SLASH)gpu-build /s /q

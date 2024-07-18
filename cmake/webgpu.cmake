@@ -19,7 +19,6 @@ endif()
 
 include(FetchContent)
 
-
 set(FETCHCONTENT_BASE_DIR "${TARGET_FILE_PATH}/third_party/fetchcontent")
 set(WEBGPU_DIST_LOCAL_PATH "${TARGET_FILE_PATH}/third_party/local/WebGPU-distribution")
 

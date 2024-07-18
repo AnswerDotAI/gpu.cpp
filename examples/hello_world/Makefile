@@ -18,7 +18,7 @@ else
 endif
 
 # Determine the architecture
-ifeq ($(DETECTED_OS), Windows)
+ifeq ($(OS),Windows_NT)
 	ifeq ($(PROCESSOR_ARCHITECTURE),AMD64)
 		ARCH := x64
 	else
@@ -55,14 +55,14 @@ else
 endif
 
 examples_$(TARGET)_build_$(TARGET): check-clang dawnlib check-linux-vulkan
-ifeq ($(DETECTED_OS), Windows_NT)
+ifeq ($(OS),Windows_NT)
 	cd examples$(SLASH)$(TARGET) && examples$(SLASH)$(TARGET)$(SLASH)build$(SLASH)$(TARGET).exe
 else
 	cd examples/$(TARGET) && $(MAKE) build/$(TARGET) && ./build/$(TARGET)/build
 endif
 
 dawnlib:
-ifeq ($(DETECTED_OS), Windows_NT)
+ifeq ($(OS),Windows_NT)
 	@if not exist "$(GPUCPP)$(SLASH)third_party$(SLASH)lib$(SLASH)libdawn_$(ARCH)_$(BUILD_TYPE).dll" if not exist "$(GPUCPP)$(SLASH)third_party$(SLASH)lib$(SLASH)libdawn.dll" (make run_setup)
 else
 	@if [ ! -f "$(GPUCPP)/third_party/lib/libdawn_$(ARCH)_$(BUILD_TYPE).so" ] && [ ! -f "$(GPUCPP)/third_party/lib/libdawn.so" ] && [ ! -f "$(GPUCPP)/third_party/lib/libdawn_$(ARCH)_$(BUILD_TYPE).dylib" ]; then \
@@ -78,7 +78,7 @@ else
 endif
 
 clean:
-ifeq ($(DETECTED_OS), Windows_NT)
+ifeq ($(OS),Windows_NT)
 	$(RMDIR_CMD) build
 else
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build*
