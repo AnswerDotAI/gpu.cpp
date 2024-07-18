@@ -41,15 +41,18 @@ default: build_$(TARGET)_debug
 run: build_$(TARGET)_debug dawnlib examples_$(TARGET)_build_$(TARGET)
 
 build_$(TARGET)_release:
-ifeq ($(OS),Windows_NT)
+ifeq ($(OS),Windows)
 	@if not exist "build" $(MKDIR_CMD) && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build . --config Release
 else
 	@command mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build .
 endif
 
 build_$(TARGET)_debug:
-	@if not exist "build" $(MKDIR_CMD)
-	cd build && cmake .. -DCMAKE_BUILD_TYPE=Debug && cmake --build . --config Debug
+ifeq ($(OS),Windows)
+	@if not exist "build" $(MKDIR_CMD) && cd build && cmake .. -DCMAKE_BUILD_TYPE=Debug && cmake --build . --config Release
+else
+	@command mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Debug && cmake --build .
+endif
 
 examples_$(TARGET)_build_$(TARGET): check-clang dawnlib check-linux-vulkan
 ifeq ($(DETECTED_OS), Windows)
