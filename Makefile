@@ -121,7 +121,7 @@ ifeq ($(OS),Windows_NT)
 	@if exist build $(RMDIR_CMD) build /s /q
 	@if exist examples$(SLASH)gpu_puzzles$(SLASH)build $(RMDIR_CMD) examples$(SLASH)gpu_puzzles$(SLASH)build /s /q
 	@if exist examples$(SLASH)hello_world$(SLASH)build $(RMDIR_CMD) examples$(SLASH)hello_world$(SLASH)build /s /q
-	@if exist examples$(SLASH)matmul$(SLASH)build$(SLASH)mm $(RMDIR_CMD) examples$(SLASH)matmul$(SLASH)build$(SLASH)mm /s /q
+	@if exist examples$(SLASH)matmul$(SLASH)build $(RMDIR_CMD) examples$(SLASH)matmul$(SLASH)build /s /q
 	@if exist examples$(SLASH)physics$(SLASH)build $(RMDIR_CMD) examples$(SLASH)physics$(SLASH)build /s /q
 	@if exist examples$(SLASH)render$(SLASH)build $(RMDIR_CMD) examples$(SLASH)render$(SLASH)build /s /q
 	@if exist build$(SLASH)gpu.h.pch del build$(SLASH)gpu.h.pch
