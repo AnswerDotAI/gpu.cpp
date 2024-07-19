@@ -22,11 +22,16 @@ def get_os_name():
 
 def download_file(url, output_filename):
     total_downloaded = 0
+    total_truncated = 0 # only print download progress every 2MB to avoid spamming logs
 
     def report_progress(block_num, block_size, total_size):
         nonlocal total_downloaded
+        nonlocal total_truncated
         total_downloaded += block_size
-        print(f"\rDownloaded {total_downloaded // (1024 * 1024)} MB", end="")
+        if total_downloaded // (1024 * 1024) > total_truncated:
+            total_truncated = total_downloaded // (1024 * 1024)
+            if total_truncated % 2 == 0:
+                print(f"\rDownloaded {total_downloaded // (1024 * 1024)} MB", end="")
 
     try:
         ssl._create_default_https_context = ssl._create_stdlib_context

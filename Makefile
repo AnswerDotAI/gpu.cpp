@@ -27,7 +27,7 @@ run_setup: check-python
 all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/gpu_puzzles && make build/gpu_puzzles
 	cd examples/hello_world && make build/hello_world
-	cd examples/matmul && make build/mm
+	cd examples/matmul && make build/matmul
 	cd examples/physics && make build/physics
 	cd examples/render && make build/render
 
@@ -66,7 +66,7 @@ clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
 	rm -rf examples/gpu_puzzles/build/*
 	rm -rf examples/hello_world/build/*
-	rm -rf examples/matmul/build/mm
+	rm -rf examples/matmul/build/matmul
 	rm -rf examples/physics/build/*
 	rm -rf examples/render/build/*
 	rm -f build/gpu.h.pch
