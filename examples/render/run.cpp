@@ -80,21 +80,24 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
 }
 )";
 
-std::uint32_t getCurrentTimeInMilliseconds() {
+std::uint32_t getCurrentTimeInMilliseconds()
+{
   auto now = std::chrono::system_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       now.time_since_epoch());
   return static_cast<uint32_t>(duration.count());
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv)
+{
 
   constexpr size_t NROWS = 32;
   constexpr size_t NCOLS = 64;
 
   std::array<float, NROWS * NCOLS> screen;
 
-  struct Params {
+  struct Params
+  {
     float focalLength;
     uint32_t screenWidth;
     uint32_t screenHeight;
@@ -143,37 +146,42 @@ int main(int argc, char **argv) {
     float min = 0.0;
     float max = params.sphereRadius * 3;
 
-    for (size_t i = 0; i < screen.size(); ++i) {
+    for (size_t i = 0; i < screen.size(); ++i)
+    {
       screen[i] = (screen[i] - min) / (max - min);
     }
 
     std::array<char, screen.size()> raster;
-    for (size_t i = 0; i < screen.size(); ++i) {
+    for (size_t i = 0; i < screen.size(); ++i)
+    {
       size_t index =
           std::min(sizeof(intensity) - 2,
-                   std::max(0ul, static_cast<size_t>(screen[i] *
-                                                     (sizeof(intensity) - 2))));
+                   std::max(size_t{0}, static_cast<size_t>(screen[i] * (sizeof(intensity) - 2))));
       raster[i] = intensity[index];
     }
 
     char buffer[(NROWS + 2) * (NCOLS + 2)];
     char *offset = buffer;
     sprintf(offset, "+");
-    for (size_t col = 0; col < NCOLS; ++col) {
+    for (size_t col = 0; col < NCOLS; ++col)
+    {
       sprintf(offset + col + 1, "-");
     }
     sprintf(buffer + NCOLS + 1, "+\n");
     offset += NCOLS + 3;
-    for (size_t row = 0; row < NROWS; ++row) {
+    for (size_t row = 0; row < NROWS; ++row)
+    {
       sprintf(offset, "|");
-      for (size_t col = 0; col < NCOLS; ++col) {
+      for (size_t col = 0; col < NCOLS; ++col)
+      {
         sprintf(offset + col + 1, "%c", raster[row * NCOLS + col]);
       }
       sprintf(offset + NCOLS + 1, "|\n");
       offset += NCOLS + 3;
     }
     sprintf(offset, "+");
-    for (size_t col = 0; col < NCOLS; ++col) {
+    for (size_t col = 0; col < NCOLS; ++col)
+    {
       sprintf(offset + col + 1, "-");
     }
     sprintf(offset + NCOLS + 1, "+\n");

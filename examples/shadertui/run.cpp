@@ -14,19 +14,22 @@ using namespace gpu;
 
 template <size_t rows, size_t cols>
 void rasterize(const std::array<float, rows * cols> &values,
-               std::array<char, rows *(cols + 1)> &raster) {
-  // Note: We can experiment with the rasterization characters here but fewer
-  // characters looks better by imposing temporal coherence whereas more
-  // characters can start to look like noise.
+               std::array<char, rows *(cols + 1)> &raster)
+{
+  // Can experiment with the rasterization characters here but fewer characters
+  // looks better by imposing temporal coherence whereas more characters can
+  // start to look like noise.
   // static const char intensity[] = " `.-':_,^=;><+!ngrc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
   static const char intensity[] = " .`'^-+=*x17X$8#%@";
-  for (size_t i = 0; i < rows; ++i) {
-    for (size_t j = 0; j < cols; ++j) {
+  for (size_t i = 0; i < rows; ++i)
+  {
+    for (size_t j = 0; j < cols; ++j)
+    {
       // values ranges b/w 0 and 1
-      size_t index =
-          std::min(sizeof(intensity) - 2,
-                   std::max(0ul, static_cast<size_t>(values[i * cols + j] *
-                                                     (sizeof(intensity) - 2))));
+      size_t index = std::min(sizeof(intensity) - 2,
+                              std::max(size_t{0},
+                                       static_cast<size_t>(values[i * cols + j] *
+                                                           (sizeof(intensity) - 2))));
       raster[i * (cols + 1) + j] = intensity[index];
     }
     raster[i * (cols + 1) + cols] = '\n';
@@ -34,7 +37,8 @@ void rasterize(const std::array<float, rows * cols> &values,
 }
 
 float getCurrentTimeInMilliseconds(
-    std::chrono::time_point<std::chrono::high_resolution_clock> &zeroTime) {
+    std::chrono::time_point<std::chrono::high_resolution_clock> &zeroTime)
+{
   std::chrono::duration<float> duration =
       std::chrono::high_resolution_clock::now() - zeroTime;
   return duration.count();
@@ -43,19 +47,22 @@ float getCurrentTimeInMilliseconds(
 void loadKernelCode(const std::string &filename, std::string &codeString) {
   codeString = "";
   FILE *file = fopen(filename.c_str(), "r");
-  while (!file) {
+  while (!file)
+  {
     fclose(file);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     file = fopen(filename.c_str(), "r");
   }
   char buffer[4096];
-  while (fgets(buffer, sizeof(buffer), file)) {
+  while (fgets(buffer, sizeof(buffer), file))
+  {
     codeString += buffer;
   }
   fclose(file);
 }
 
-int main() {
+int main()
+{
 
   Context ctx = createContext();
   
@@ -77,7 +84,8 @@ int main() {
   std::future<void> future = promise.get_future();
 
   std::string codeString;
-  struct Params {
+  struct Params
+  {
     float time;
     uint32_t screenWidth;
     uint32_t screenHeight;

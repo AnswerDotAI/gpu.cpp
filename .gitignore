@@ -6,6 +6,5 @@ examples/raymarch/build/*
 docs/html
 source
 .DS_Store
-third_party/lib/libdawn.*
-third_party/lib/*.so
-third_party/lib/*.dylib
+third_party/lib/*
+NUL

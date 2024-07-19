@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(gpu_puzzles)
+project(matmul)
 
 set(FILENAME "gpu.h")
 
