@@ -97,6 +97,17 @@ docs: Doxyfile
 # Cleanup
 ################################################################################
 
+# Clean rules for cleaning specific targets
+define CLEAN_RULES
+clean_$(1):
+ifeq ($(OS),Windows_NT)
+	@if exist examples$(SLASH)$(1)$(SLASH)build ( $(RMDIR_CMD) /s examples$(SLASH)$(1)$(SLASH)build )
+else
+	find examples$(SLASH)$(1) -name build -type d | xargs rm -rf
+endif
+endef
+$(foreach target,$(TARGETS),$(eval $(call CLEAN_RULES,$(target))))
+
 clean-dawnlib:
 	$(RMDIR_CMD) $(LIBDIR)$(SLASH)libdawn*.*
 
