@@ -19,13 +19,6 @@ dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_pa
 run_setup: check-python
 	cd $(GPUCPP) && python3 setup.py
 
-all: dawnlib check-clang check-linux-vulkan
-	cd examples/gpu_puzzles && make build/gpu_puzzles
-	cd examples/hello_world && make build/hello_world
-	cd examples/matmul && make build/mm
-	cd examples/physics && make build/physics
-	cd examples/render && make build/render
-
 build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o ./build/$(TARGET)
 

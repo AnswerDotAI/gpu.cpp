@@ -4,7 +4,7 @@ LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
 CODEPATH = find . ../../utils ../../ -maxdepth 1 -type f
-TARGET=mm
+TARGET=matmul
 ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
     STDLIB :=
 else

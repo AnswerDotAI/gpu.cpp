@@ -43,10 +43,15 @@ float getCurrentTimeInMilliseconds(
 void loadKernelCode(const std::string &filename, std::string &codeString) {
   codeString = "";
   FILE *file = fopen(filename.c_str(), "r");
+  int nTries = 0;
   while (!file) {
     fclose(file);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     file = fopen(filename.c_str(), "r");
+    if (++nTries > 5) {
+      LOG(kDefLog, kError, "Failed to open file: %s", filename.c_str());
+      return;
+    }
   }
   char buffer[4096];
   while (fgets(buffer, sizeof(buffer), file)) {

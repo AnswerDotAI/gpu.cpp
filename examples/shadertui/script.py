@@ -37,12 +37,12 @@ if __name__ == "__main__":
     print(
         "\nThis script is meant to run alongside the shadertui runner. To start shadertui open a separate terminal and run `make` from this directory.\n"
     )
-    input("Press any key to continue...")
+    input("Press return/enter to continue...")
 
     for shader in shader_files:
         if os.path.exists(shader):
             copy_file(shader, "shader.wgsl")
-            input("Press any key to continue...")
+            input("Press return/enter to continue...")
         else:
             print(f"File {shader} does not exist.")
             break
