@@ -71,11 +71,30 @@ Hello gpu.cpp!
 
 Computed 10000 values of GELU(x)
 ```
+If you want to run other examples, you can run:
+
+```
+make run_example_name
+
+# For example:
+
+make run_matmul
+
+or
+
+make run_gpu_puzzles
+```
 
 If you need to clean up the build artifacts, you can run:
 
 ```
 make clean
+```
+
+or for a specific example:
+
+```
+make clean_example_name
 ```
 
 ## Hello World Tutorial: A GELU Kernel
