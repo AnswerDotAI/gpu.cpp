@@ -1,22 +1,29 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.11)
 project(gpu_puzzles)
 
-set(FILENAME "gpu.h")
+include(FetchContent)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
-get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
+message(STATUS "CMAKE_CURRENT_SOURCE_DIR: " ${CMAKE_CURRENT_SOURCE_DIR})
+message(STATUS "LIBRARY DIRECTORY: " ${CMAKE_CURRENT_SOURCE_DIR}/../../)
 
-# Construct potential paths
-set(FILEPATH_CURRENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
-set(FILEPATH_PROJECT_ROOT "${PROJECT_ROOT}/${FILENAME}")
+# For a standalone repo, remove this line and set the path to the repos own
+# FetchContent cache directory. Alternatively, don't set FETCHCONTENT_BASE_DIR
+# and the repos will be downloaded to the build directory.
+set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party")
 
-# Check if the file exists in the current directory
-if(EXISTS ${FILEPATH_CURRENT_DIR})
-    set(TARGET_FILE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
-elseif(EXISTS ${FILEPATH_PROJECT_ROOT})
-    set(TARGET_FILE_PATH ${PROJECT_ROOT})
-else()
-    message(FATAL_ERROR "File ${FILENAME} not found in either ${CMAKE_CURRENT_SOURCE_DIR} or ${CMAKE_CURRENT_SOURCE_DIR}/../../")
-endif()
+FetchContent_Declare(
+  gpu
+  # For standalone repo, replace GIT_REPOSITORY with the URL:
+  # GIT_REPOSITORY https://github.com/AnswerDotAI/gpu.cpp
+  GIT_REPOSITORY file://${CMAKE_CURRENT_SOURCE_DIR}/../../
+  GIT_TAG main
+  GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(gpu)
 
-include("${TARGET_FILE_PATH}/cmake/example.cmake")
+add_executable(gpu_puzzles run.cpp)
+target_link_libraries(gpu_puzzles gpu webgpu)
+target_include_directories(gpu_puzzles PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../ )
+

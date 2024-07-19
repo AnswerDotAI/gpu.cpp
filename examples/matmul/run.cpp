@@ -7,10 +7,6 @@
 #include "gpu.h" // createContext, createTensor, createKernel, dispatchKernel,
                  // wait, resetCommandBuffer, toCPU
 
-#ifndef M_PI
-    #define M_PI 3.14159265358979323846
-#endif
-
 #include "llmc/reference_impls.h" // for CPU reference implementation
 #include "utils/array_utils.h"    // show, isclose, randn, randint
 #include "utils/logging.h"        // LOG

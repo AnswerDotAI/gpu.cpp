@@ -34,10 +34,8 @@ To build a gpu.cpp project, you will need to have installed on your system:
 make to build the project.
 - `make` to build the project.
 - Only on Linux systems - Vulkan drivers. If Vulkan is not installed, you can run `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install them.
-- On Windows, Vulkan, make, cmake, and a Visual Studio build environment with C++ tooling are required.
-- WSL (Windows Subsystem for Linux) is also supported on Windows. You can install the required packages in WSL with `sudo apt install build-essential python3 libx11-xcb-dev libx11-dev libxi-dev libxcursor-dev libxinerama-dev libxrandr-dev libx11-6 libc++-dev libvulkan1 mesa-vulkan-drivers vulkan-tools clang`.
 
-The only library dependency of gpu.cpp is a WebGPU implementation. Currently we support the Dawn native backend, but we plan to support other targets and WebGPU implementations (web browsers or other native implementations such as wgpu). Currently we support MacOS, Linux, and Windows, including WSL.
+The only library dependency of gpu.cpp is a WebGPU implementation. Currently we support the Dawn native backend, but we plan to support other targets and WebGPU implementations (web browsers or other native implementations such as wgpu). Currently we support MacOS, Linux, and Windows (via WSL).
 
 Optionally, Dawn can be built from scratch with gpu.cpp using the cmake build scripts provided - see the -cmake targets in the Makefile. However, this is recommended for advanced users only. Building Dawn dependencies with cmake takes much longer than using the precompiled Dawn shared library.
 
@@ -47,7 +45,7 @@ After cloning the repo, from the top-level gpu.cpp, you should be able to build 
 make
 ```
 
-The first time you build and run the project this way, it will download a prebuilt shared library for the Dawn native WebGPU implementation automatically (using the setup.py script). This places the Dawn shared library in the third_party/lib directory. Afterwards you should see `libdawn_ARCH_BUILD_TYPE.dylib` on MacOS, `libdawn_ARCH_BUILD_TYPE.so` on Linux/WSL or `libdawn_ARCH_BUILD_TYPE.dll` on Windows. This download only occurs once.
+The first time you build and run the project this way, it will download a prebuilt shared library for the Dawn native WebGPU implementation automatically (using the setup.py script). This places the Dawn shared library in the third_party/lib directory. Afterwards you should see `libdawn.dylib` on MacOS or `libdawn.so` on Linux. This download only occurs once.
 
 The build process itself should take a few seconds. If the build and executions is successful, you should see the output of the GELU computation:
 
@@ -71,30 +69,11 @@ Hello gpu.cpp!
 
 Computed 10000 values of GELU(x)
 ```
-If you want to run other examples, you can run:
-
-```
-make run_example_name
-
-# For example:
-
-make run_matmul
-
-or
-
-make run_gpu_puzzles
-```
 
 If you need to clean up the build artifacts, you can run:
 
 ```
 make clean
-```
-
-or for a specific example:
-
-```
-make clean_example_name
 ```
 
 ## Hello World Tutorial: A GELU Kernel
