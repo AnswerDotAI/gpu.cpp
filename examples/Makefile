@@ -98,7 +98,7 @@ else
 		$$exe_path; \
 	else \
 		echo "Executable not found; building $(1) first" && \
-		cd $(1) && $(MAKE) $(1)_release && \
+		$(MAKE) $(1)_release && \
 		exe_path=$(shell find $(1)/build -type f -executable -name $(1) | head -n 1) && \
 		$$exe_path; \
 	fi
