@@ -1,4 +1,5 @@
-TARGET = gpu_puzzles
+# List of targets (folders in your examples directory)
+TARGETS := gpu_puzzles hello_world matmul physics render shadertui
 
 # Set up variables for cross-platform compatibility
 ifeq ($(OS),Windows_NT)
@@ -36,30 +37,72 @@ endif
 # Paths
 GPUCPP ?= $(shell pwd)
 
-default: build_$(TARGET)_debug
+.PHONY: default all_release all_debug dawnlib run_setup check-python
+.PHONY: $(addsuffix _release, $(TARGETS))
+.PHONY: $(addsuffix _debug, $(TARGETS))
+.PHONY: clean-all $(addprefix clean_, $(TARGETS))
 
-run: build_$(TARGET)_debug dawnlib examples_$(TARGET)_build_$(TARGET)
+default: all_debug
 
-build_$(TARGET)_release:
+all_release: $(addsuffix _release, $(TARGETS))
+
+all_debug: $(addsuffix _debug, $(TARGETS))
+
+# Define Build Rules
+define BUILD_RULES
+$(1)_release:
 ifeq ($(OS),Windows_NT)
-	@if not exist "build" $(MKDIR_CMD) && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build . --config Release
+	@if not exist "$(1)$(SLASH)build" $(MKDIR_CMD) "$(1)$(SLASH)build"
+	cd $(1) && \
+	cmake -B build -DCMAKE_BUILD_TYPE=Release && \
+	cmake --build build --config Release
 else
-	@command mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build .
+	$(MKDIR_CMD) $(1)$(SLASH)build
+	cd $(1) && \
+	cmake -B build -DCMAKE_BUILD_TYPE=Release && \
+	cmake --build build --config Release
 endif
 
-build_$(TARGET)_debug:
+$(1)_debug:
 ifeq ($(OS),Windows_NT)
-	@if not exist "build" $(MKDIR_CMD) && cd build && cmake .. -DCMAKE_BUILD_TYPE=Debug && cmake --build . --config Release
+	@if not exist "$(1)$(SLASH)build" $(MKDIR_CMD) "$(1)$(SLASH)build"
+	cd $(1) && \
+	cmake -B build -DCMAKE_BUILD_TYPE=Debug && \
+	cmake --build build --config Debug
 else
-	@command mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Debug && cmake --build .
+	$(MKDIR_CMD) $(1)$(SLASH)build
+	cd $(1) && \
+	cmake -B build -DCMAKE_BUILD_TYPE=Debug && \
+	cmake --build build --config Debug
 endif
+endef
+# Apply Build Rules to each target in $(TARGETS)
+$(foreach target,$(TARGETS),$(eval $(call BUILD_RULES,$(target))))
 
-examples_$(TARGET)_build_$(TARGET): check-clang dawnlib check-linux-vulkan
+# Define Run Rules
+define RUN_RULES
+run_$(1):
 ifeq ($(OS),Windows_NT)
-	cd examples$(SLASH)$(TARGET) && examples$(SLASH)$(TARGET)$(SLASH)build$(SLASH)$(TARGET).exe
+	@for /f "delims=" %%i in ('dir /s /b "$(1).exe"') do set EXE=%%i && %%i
 else
-	cd examples/$(TARGET) && $(MAKE) build/$(TARGET) && ./build/$(TARGET)/build
+	@sh -c '$$(find $(1)/build -type f -executable -name "$(1)" | head -n 1 )'
 endif
+endef
+# Apply Run Rules to each target in $(TARGETS)
+$(foreach target,$(TARGETS),$(eval $(call RUN_RULES,$(target))))
+
+# Clean rules for cleaning specific targets
+define CLEAN_RULES
+clean_$(1):
+ifeq ($(OS),Windows_NT)
+	if exist $(1)$(SLASH)build ( $(RMDIR_CMD) $(1)$(SLASH)build )
+else
+	find $(1) -name build -type d | xargs rm -rf
+endif
+endef
+$(foreach target,$(TARGETS),$(eval $(call CLEAN_RULES,$(target))))
+
+clean-all: $(addprefix clean_, $(TARGETS))
 
 dawnlib:
 ifeq ($(OS),Windows_NT)
@@ -75,13 +118,6 @@ ifeq ($(OS),Windows_NT)
 	cd $(GPUCPP) && if exist "python3.exe" (python3 setup.py) else (if exist "python.exe" (python setup.py) else (echo "Python needs to be installed and in your path." & exit 1))
 else
 	cd $(GPUCPP) && (command -v python3 >/dev/null 2>&1 && python3 setup.py || python setup.py)
-endif
-
-clean:
-ifeq ($(OS),Windows_NT)
-	$(RMDIR_CMD) build
-else
-	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build*
 endif
 
 check-python:

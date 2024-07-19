@@ -1,7 +1,11 @@
 NUM_JOBS=$(shell nproc 2>/dev/null || echo 1)
 CXX=clang++
 
-.PHONY: default examples_hello_world_build_hello_world tests libgpu debug build check-entr check-clang clean-build clean clean-dawnlib all watch-tests docs
+.PHONY: default examples_hello_world_build_hello_world tests libgpu debug build check-entr check-clang clean-build clean clean-dawnlib clean-all all watch-tests docs
+.PHONY: $(addprefix run_, $(TARGETS))
+
+# List of targets (folders in your examples directory)
+TARGETS := gpu_puzzles hello_world matmul physics render shadertui
 
 # Set up variables for cross-platform compatibility
 ifeq ($(OS),Windows_NT)
@@ -41,29 +45,30 @@ endif
 # Determine the build type
 BUILD_TYPE ?= Release
 LOWER_BUILD_TYPE ?= $(shell python3 -c "print('$(BUILD_TYPE)'.lower())")
-pch:
-	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -x c++-header gpu.h -o build/gpu.h.pch
-
-# TODO(avh): change extension based on platform
-lib:
-	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/libgpucpp.dylib
 
 # Paths
 GPUCPP ?= $(shell pwd)
 LIBDIR ?= $(GPUCPP)$(SLASH)third_party$(SLASH)lib
 LIBSPEC ?= . $(GPUCPP)$(SLASH)source
 
-default: examples_hello_world_build_hello_world
+default: run_hello_world
 
-examples_hello_world_build_hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
+run_%:
+	@cd examples && $(MAKE) $(@)
+
+# Build rules for specific targets
+define BUILD_RULES
+build_$(1):
 ifeq ($(OS),Windows_NT)
-	cd examples$(SLASH)hello_world && $(MAKE) build_hello_world_$(LOWER_BUILD_TYPE)
+	cd examples && $(MAKE) $(1)_$(LOWER_BUILD_TYPE)
 else
-	$(LIBSPEC) && cd examples$(SLASH)hello_world && $(MAKE) build_hello_world_$(LOWER_BUILD_TYPE)
+	cd examples&& $(MAKE) $(1)_$(LOWER_BUILD_TYPE)
 endif
+endef
+$(foreach target, $(TARGETS), $(eval $(call BUILD_RULES,$(target))))
 
 # We use the custom "shell" based condition to check files cross-platform
-dawnlib: 
+dawnlib:
 ifeq ($(OS),Windows_NT)
 	@if not exist "$(LIBDIR)$(SLASH)libdawn_$(ARCH)_$(BUILD_TYPE).dll" if not exist "$(LIBDIR)$(SLASH)libdawn.dll" $(MAKE) run_setup
 else
@@ -89,28 +94,6 @@ all: dawnlib check-clang check-linux-vulkan
 docs: Doxyfile
 	doxygen Doxyfile
 
-################################################################################
-# cmake targets (optional - precompiled binaries is preferred)
-################################################################################
-
-CMAKE_CMD = $(MKDIR_CMD) && cd build && cmake ..
-# Add --trace to see the cmake commands
-FLAGS = -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DCMAKE_CXX_COMPILER=$(CXX) -DABSL_INTERNAL_AT_LEAST_CXX20=OFF
-FASTBUILD_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=ON
-DEBUG_FLAGS = $(FLAGS) -DDEBUG:BOOL=ON
-RELEASE_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=OFF
-TARGET_LIB=gpu
-
-libgpu-cmake: check-clang check-cmake
-	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) gpu
-
-debug-cmake: check-clang check-cmake
-	$(CMAKE_CMD) $(DEBUG_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
-
-all-cmake: check-clang check-cmake
-	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
-
-################################################################################
 # Cleanup
 ################################################################################
 
@@ -151,8 +134,6 @@ else
 	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build* third_party/fetchcontent* third_party/gpu-build third_party/gpu-subbuild third_party/gpu-src third_party/lib/libdawn* third_party/lib/libdawn_$(ARCH)_$(BUILD_TYPE).*
 endif
 
-
-################################################################################
 # Checks
 ################################################################################
 
