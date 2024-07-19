@@ -4,7 +4,7 @@ project(gpu)
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/webgpu.cmake")
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with LSP
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(USE_LOCAL_LIBS "Use local libraries instead of fetching from the internet" OFF)
