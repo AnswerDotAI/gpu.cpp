@@ -41,7 +41,10 @@ const char *kPuzzle1 = R"(
 @compute @workgroup_size({{workgroupSize}})
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>) {
-   // Your code here
+    let local_idx = LocalInvocationID.x;
+    if (local_idx < arrayLength(&a)) {
+      output[local_idx] = a[local_idx] + 10;
+    }
   }
 )";
 
@@ -65,7 +68,10 @@ const char *kPuzzle2 = R"(
 @compute @workgroup_size({{workgroupSize}})
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>) {
-    // Your code here
+    let local_idx = LocalInvocationID.x;
+    if (local_idx < arrayLength(&a)) {
+      output[local_idx] = a[local_idx] + b[local_idx];
+    }
   }
 )";
 
@@ -89,14 +95,17 @@ const char *kPuzzle3 = R"(
 @compute @workgroup_size({{workgroupSize}})
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>) {
-    // Your code here
+    let local_idx = LocalInvocationID.x;
+    if (local_idx < arrayLength(&input)) {
+      output[local_idx] = input[local_idx] + 10;
+    }
   }
 )";
 void puzzle3(Context &ctx) {
   printf("\n\nPuzzle 3\n\n");
   static constexpr size_t N = 8;
-  Tensor input = createTensor(ctx, {N/2}, kf32, makeData<N>().data());
-  Tensor output = createTensor(ctx, {N/2}, kf32);
+  Tensor input = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor output = createTensor(ctx, {N}, kf32);
   Kernel op =
       createKernel(ctx, {kPuzzle3, N}, Bindings{input, output}, {1, 1, 1});
   showResult<N>(ctx, op, output);
@@ -116,7 +125,13 @@ struct Params {
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
   ) {
-    // Your code here
+    let local_i = LocalInvocationID.x;
+    let local_j = LocalInvocationID.y;
+
+    if (local_i < params.size && local_j < params.size) {
+      let idx = local_i + local_j * params.size;
+      output[idx] = input[idx] + 10;
+    }
   }
 )";
 void puzzle4(Context &ctx) {
@@ -150,7 +165,12 @@ struct Params {
 fn main(
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
   ) {
-    // Your code here
+    let local_i = GlobalInvocationID.x;
+    let local_j = GlobalInvocationID.y;
+
+    if (local_i < params.size && local_j < params.size) {
+      output[local_i + local_j * params.size] = a[local_i] + b[local_j];
+    }
   }
 )";
 void puzzle5(Context &ctx) {
@@ -186,7 +206,11 @@ struct Params {
 fn main(
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
   ) {
-    // Your code here
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+
+    if (idx < params.size) {
+      output[idx] = a[idx] + 10;
+    }
   }
 )";
 void puzzle6(Context &ctx) {
@@ -221,7 +245,13 @@ struct Params {
 fn main(
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
   ) {
-    // Your code here
+    let idx_i = GlobalInvocationID.x;
+    let idx_j = GlobalInvocationID.y;
+
+    if (idx_i < params.size && idx_j < params.size) {
+      let idx = idx_i + idx_j * params.size;
+      output[idx] = a[idx] + 10;
+    }
   }
 )";
 void puzzle7(Context &ctx) {
@@ -261,7 +291,18 @@ var<workgroup> sharedData: array<f32, 256>;
 fn main(
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>
   ) {
-    // Your code here
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = GlobalInvocationID.x;
+
+    if (idx < params.size) {
+      sharedData[idx] = a[idx];
+    }
+
+    workgroupBarrier();
+   
+    if (idx < params.size) {
+      output[idx] = sharedData[local_idx] + 10;
+    }
   }
 )";
 void puzzle8(Context &ctx) {
@@ -298,7 +339,24 @@ var<workgroup> sharedData: array<f32, 256>;
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    // Your code here
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = LocalInvocationID.x;
+
+    if (idx < arrayLength(&a)) {
+      sharedData[local_idx] = a[idx];
+    }
+
+    workgroupBarrier();
+
+    if (idx == 0) {
+      output[idx] = sharedData[idx];
+    }
+    else if (idx == 1) {
+      output[idx] = sharedData[idx] + sharedData[idx - 1];
+    }
+    else {
+      output[idx] = sharedData[idx] + sharedData[idx - 1] + sharedData[idx - 2];
+    }
   }
 )";
 void puzzle9(Context &ctx) {
@@ -334,7 +392,22 @@ var<workgroup> sharedData: array<f32, 256>;
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    // Your code here
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = LocalInvocationID.x;
+
+    if (idx < arrayLength(&a)) {
+      sharedData[local_idx] = a[idx] * b[idx];
+    }
+
+    workgroupBarrier();
+
+    if (local_idx == 0) {
+      var sum = 0.0;
+      for (var i: u32 = 0u; i < arrayLength(&a); i = i + 1u) {
+        sum = sum + sharedData[i];
+      }
+      output[idx] = sum;
+    }
   }
 )";
 void puzzle10(Context &ctx) {
@@ -373,7 +446,37 @@ var<workgroup> shared_b: array<f32, 256>;
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    // Your code here
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = LocalInvocationID.x;
+
+    if (idx < arrayLength(&a)) {
+      shared_a[local_idx] = a[idx];   
+    }
+
+    if (idx < arrayLength(&b)) {
+      shared_b[local_idx] = b[local_idx];   
+    } 
+    else {
+      let local_idx2 = local_idx - arrayLength(&b);
+      let idx2 = idx - arrayLength(&b);
+      if ((idx2 + params.TPB < arrayLength(&a)) && (local_idx2 < arrayLength(&b))) {
+        shared_a[local_idx2 + params.TPB] = a[idx2 + params.TPB];
+      }
+    }
+
+    workgroupBarrier();
+
+    var acc = 0.0;
+
+    for (var i: u32 = 0u; i < arrayLength(&b); i = i + 1u) {
+      if (idx + i < arrayLength(&a)) {
+        acc = acc + shared_a[local_idx + i] * shared_b[i];
+      }
+    }
+
+    if (idx < arrayLength(&a)) {
+      output[idx] = acc;
+    }
   }
 )";
 void puzzle11(Context &ctx) {
@@ -413,7 +516,30 @@ var<workgroup> cache: array<f32, 256>;
 fn main(
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
   @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    // Your code here
+    let idx = GlobalInvocationID.x + GlobalInvocationID.y * params.size;
+    let local_idx = LocalInvocationID.x;
+
+    if (idx < params.size) {
+      cache[local_idx] = a[idx];
+    }
+    else {
+      cache[local_idx] = 0.0;
+    }
+
+    workgroupBarrier();
+
+    if (local_idx % 2 == 0) {
+      cache[local_idx] = cache[local_idx] + cache[local_idx + 1];
+    }
+    if (local_idx % 4 == 0) {
+      cache[local_idx] = cache[local_idx] + cache[local_idx + 2];
+    }
+    if (local_idx % 8 == 0) {
+      cache[local_idx] = cache[local_idx] + cache[local_idx + 4];
+    }
+    if (local_idx == 0) {
+      output[GlobalInvocationID.y] = cache[0];
+    }
   }
 )";
 void puzzle12(Context &ctx) {
@@ -438,17 +564,17 @@ void puzzle12(Context &ctx) {
 int main(int argc, char **argv) {
   Context ctx = createContext();
   puzzle1(ctx);
-  // puzzle2(ctx);
-  // puzzle3(ctx);
-  // puzzle4(ctx);
-  // puzzle5(ctx);
-  // puzzle6(ctx);
-  // puzzle7(ctx);
-  // puzzle8(ctx);
-  // puzzle9(ctx);
-  // puzzle10(ctx);
-  // puzzle11(ctx);
-  // puzzle12(ctx);
+  puzzle2(ctx);
+  puzzle3(ctx);
+  puzzle4(ctx);
+  puzzle5(ctx);
+  puzzle6(ctx);
+  puzzle7(ctx);
+  puzzle8(ctx);
+  puzzle9(ctx);
+  puzzle10(ctx);
+  puzzle11(ctx);
+  puzzle12(ctx);
   // puzzle13(ctx);
   // puzzle14(ctx);
   return 0;

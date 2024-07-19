@@ -1,7 +1,7 @@
 NUM_JOBS=$(shell nproc 2>/dev/null || echo 1)
 CXX=clang++
 
-.PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-entr check-clang clean-build clean clean-dawnlib all watch-tests docs
+.PHONY: default examples_hello_world_build_hello_world tests libgpu debug build check-entr check-clang clean-build clean clean-dawnlib all watch-tests docs
 
 # Set up variables for cross-platform compatibility
 ifeq ($(OS),Windows_NT)
@@ -41,6 +41,12 @@ endif
 # Determine the build type
 BUILD_TYPE ?= Release
 LOWER_BUILD_TYPE ?= $(shell python3 -c "print('$(BUILD_TYPE)'.lower())")
+pch:
+	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -x c++-header gpu.h -o build/gpu.h.pch
+
+# TODO(avh): change extension based on platform
+lib:
+	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/libgpucpp.dylib
 
 # Paths
 GPUCPP ?= $(shell pwd)
@@ -119,14 +125,17 @@ ifeq ($(OS),Windows_NT)
 	@if exist examples$(SLASH)matmul$(SLASH)build$(SLASH)mm $(RMDIR_CMD) examples$(SLASH)matmul$(SLASH)build$(SLASH)mm /s /q
 	@if exist examples$(SLASH)physics$(SLASH)build $(RMDIR_CMD) examples$(SLASH)physics$(SLASH)build /s /q
 	@if exist examples$(SLASH)render$(SLASH)build $(RMDIR_CMD) examples$(SLASH)render$(SLASH)build /s /q
+	@if exist build$(SLASH)gpu.h.pch del build$(SLASH)gpu.h.pch
 	$(MKDIR_CMD)
 else
 	@command read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build*
 	rm -rf examples/gpu_puzzles/build*
 	rm -rf examples/hello_world/build*
 	rm -rf examples/matmul/build/mm
-	rm -rf examples/physics/build*
-	rm -rf examples/render/build*
+	rm -rf examples/physics/build/*
+	rm -rf examples/render/build/*
+	rm -f build/gpu.h.pch
+	rm -f build/libgpucpp.so
 endif
 
 clean-all:

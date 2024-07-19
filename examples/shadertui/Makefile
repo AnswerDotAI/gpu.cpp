@@ -1,5 +1,4 @@
 TARGET = shadertui
-
 # Set up variables for cross-platform compatibility
 ifeq ($(OS),Windows_NT)
 	DETECTED_OS := Windows

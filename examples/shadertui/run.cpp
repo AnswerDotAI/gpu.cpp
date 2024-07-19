@@ -44,14 +44,13 @@ float getCurrentTimeInMilliseconds(
   return duration.count();
 }
 
-void loadShaderCode(const std::string &filename, std::string &codeString)
-{
+void loadKernelCode(const std::string &filename, std::string &codeString) {
   codeString = "";
   FILE *file = fopen(filename.c_str(), "r");
   while (!file)
   {
     fclose(file);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     file = fopen(filename.c_str(), "r");
   }
   char buffer[4096];
@@ -66,12 +65,13 @@ int main()
 {
 
   Context ctx = createContext();
-
+  
+  // static constexpr size_t kRows = 64;
+  // static constexpr size_t kCols = 96;
   static constexpr size_t kRows = 64;
   static constexpr size_t kCols = 96;
-  // static constexpr size_t kRows = 96;
-  // static constexpr size_t kCols = 128;
 
+  kDefLog.level = kError; // suppress screen logging
   LOG(kDefLog, kInfo, "Creating screen tensor");
 
   std::array<float, kRows * kCols> screenArr;
@@ -93,10 +93,8 @@ int main()
 
   LOG(kDefLog, kInfo, "Loading shader code from shader.wgsl");
 
-  LOG(kDefLog, kInfo, "Creating shader and kernel");
-
-  loadShaderCode("shader.wgsl", codeString);
-  ShaderCode shader = createShader(codeString.c_str(), Shape{16, 16, 1});
+  loadKernelCode("shader.wgsl", codeString);
+  KernelCode shader{codeString.c_str(), Shape{16, 16, 1}};
   Kernel renderKernel =
       createKernel(ctx, shader, Bindings{screen},
                    cdiv({kCols, kRows, 1}, shader.workgroupSize), params);
@@ -108,20 +106,25 @@ int main()
   auto start = std::chrono::high_resolution_clock::now();
   std::chrono::duration<float> elapsed;
   size_t ticks = 0;
-  while (true)
-  {
-    if (elapsed.count() - static_cast<float>(ticks) > 1.0)
-    {
-      loadShaderCode("shader.wgsl", codeString);
-      if (codeString != shader.data)
-      {
-        shader = createShader(codeString.c_str(), Shape{16, 16, 1});
+  printf("\033[2J\033[H");
+  size_t framesPerLoad = 20;
+  size_t frame = 0;
+  while (true) {
+    if (frame % framesPerLoad == 0) { 
+      loadKernelCode("shader.wgsl", codeString);
+      if (codeString != shader.data) {
+        // TODO(avh): Use a better way to avoid write/read race conditions
+        // and recover from partial write errors
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        loadKernelCode("shader.wgsl", codeString);
+        shader = {codeString.c_str(), Shape{16, 16, 1}};
         renderKernel =
             createKernel(ctx, shader, Bindings{screen},
                          cdiv({kCols, kRows, 1}, shader.workgroupSize), params);
         ticks++;
         start = std::chrono::high_resolution_clock::now();
       }
+      frame = 0;
     }
     params.time = getCurrentTimeInMilliseconds(start);
     toGPU(ctx, params, renderKernel);
@@ -136,8 +139,8 @@ int main()
     auto frameEnd = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> frameElapsed = frameEnd - frameStart;
     elapsed = frameEnd - start;
-    std::this_thread::sleep_for(std::chrono::milliseconds(20) - frameElapsed);
-    printf("\033[H\033[J%s\nRender loop running (full screen recommended) ...\nEdit and save shader.wgsl to see changes here.\nReloaded shader.wgsl %zu times\n", raster.data(), ticks);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10) - frameElapsed);
+    printf("\033[H%s\nRender loop running (full screen recommended) ...\nEdit and save shader.wgsl to see changes here.\nReloaded shader.wgsl %zu times\n", raster.data(), ticks);
     fflush(stdout);
   }
 

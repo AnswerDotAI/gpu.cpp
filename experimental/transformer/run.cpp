@@ -151,7 +151,7 @@ void createTransformer(Context &ctx, size_t modelDim, size_t qkvDim,
   toGPU(ctx, valueCacheInit.get(), kvCache.valueCache);
 }
 
-inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
+inline KernelCode createMatmul(const char *shaderTemplate, const size_t M,
                                const size_t K, const size_t N,
                                const Shape &workgroupSize = {256, 1, 1},
                                NumType precision = kf32) {
@@ -168,7 +168,7 @@ inline ShaderCode createMatmul(const char *shaderTemplate, const size_t M,
   replaceAll(codeString, "{{K}}", std::to_string(K));
   replaceAll(codeString, "{{N}}", std::to_string(N));
   // LOG(kDefLog, kInfo, "Shader code:\n%s\n", codeString.c_str());
-  return ShaderCode{codeString, workgroupSize};
+  return KernelCode{codeString, workgroupSize};
 }
 
 int main() {
@@ -199,7 +199,7 @@ int main() {
 
   LOG(kDefLog, kInfo, "QKV Projection");
   {
-    ShaderCode matmul = createMatmul(kShaderMatmul1, /*M*/ batchSize,
+    KernelCode matmul = createMatmul(kShaderMatmul1, /*M*/ batchSize,
                                      /*K*/ modelDim, /*N*/ 3 * qkvDim);
     Kernel qkv = createKernel(
         ctx, matmul, Bindings{input, transformer.qkv, activations.qkv},
@@ -231,7 +231,7 @@ int main() {
 
   LOG(kDefLog, kInfo, "QK Dot Product");
   {
-    ShaderCode dot = createMatmul(kShaderMatmul1, /*M*/ batchSize * nHeads,
+    KernelCode dot = createMatmul(kShaderMatmul1, /*M*/ batchSize * nHeads,
                                   /*K*/ qkvDim, /*M*/ 1);
 
     /*

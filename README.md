@@ -92,7 +92,7 @@ The GELU code below will illustrate the three main aspects of setting up a GPU c
 
 3. The code that runs on the CPU (in C++) that dispatches the GPU computation and retrieves the results. The key concern of hot-path dispatch code is to eliminate or minimize any unnecessary resource allocation or data movement (offloading such concerns to step 2). A secondary consideration is that GPU dispatches are asynchronous. We work with standard C++ asynchronous primitives to manage the asynchronous aspect of kernel dispatch.
 
-Here's a GELU kernel implemented (based on the CUDA implementation in [llm.c](https://github.com/karpathy/llm.c)) as an on-device WGSL shader and invoked from the host using gpu.cpp library functions and types. It can be compiled using a standard C++ compiler (we recommend Clang):
+Here's a GELU kernel implemented (based on the CUDA implementation in [llm.c](https://github.com/karpathy/llm.c)) as on-device WebGPU WGSL code and invoked from the host using gpu.cpp library functions and types. It can be compiled using a standard C++ compiler (we recommend Clang):
 
 ```
 #include <array>
@@ -102,8 +102,8 @@ Here's a GELU kernel implemented (based on the CUDA implementation in [llm.c](ht
 #include "gpu.h"
 
 using namespace gpu; // createContext, createTensor, createKernel,
-                     // createShader, dispatchKernel, wait, toCPU
-                     // Bindings, Tensor, Kernel, Context, Shape, kf32
+                     // dispatchKernel, wait, toCPU Bindings,
+                     // Tensor, Kernel, Context, Shape, kf32
 
 static const char *kGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
   Tensor output = createTensor(ctx, Shape{N}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, createShader(kGelu, /* 1-D workgroup size */ 256, kf32),
+  Kernel op = createKernel(ctx, {kGelu, /* 1-D workgroup size */ 256, kf32},
                            Bindings{input, output},
                            /* number of workgroups */ {cdiv(N, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
@@ -158,18 +158,17 @@ library. The ahead-of-time resource acquisition functions are prefaced with
 
 - `createContext()` - constructs a reference to the GPU device context (`Context`).
 - `createTensor()` - acquires a contiguous buffer on the GPU (`Tensor`). 
-- `createShader()` - constructs WGSL code string to run on the GPU) (`ShaderCode`)
-- `createKernel()` - constructs a handle to resources for the GPU computation (`Kernel`), which combines bindings to GPU buffers from `createTensor()` with the computation definition from `createShader()`.
+- `createKernel()` - constructs a handle to resources for the GPU computation (`Kernel`), taking the shader code as input and the tensor resources to bind.
 
 These resource acquisition functions are tied to resource types for interacting with the GPU:
 
 - `Context` - a handle to the state of resources for interacting with the GPU device.
 - `Tensor` - a buffer of data on the GPU.
-- `ShaderCode` - the code for a shader program that can be dispatched to the
-  GPU. This is a thin wrapper around a WGSL string but also includes the
+- `KernelCode` - the code for a WGSL program that can be dispatched to the
+  GPU. This is a thin wrapper around a WGSL string and also includes the
   workgroup size the code is designed to run with.
 - `Kernel` - a GPU program that can be dispatched to the GPU. This accepts a
-  `ShaderCode` and a list of `Tensor` resources to bind for the dispatch
+  `KernelCode` and a list of `Tensor` resources to bind for the dispatch
   computation. This takes an argument `Bindings` that is a list of `Tensor` instances and should map the bindings declared at the top of the WGSL code. In this example there's two bindings corresponding to the `input` buffer on the GPU and the `ouptut` buffer on the GPU.
 
 In this example, the GELU computation is performed only once and the program immediately exits so preparing resources and dispatch are side-by-side. Other examples in the [examples/](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/) directory illustrate how resource acquisition is prepared ahead of time and dispatch occurs in the hot path like a render, model inference, or simulation loop.
@@ -202,7 +201,7 @@ A parallel physics simulation of an ensemble of double pendulums simulated in pa
 
 We also show some examples of signed distance function computations, rendered in the terminal as ascii. A 3D SDF of spheres is shown in [examples/render](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/render]) and a shadertoy-like live-reloading example is in [examples/shadertui](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/shadertui).
 
-Interestingly, with a starting example, LLMs such as Claude 3.5 Sonnet can be quite capable at writing low-level WGSL code for you - the other shaders in the shadertui example are written by the LLM.
+Interestingly, given a starting example, LLMs such as Claude 3.5 Sonnet can be quite capable at writing low-level WGSL code for you - the other shaders in the shadertui example are written by the LLM.
 
 <div align="center">
   <img src="docs/images/shadertui.gif" alt="shadertui example animated gif" width=88%>
@@ -234,9 +233,9 @@ gpu.cpp lets us implement and drop-in any algorithm with fine-grained control of
 
 gpu.cpp is meant for developers with some familiarity with C++ and GPU programming. It is not a high-level numerical computing or machine learning framework or inference engine, though it can be used in support of such implementations.
 
-Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. gpu.cpp leverages WebGPU as a portable *native* GPU API first and foremost, with the possibility of running in the browser being being a convenient additional benefit in the future. 
+Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. gpu.cpp leverages WebGPU as a portable *native* GPU API first and foremost, with the possibility of running in the browser being a convenient additional benefit in the future. 
 
-If you find it counerintuitive, as many do, that WebGPU is a native technology and not just for the web, watch Elie Michel's excellent talk ["WebGPU is Not Just About the Web"](https://www.youtube.com/watch?v=qHrx41aOTUQ).
+If you find it counterintuitive, as many do, that WebGPU is a native technology and not just for the web, watch Elie Michel's excellent talk ["WebGPU is Not Just About the Web"](https://www.youtube.com/watch?v=qHrx41aOTUQ).
 
 Finally, the focus of gpu.cpp is general-purpose GPU computation rather than rendering/graphics on the GPU, although it can be useful for offline rendering or video processing use cases. We may explore directions with graphics in the future, but for now our focus is GPU compute.
 
@@ -246,7 +245,7 @@ Finally, the focus of gpu.cpp is general-purpose GPU computation rather than ren
 
 *Browser Targets* - In spite of using WebGPU we haven't tested builds targeting the browser yet though this is a short-term priority.
 
-*Reusable Kernels and Shader Library* - Currently the core library is strictly the operations and types for interfacing with the WebGPU API, with some specific use case example WGSL implementations in `examples/`. Over time, as kernel implementations mature we may migrate some of the reusable operations from specific examples into a small reusable kernel library.
+*Reusable Kernel Library* - Currently the core library is strictly the operations and types for interfacing with the WebGPU API, with some specific use case example WGSL implementations in `examples/`. Over time, as kernel implementations mature we may migrate some of the reusable operations from specific examples into a small reusable kernel library.
 
 *More Use Case Examples and Tests* - Expect an iteration loop of use cases to design tweaks and improvements, which in turn make the use cases cleaner and easier to write. One short term use cases to flesh out the kernels from [llm.c](https://github.com/karpathy/llm.c) in WebGPU form. As these mature into a reusable kernel library, we hope to help realize the potential for WebGPU compute in AI.
 

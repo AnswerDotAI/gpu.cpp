@@ -35,9 +35,10 @@ static constexpr int kShowMaxCols = 8;
  * @param cols The number of columns in the array.
  * @param name The name of the array to show.
  * @return std::string The string representation of the array.
- * @example
+ * @code
  *   std::array<float, 4> a = {1.0, 2.0, 3.0, 4.0};
  *   printf("%s", show<float>(a.data(), 2, 2, "a").c_str());
+ * @endcode
  */
 template <typename numtype>
 std::string show(const numtype *a, size_t rows, size_t cols,
@@ -100,9 +101,10 @@ std::string show(const numtype *a, size_t rows, size_t cols,
  * @param a The array to show.
  * @param name The name of the array to show.
  * @return std::string The string representation of the array.
- * @example
+ * @code
  *  std::array<float, 4> a = {1.0, 2.0, 3.0, 4.0};
  *  printf("%s", show<float>(a, "a").c_str());
+ * @endcode
  */
 template <typename numtype, size_t rows, size_t cols>
 std::string show(const std::array<numtype, rows * cols> &a,
@@ -114,9 +116,12 @@ std::string show(const std::array<numtype, rows * cols> &a,
  * @brief Overload of `show()` for float std::array.
  * @param a The array to show.
  * @return std::string The string representation of the array.
- * @example
+ *
+ * @code
  * std::array<float, 4> a = {1.0, 2.0, 3.0, 4.0};
  * printf("%s", show(a, "a").c_str());
+ * @endcode
+ @  
  */
 template <size_t rows, size_t cols>
 std::string show(const std::array<float, rows * cols> &a,

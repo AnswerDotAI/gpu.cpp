@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
   Tensor output = createTensor(ctx, Shape{N}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, createShader(kGelu, 256, kf32),
+  Kernel op = createKernel(ctx, {kGelu, 256, kf32},
                            Bindings{input, output},
                            /* nWorkgroups */ {cdiv(N, 256), 1, 1});
   dispatchKernel(ctx, op, promise);

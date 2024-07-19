@@ -158,14 +158,14 @@ fn matmul(
 }
 )";
 
-/* Generates ShaderCode instance for all matmul kernels - pass in
+/* Generates KernelCode instance for all matmul kernels - pass in
  * the template code via `shaderRaw`.
  *
  * This is intended to be run ahead of time, so is not performance critical.
  * */
-ShaderCode MatmulShader(size_t workgroupSize, const char *shaderRaw,
+KernelCode MatmulShader(size_t workgroupSize, const char *shaderRaw,
                         NumType precision, size_t M, size_t K, size_t N) {
-  ShaderCode shader = createShader(shaderRaw, workgroupSize, precision);
+  KernelCode shader = createShader(shaderRaw, workgroupSize, precision);
   replaceAll(shader.data, "{{M}}", std::to_string(M));
   replaceAll(shader.data, "{{K}}", std::to_string(K));
   replaceAll(shader.data, "{{N}}", std::to_string(N));
