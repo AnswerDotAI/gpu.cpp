@@ -53,8 +53,13 @@ LIBSPEC ?= . $(GPUCPP)$(SLASH)source
 
 default: run_hello_world
 
-run_%:
-	@cd examples && $(MAKE) $(@)
+# Define Run Rules
+define RUN_RULES
+run_$(1):
+	@cd examples && $(MAKE) run_$(1)
+endef
+# Apply Run Rules to each target in $(TARGETS)
+$(foreach target,$(TARGETS),$(eval $(call RUN_RULES,$(target))))
 
 # Build rules for specific targets
 define BUILD_RULES

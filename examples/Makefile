@@ -79,13 +79,29 @@ endef
 # Apply Build Rules to each target in $(TARGETS)
 $(foreach target,$(TARGETS),$(eval $(call BUILD_RULES,$(target))))
 
-# Define Run Rules
+# Define Run Rules with Build if Executable Not Found
 define RUN_RULES
 run_$(1):
 ifeq ($(OS),Windows_NT)
-	@for /f "delims=" %%i in ('dir /s /b "$(1).exe"') do set EXE=%%i && %%i
+	@if exist $(1)$(SLASH)build$(SLASH)Release$(SLASH)$(1).exe ( \
+		echo "Running $(1)" && \
+		$(1)$(SLASH)build$(SLASH)Release$(SLASH)$(1).exe \
+	) else ( \
+		echo "Executable not found; building $(1) first" && \
+		$(MAKE) $(1)_release && \
+		$(1)$(SLASH)build$(SLASH)Release$(SLASH)$(1).exe \
+	)
 else
-	@sh -c '$$(find $(1)/build -type f -executable -name "$(1)" | head -n 1 )'
+	@if [ -x "$(shell find $(1)/build -type f -executable -name $(1) | head -n 1)" ]; then \
+		exe_path=$(shell find $(1)/build -type f -executable -name $(1) | head -n 1) && \
+		echo "Running $(1)" && \
+		$$exe_path; \
+	else \
+		echo "Executable not found; building $(1) first" && \
+		cd $(1) && $(MAKE) $(1)_release && \
+		exe_path=$(shell find $(1)/build -type f -executable -name $(1) | head -n 1) && \
+		$$exe_path; \
+	fi
 endif
 endef
 # Apply Run Rules to each target in $(TARGETS)
