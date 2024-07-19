@@ -72,6 +72,7 @@ endif()
 # Build the library target (libgpu)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(SRC_LIB gpu.h utils/shaders.h utils/array_utils.h utilslogging.h)
+set(SRC_LIB gpu.cpp gpu.h utils/array_utils.h utils/logging.h)
 add_library(gpu SHARED ${SRC_LIB})
+target_link_libraries(gpu PRIVATE webgpu)
 set_target_properties(gpu PROPERTIES LINKER_LANGUAGE CXX)
