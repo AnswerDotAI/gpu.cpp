@@ -31,6 +31,9 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/physics && make build/physics
 	cd examples/render && make build/render
 
+half-tests:
+	clang++ half.cpp -I. -o half && ./half
+
 docs: Doxyfile
 	doxygen Doxyfile
 
