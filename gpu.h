@@ -16,16 +16,10 @@
 
 #include "webgpu/webgpu.h"
 
-#include "utils/logging.h"
 #include "numeric_types/half.h"
+#include "utils/logging.h"
 
 namespace gpu {
-
-#ifndef NDEBUG
-static constexpr bool kDebug = true;
-#else
-static constexpr bool kDebug = false;
-#endif
 
 /**
  * @brief Represents a buffer of values on the GPU.
@@ -598,15 +592,12 @@ inline TensorPool::~TensorPool() {
  */
 inline void check(bool condition, const char *message,
                   const char *file = "unkown", int line = -1) {
-  if constexpr (kDebug) {
-    if (!condition) {
-      LOG(kDefLog, kError, "Error in file %s line %d:\n%s", file, line,
-          message);
-      exit(1);
-    } else {
-      LOG(kDefLog, kTrace, "Success in file %s line %d:\n%s", file, line,
-          message);
-    }
+  if (!condition) {
+    LOG(kDefLog, kError, "Error in file %s line %d:\n%s", file, line, message);
+    exit(1);
+  } else {
+    LOG(kDefLog, kTrace, "Success in file %s line %d:\n%s", file, line,
+        message);
   }
 }
 

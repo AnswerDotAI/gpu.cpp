@@ -12,8 +12,7 @@ half halfFromFloat(float f);
 float halfToFloat(half h);
 
 /**
- * Experimental implementation of half-precision floating point conversion
- * functions.
+ * Experimental implementation of half-precision 16-bit floating point numbers.
  */
 struct half {
   uint16_t data;
