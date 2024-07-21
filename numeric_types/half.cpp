@@ -7,44 +7,43 @@
 #include "half.h"
 
 #define EPSILON 0.01f
-
 #define COLOR_RESET "\033[0m"
 #define COLOR_RED "\033[31m"
 #define COLOR_GREEN "\033[32m"
 
 int approximatelyEqual(float a, float b, float epsilon) {
-  // return fabsf(a - b) <= epsilon * fmaxf(fabsf(a), fabsf(b));
   return fabsf(a - b) <= epsilon;
 }
 
-void printResult(int passed, const char *message, float input, float output) {
+void printResult(bool passed, const char *message, float input, float output) {
   if (passed) {
-    printf(COLOR_GREEN "PASSED" COLOR_RESET
-                       ": %s (input: %.10f, output: %.10f)\n",
+    printf("[" COLOR_GREEN "PASSED" COLOR_RESET "]"
+           " : %s (in: %.10f, out: %.10f)\n",
            message, input, output);
   } else {
-    printf(COLOR_RED "FAILED" COLOR_RESET
-                     ": %s (input: %.10f, output: %.10f)\n",
+    printf("[" COLOR_RED "FAILED" COLOR_RESET "]"
+           " : %s (in: %.10f, out: %.10f)\n",
            message, input, output);
   }
 }
 
-void printResultHalf(int passed, const char *message, float input,
-                     uint16_t output) {
+void printResult(bool passed, const char *message, float input,
+                 uint16_t output) {
   if (passed) {
-    printf(COLOR_GREEN "PASSED" COLOR_RESET
-                       ": %s (input: %.10f, output: 0x%04x)\n",
+    printf("[" COLOR_GREEN "PASSED" COLOR_RESET "]"
+           " : %s (input: %.10f, output: 0x%04x)\n",
            message, input, output);
   } else {
-    printf(COLOR_RED "FAILED" COLOR_RESET
-                     ": %s (input: %.10f, output: 0x%04x)\n",
+    printf("[" COLOR_RED "FAILED" COLOR_RESET "]"
+           " : %s (input: %.10f, output: 0x%04x)\n",
            message, input, output);
   }
 }
 
 void testRoundTrip(float value) {
-  half h = halfFromFloat(value);
-  float result = halfToFloat(h);
+  // half h = halfFromFloat(value);
+  half h = half(value);
+  float result = static_cast<float>(h);
   char message[256];
 
   if (isnan(value)) {
@@ -62,7 +61,7 @@ void testRoundTrip(float value) {
   }
 }
 
-void testRoundTripHalf(uint16_t value) {
+void testRoundTrip(uint16_t value) {
   half h;
   h.data = value;
   float f = halfToFloat(h);
@@ -77,7 +76,6 @@ void testSpecialCases() {
   half h;
   char message[256];
 
-  printf("Special cases\n\n");
   // Zero
   h.data = 0x0000;
   sprintf(message, "0x0000 correctly converted to 0.0f");
@@ -126,48 +124,48 @@ void testSpecialCases() {
   // Zero
   h = halfFromFloat(0.0f);
   sprintf(message, "0.0f correctly converted to 0x0000");
-  printResultHalf(h.data == 0x0000, message, 0.0f, h.data);
+  printResult(h.data == 0x0000, message, 0.0f, h.data);
 
   // Negative zero
   h = halfFromFloat(-0.0f);
   sprintf(message, "-0.0f correctly converted to 0x8000");
-  printResultHalf(h.data == 0x8000, message, -0.0f, h.data);
+  printResult(h.data == 0x8000, message, -0.0f, h.data);
 
   // Infinity
   h = halfFromFloat(INFINITY);
   sprintf(message, "positive infinity correctly converted to 0x7c00");
-  printResultHalf(h.data == 0x7c00, message, INFINITY, h.data);
+  printResult(h.data == 0x7c00, message, INFINITY, h.data);
 
   // Negative infinity
   h = halfFromFloat(-INFINITY);
   sprintf(message, "negative infinity correctly converted to 0xfc00");
-  printResultHalf(h.data == 0xfc00, message, -INFINITY, h.data);
+  printResult(h.data == 0xfc00, message, -INFINITY, h.data);
 
   // NaN
   h = halfFromFloat(NAN);
   sprintf(message, "NaN correctly converted to NaN representation");
-  printResultHalf((h.data & 0x7c00) == 0x7c00 && (h.data & 0x03ff) != 0x0000,
-                  message, NAN, h.data);
+  printResult((h.data & 0x7c00) == 0x7c00 && (h.data & 0x03ff) != 0x0000,
+              message, NAN, h.data);
 
   // Smallest positive normal number
   h = halfFromFloat(6.10352e-05f);
   sprintf(message, "6.10352e-05f correctly converted to 0x0400");
-  printResultHalf(h.data == 0x0400, message, 6.10352e-05f, h.data);
+  printResult(h.data == 0x0400, message, 6.10352e-05f, h.data);
 
   // Largest denormalized number
   h = halfFromFloat(6.09756e-05f);
   sprintf(message, "6.09756e-05f correctly converted to 0x03ff");
-  printResultHalf(h.data == 0x03ff, message, 6.09756e-05f, h.data);
+  printResult(h.data == 0x03ff, message, 6.09756e-05f, h.data);
 
   // Smallest positive denormalized number
   h = halfFromFloat(5.96046448e-08f);
   sprintf(message, "5.96046448e-08f correctly converted to 0x0001");
-  printResultHalf(h.data == 0x0001, message, 5.96046e-08f, h.data);
+  printResult(h.data == 0x0001, message, 5.96046e-08f, h.data);
 }
 
 int main() {
-  printf("Running tests...\n");
-
+  printf("\nHalf-precision float tests\n==========================\n");
+  printf("\nRegular values float round trips\n\n");
   // Regular values
   testRoundTrip(1.0f);
   testRoundTrip(0.5f);
@@ -177,6 +175,8 @@ int main() {
   testRoundTrip(-0.5f);
   testRoundTrip(-2.0f);
   testRoundTrip(-3.14f);
+
+  printf("\nEdge Case float round trips\n\n");
 
   // Edge cases
   testRoundTrip(0.0f);
@@ -188,10 +188,12 @@ int main() {
   // is not expected to round-trip correctly testRoundTrip(FLT_MIN);
   testRoundTrip(FLT_TRUE_MIN);
 
+  printf("\nSpecial half values\n\n");
+
   // Special cases for half
   testSpecialCases();
 
-  printf("Tests completed.\n");
+  printf("\nTests completed.\n");
 
   return 0;
 }

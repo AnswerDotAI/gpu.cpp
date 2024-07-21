@@ -7,14 +7,49 @@
 #include <cstdint>
 #include <cstdio>
 
+struct half;
+half halfFromFloat(float f);
+float halfToFloat(half h);
+
 /**
  * Experimental implementation of half-precision floating point conversion
  * functions.
  */
 struct half {
   uint16_t data;
-};
 
+  // Default constructor
+  half() : data(0) {}
+
+  // Constructor from float
+  half(float f) { *this = halfFromFloat(f); }
+
+  // Constructor from uint16_t
+  explicit half(uint16_t value) : data(value) {}
+
+  operator float() const { return halfToFloat(*this); }
+
+  // Conversion operator to uint16_t
+  operator uint16_t() const { return data; }
+
+  // Overload assignment operator from uint16_t
+  half &operator=(uint16_t value) {
+    data = value;
+    return *this;
+  }
+
+  // Overload assignment operator from another half
+  half &operator=(const half &other) {
+    data = other.data;
+    return *this;
+  }
+
+  // Overload assignment operator from float
+  half &operator=(float value) {
+    data = halfFromFloat(value);
+    return *this;
+  }
+};
 
 /**
  * @brief Converts a 32-bit float to a 16-bit half-precision float.
@@ -56,7 +91,8 @@ half halfFromFloat(float f) {
   const uint32_t floatExpMasked = float32 & FLOAT_EXP_MASK;
   const uint16_t halfSign =
       static_cast<uint16_t>(floatSignMasked >> FLOAT_HALF_SIGN_POS_OFFSET);
-  const uint16_t floatExp = static_cast<uint16_t>(floatExpMasked >> FLOAT_EXP_POS);
+  const uint16_t floatExp =
+      static_cast<uint16_t>(floatExpMasked >> FLOAT_EXP_POS);
   const uint32_t floatMantissa = float32 & FLOAT_MANTISSA_MASK;
 
   // Check for NaN
@@ -71,11 +107,13 @@ half halfFromFloat(float f) {
   const uint16_t floatExpHalfBias = floatExp - FLOAT_HALF_BIAS_OFFSET;
   const uint32_t floatMantissaRoundMask = floatMantissa & FLOAT_ROUND_BIT;
   const uint32_t floatMantissaRoundOffset = floatMantissaRoundMask << ONE;
-  const uint32_t floatMantissaRounded = floatMantissa + floatMantissaRoundOffset;
+  const uint32_t floatMantissaRounded =
+      floatMantissa + floatMantissaRoundOffset;
 
   // Handling denormalized numbers
   const uint32_t floatMantissaDenormShiftAmount = ONE - floatExpHalfBias;
-  const uint32_t floatMantissaWithHidden = floatMantissaRounded | FLOAT_HIDDEN_BIT;
+  const uint32_t floatMantissaWithHidden =
+      floatMantissaRounded | FLOAT_HIDDEN_BIT;
   const uint32_t floatMantissaDenorm =
       floatMantissaWithHidden >> floatMantissaDenormShiftAmount;
   const uint16_t halfMantissaDenorm = static_cast<uint16_t>(
@@ -91,7 +129,8 @@ half halfFromFloat(float f) {
 
   // Handling overflow
   const uint16_t halfExpNormOverflowOffset = floatExpHalfBias + ONE;
-  const uint16_t halfExpNormOverflow = halfExpNormOverflowOffset << HALF_EXP_POS;
+  const uint16_t halfExpNormOverflow = halfExpNormOverflowOffset
+                                       << HALF_EXP_POS;
   const uint16_t halfNormOverflow = halfSign | halfExpNormOverflow;
 
   // Handling normalized numbers
@@ -185,14 +224,17 @@ float halfToFloat(half h) {
   const uint16_t halfMantissaLeadingZeros = __builtin_clz(halfMantissa) - 16;
   const uint16_t halfDenormShiftAmount =
       halfMantissaLeadingZeros + HALF_FLOAT_DENORM_SA_OFFSET;
-  const uint32_t halfFloatDenormMantissaShiftAmount = halfDenormShiftAmount - TWO;
-  const uint32_t halfFloatDenormMantissa = halfMantissa
-                                     << halfFloatDenormMantissaShiftAmount;
-  const uint32_t floatDenormMantissa = halfFloatDenormMantissa & FLOAT_MANTISSA_MASK;
+  const uint32_t halfFloatDenormMantissaShiftAmount =
+      halfDenormShiftAmount - TWO;
+  const uint32_t halfFloatDenormMantissa =
+      halfMantissa << halfFloatDenormMantissaShiftAmount;
+  const uint32_t floatDenormMantissa =
+      halfFloatDenormMantissa & FLOAT_MANTISSA_MASK;
   const uint32_t halfFloatDenormShiftAmount = ONE - halfDenormShiftAmount;
   const uint32_t floatDenormExp = halfFloatDenormShiftAmount + FLOAT_EXP_BIAS;
   const uint32_t floatDenormExpPacked = floatDenormExp << FLOAT_EXP_POS;
-  const uint32_t floatDenorm = floatSign | floatDenormExpPacked | floatDenormMantissa;
+  const uint32_t floatDenorm =
+      floatSign | floatDenormExpPacked | floatDenormMantissa;
 
   // Handling special cases: infinity and NaN
   const uint32_t floatInf = floatSign | FLOAT_EXP_MASK;
