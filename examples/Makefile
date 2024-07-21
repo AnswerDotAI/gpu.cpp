@@ -1,5 +1,5 @@
 # List of targets (folders in your examples directory)
-TARGETS := gpu_puzzles hello_world matmul physics render shadertui
+TARGETS := float16 gpu_puzzles hello_world matmul physics render shadertui
 
 GPUCPP ?= $(shell pwd)/..
 CXX=clang++

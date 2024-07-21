@@ -215,12 +215,11 @@ fn main(
 }
 )";
   Context ctx = createContext(
-      /*instance descriptor */ {}, /*adapter options*/ {},
-      /*device descriptor*/
+      {}, {},
+      /*device descriptor, enabling f16 in WGSL*/
       {
           .requiredFeatureCount = 1,
-          .requiredFeatures =
-              std::array<WGPUFeatureName, 1>{WGPUFeatureName_ShaderF16}.data(),
+          .requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data(),
       });
   static constexpr size_t N = 10000;
   std::array<half, N> inputArr, outputArr;
