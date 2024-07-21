@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstring>
 #include <future>
+#include <initializer_list>
 #include <memory>
 #include <set>
 #include <string>
@@ -480,11 +481,8 @@ createTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
                                           WGPUBufferUsage_CopyDst |
                                           WGPUBufferUsage_CopySrc) {
   LOG(kDefLog, kTrace, "Creating tensor");
-  size_t numElements = 1;
-  for (size_t dim = 0; dim < shape.rank; dim++) {
-    numElements *= shape.data[dim];
-  }
-  size_t size = dtype == kf32 ? sizeBytes(dtype) * numElements : 0;
+  size_t numElements = size(shape);
+  size_t size = sizeBytes(dtype) * numElements;
   WGPUBufferDescriptor bufferDesc = {
       .usage = usage,
       .size = size,
@@ -522,8 +520,8 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype) {
 
 /**
  * @brief Overload of the tensor factory function to instantiate a tensor on
- * the GPU with a given shape, data type. Unlike the other overloads, this
- * overload also takes initial data to populate the tensor with.
+ * the GPU with a given shape, data type. This overload also takes initial
+ * float* data to populate the tensor with.
  *
  * The data is assumed to be of size equal to the product of the dimensions in
  * the shape, and is copied to the GPU buffer.
@@ -540,6 +538,37 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype) {
  */
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
                            float *data) {
+  assert(dtype == kf32);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+/**
+ * @brief Overload of the tensor factory function to instantiate a tensor on
+ * the GPU with a given shape, data type. This overload also takes initial
+ * half* data to populate the tensor with.
+ *
+ * The data is assumed to be of size equal to the product of the dimensions in
+ * the shape, and is copied to the GPU buffer.
+ *
+ * @param[in] ctx Context instance to manage the tensor
+ * @param[in] shape Shape of the tensor
+ * @param[in] dtype Data type of the tensor (e.g. kf32)
+ * @param[in] data Initial data to populate the tensor with
+ * @return Tensor instance representing the created tensor
+ *
+ * @code
+ * Tensor tensor = createTensor(ctx, {256, 256}, kf32, data);
+ * @endcode
+ */
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           half *data) {
+  assert(dtype == kf16);
   Tensor tensor =
       createTensor(ctx.pool, ctx.device, shape, dtype,
                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |

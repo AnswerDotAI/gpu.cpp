@@ -6,15 +6,16 @@ CXX=clang++
 GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
+INCLUDES ?= -I$(GPUCPP) -I$(GPUCPP)/third_party/headers
 
 default: examples/hello_world/build/hello_world
 
 pch:
-	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -x c++-header gpu.h -o build/gpu.h.pch
+	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -x c++-header gpu.h -o build/gpu.h.pch
 
 # TODO(avh): change extension based on platform
 lib:
-	mkdir -p build && $(CXX) -std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/libgpucpp.dylib
+	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/libgpucpp.dylib
 
 examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
 	$(LIBSPEC) && cd examples/hello_world && make build/hello_world && ./build/hello_world
@@ -33,7 +34,7 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 
 # Test 16-bit floating point type
 test-half:
-	clang++ numeric_types/half.cpp -I. -o build/half && ./build/half
+	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) -L$(LIBDIR) numeric_types/half.cpp -ldl -ldawn -o build/half && ./build/half
 
 docs: Doxyfile
 	doxygen Doxyfile
@@ -75,6 +76,7 @@ clean:
 	rm -rf examples/render/build/*
 	rm -f build/gpu.h.pch
 	rm -f build/libgpucpp.so
+	rm -f build/half
 
 clean-all:
 	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/* third_party/gpu-build third_party/gpu-subbuild third_party/gpu-src third_party/lib/libdawn.so third_party/lib/libdawn.dylib

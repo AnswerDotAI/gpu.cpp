@@ -1,10 +1,14 @@
+#include <array>
 #include <cfloat>
 #include <climits>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 
+#include "gpu.h"
 #include "half.h"
+
+using namespace gpu;
 
 #define EPSILON 0.01f
 #define COLOR_RESET "\033[0m"
@@ -67,9 +71,16 @@ void testRoundTrip(uint16_t value) {
   float f = halfToFloat(h);
   half result = halfFromFloat(f);
   char message[256];
-
   sprintf(message, "half 0x%04x correctly round tripped", value);
   printResult(result.data == value, message, (float)value, result.data);
+}
+
+void testRoundTrip(half value) {
+  float f = static_cast<float>(value);
+  half result = half(f);
+  char message[256];
+  sprintf(message, "half 0x%04x correctly round tripped", value.data);
+  printResult(result.data == value.data, message, (float)value, result.data);
 }
 
 void testSpecialCases() {
@@ -163,10 +174,31 @@ void testSpecialCases() {
   printResult(h.data == 0x0001, message, 5.96046e-08f, h.data);
 }
 
+void testContainers() {
+  {
+    std::array<half, 4> h = {0.0f, -0.0f, INFINITY, NAN};
+    testRoundTrip(h[0]);
+    testRoundTrip(h[1]);
+    testRoundTrip(h[2]);
+    testRoundTrip(h[3]);
+  }
+  {
+    Context ctx = createContext();
+    std::array<half, 8> h = {1.0f, 0.5f, 2.0f, 3.14f, 1.0, 2.0, 3.0, 4.0};
+    Tensor devH = createTensor(ctx, {h.size()}, kf16, h.data());
+    std::array<half, 8> h2;
+    toCPU(ctx, devH, h2.data(), sizeof(h2));
+    for (int i = 0; i < 8; ++i) {
+      printResult(h[i].data == h2[i].data, "Container round trip",
+                  static_cast<float>(h[i]), static_cast<float>(h2[i]));
+    }
+  }
+}
+
 int main() {
   printf("\nHalf-precision float tests\n==========================\n");
+
   printf("\nRegular values float round trips\n\n");
-  // Regular values
   testRoundTrip(1.0f);
   testRoundTrip(0.5f);
   testRoundTrip(2.0f);
@@ -177,8 +209,6 @@ int main() {
   testRoundTrip(-3.14f);
 
   printf("\nEdge Case float round trips\n\n");
-
-  // Edge cases
   testRoundTrip(0.0f);
   testRoundTrip(-0.0f);
   testRoundTrip(INFINITY);
@@ -189,9 +219,10 @@ int main() {
   testRoundTrip(FLT_TRUE_MIN);
 
   printf("\nSpecial half values\n\n");
-
-  // Special cases for half
   testSpecialCases();
+
+  printf("\nContainers and CPU/GPU round trip\n\n");
+  testContainers();
 
   printf("\nTests completed.\n");
 
