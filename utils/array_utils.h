@@ -29,7 +29,6 @@ static constexpr int kShowMaxCols = 8;
 /**
  * @brief Show a 2D array as a string, base implementation.
  *
- * @param numtype The type of the array elements. Must be int or float.
  * @param a The array to show.
  * @param rows The number of rows in the array.
  * @param cols The number of columns in the array.
@@ -97,7 +96,6 @@ std::string show(const numtype *a, size_t rows, size_t cols,
 /**
  * @brief Overload of `show()` for std::array.
  *
- * @param numtype The type of the array elements. Must be int or float.
  * @param a The array to show.
  * @param name The name of the array to show.
  * @return std::string The string representation of the array.
@@ -115,6 +113,7 @@ std::string show(const std::array<numtype, rows * cols> &a,
 /**
  * @brief Overload of `show()` for float std::array.
  * @param a The array to show.
+ * @param name The name of the array to show.
  * @return std::string The string representation of the array.
  *
  * @code

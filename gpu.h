@@ -357,6 +357,17 @@ struct CallbackData {
 };
 
 /**
+ * @brief Staging buffer and callback data for copying data between the GPU and
+ * CPU.
+ */
+struct CopyData {
+  WGPUCommandBuffer commandBuffer;
+  WGPUBuffer readbackBuffer;
+  std::promise<void> promise;
+  std::future<void> future;
+};
+
+/**
  * @brief Represents handles + metadata for a reusable kernel on the GPU.
  * The struct members can be divided into "consumed upon dispatch"
  * (commandBuffer) and reusable ahead-of-time setup (all other members).
@@ -714,39 +725,14 @@ inline void wait(Context &ctx, std::future<void> &future) {
  * @param[in] tensor Tensor instance representing the GPU buffer to copy from
  * @param[out] data Pointer to the CPU memory to copy the data to
  * @param[in] bufferSize Size of the data buffer in bytes
+ * @param[in] op StagingBuffer instance to manage the operation
  *
  * @code
  * toCPU(ctx, tensor, data, bufferSize);
  * @endcode
  */
-inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
-  WGPUDevice device = ctx.device;
-  struct CopyOp {
-    WGPUCommandBuffer commandBuffer;
-    WGPUBuffer readbackBuffer;
-    std::promise<void> promise;
-    std::future<void> future;
-    CallbackData callbackData;
-  };
-  CopyOp op;
-  op.future = op.promise.get_future();
-  {
-    WGPUBufferDescriptor readbackBufferDescriptor = {
-        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
-        .size = bufferSize,
-    };
-    op.readbackBuffer =
-        wgpuDeviceCreateBuffer(device, &readbackBufferDescriptor);
-  }
-  {
-    WGPUCommandEncoder commandEncoder;
-    WGPUComputePassEncoder computePassEncoder;
-    commandEncoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
-    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
-                                         op.readbackBuffer, 0, bufferSize);
-    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
-  }
+inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
+                  CopyData &op) {
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
   CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
                                &op.future};
@@ -773,6 +759,43 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
       },
       &callbackData);
   wait(ctx, op.future);
+}
+
+/**
+ * @brief Overload of the toCPU function to copy data from a GPU buffer to CPU
+ * but initializes a staging buffer and promise/future for the operation for
+ * you.
+ *
+ * For simple use cases, this overload is recommended as it abstracts away the
+ * staging buffer and promise/future management. For more custom use cases where
+ * the staging buffer is initialized ahead of time, use the other overload.
+ *
+ * @param[in] ctx Context instance to manage the operation
+ * @param[in] tensor Tensor instance representing the GPU buffer to copy from
+ * @param[in] bufferSize Size of the data buffer in bytes
+ * @param[out] data Pointer to the CPU memory to copy the data to
+ */
+inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
+  CopyData op;
+  op.future = op.promise.get_future();
+  {
+    WGPUBufferDescriptor readbackBufferDescriptor = {
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
+        .size = bufferSize,
+    };
+    op.readbackBuffer =
+        wgpuDeviceCreateBuffer(ctx.device, &readbackBufferDescriptor);
+  }
+  {
+    WGPUCommandEncoder commandEncoder;
+    WGPUComputePassEncoder computePassEncoder;
+    commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
+    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
+                                         op.readbackBuffer, 0, bufferSize);
+    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
+  }
+  toCPU(ctx, tensor, data, bufferSize, op);
 }
 
 /**
@@ -909,9 +932,10 @@ inline Shape cdiv(Shape total, Shape group) {
  * @param[in] ctx Context instance to manage the kernel
  * @param[in] code WGSL code for the kernel
  * @param[in] dataBindings Pointer to a span of tensors bound to the kernel
- * @param[in] numInputs Number of tensors pointed to by dataBindings
- * @param[in] nThreads Shape of the workgroup size for the kernel, must be of
- * rank 3
+ * @param[in] numTensors Number of tensors in the dataBindings span
+ * @param[in] viewOffsets Pointer to an array of view offsets for the input
+ * tensors
+ * @param[in] nWorkgroups Shape of the workgroup
  * @param[in] params Optional parameters for the kernel. If the kernel does not
  * have any parameters, use NoParam. This is cast as void* to allow for
  * arbitrary types to be passed as parameters.
@@ -1110,6 +1134,7 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
  * @param[in] ctx Context instance to manage the kernel, from which the queue
  * for the GPU is obtained
  * @param[in] kernel Kernel instance to dispatch
+ * @param[in] promise Promise to set when the kernel has finished executing
  *
  * @code
  * dispatchKernel(ctx, kernel);
