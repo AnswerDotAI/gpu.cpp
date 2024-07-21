@@ -31,8 +31,9 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/physics && make build/physics
 	cd examples/render && make build/render
 
-half-tests:
-	clang++ half.cpp -I. -o half && ./half
+# Test 16-bit floating point type
+test-half:
+	clang++ numeric_types/half.cpp -I. -o build/half && ./build/half
 
 docs: Doxyfile
 	doxygen Doxyfile

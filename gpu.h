@@ -14,9 +14,10 @@
 #include <utility> // std::pair
 #include <vector>
 
-#include "utils/logging.h"
 #include "webgpu/webgpu.h"
-#include "half.h"
+
+#include "utils/logging.h"
+#include "numeric_types/half.h"
 
 namespace gpu {
 
