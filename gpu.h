@@ -286,7 +286,9 @@ struct KernelCode {
                     NumType precision = kf32)
       : data(pData), workgroupSize({workgroupSize, 1, 1}),
         precision(precision) {
-
+    if (precision == kf16) {
+      data = "enable f16;\n" + data;
+    }
     replaceAll(data, "{{workgroupSize}}", toString({workgroupSize, 1, 1}));
     replaceAll(data, "{{precision}}", toString(precision));
     LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
@@ -664,7 +666,7 @@ inline void check(bool condition, const char *message,
  */
 inline Context createContext(const WGPUInstanceDescriptor &desc = {},
                              const WGPURequestAdapterOptions &adapterOpts = {},
-                             WGPUDeviceDescriptor devDescriptor = {}) {
+                             const WGPUDeviceDescriptor &devDescriptor = {}) {
   Context context;
   {
     context.instance = wgpuCreateInstance(&desc);
