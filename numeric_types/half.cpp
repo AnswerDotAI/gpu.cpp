@@ -9,6 +9,8 @@
 #include "half.h"
 
 using namespace gpu;
+using std::isnan;
+using std::isinf;
 
 #define EPSILON 0.01f
 #define COLOR_RESET "\033[0m"

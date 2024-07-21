@@ -7,6 +7,11 @@ GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 INCLUDES ?= -I$(GPUCPP) -I$(GPUCPP)/third_party/headers
+ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
+    STDLIB :=
+else
+    STDLIB := -stdlib=libc++
+endif
 
 default: examples/hello_world/build/hello_world
 
@@ -33,8 +38,8 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/render && make build/render
 
 # Test 16-bit floating point type
-test-half:
-	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) -L$(LIBDIR) numeric_types/half.cpp -ldl -ldawn -o build/half && ./build/half
+test-half: dawnlib check-clang
+	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -ldawn -ldl -o build/half && ./build/half
 
 docs: Doxyfile
 	doxygen Doxyfile
