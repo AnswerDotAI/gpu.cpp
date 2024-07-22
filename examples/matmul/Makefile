@@ -16,6 +16,7 @@ run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)
 
 # Use clang -v to see the include paths
+# Note in this example optimization is turned on
 build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -o ./build/$(TARGET)
 

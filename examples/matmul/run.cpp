@@ -221,7 +221,7 @@ inline KernelCode createMatmul3(const char *shaderTemplate, const size_t M,
                           {"{{TM}}", toString(TM)}});
   if (unrolling) {
     std::string unrolledCode = loopUnrolling(codeString);
-    LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
+    // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return {unrolledCode, workgroupSize};
   } else {
     return {codeString, workgroupSize};
@@ -337,7 +337,7 @@ inline KernelCode createMatmul4(const char *shaderTemplate, const size_t M,
                           });
   if (unrolling) {
     std::string unrolledCode = loopUnrolling(codeString);
-    LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
+    // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return {unrolledCode, workgroupSize};
   } else {
     return {codeString, workgroupSize};
@@ -459,7 +459,7 @@ inline KernelCode createMatmulWithVectorization(const char *shaderTemplate, cons
                           });
   if (unrolling) {
     std::string unrolledCode = loopUnrolling(codeString);
-    LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
+    // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return {unrolledCode, workgroupSize};
   } else {
     return {codeString, workgroupSize};
@@ -553,7 +553,7 @@ Kernel selectMatmul(Context &ctx, int version,
                           /*nWorkgroups*/ nWorkgroups);
   } else if (version == 4 || version == 6) {
     static constexpr size_t BM = 64;
-    static constexpr size_t BK = 16;
+    static constexpr size_t BK = 8;
     static constexpr size_t BN = 64;
     static constexpr size_t TM = BM / BK;
     static constexpr size_t TN = BN / BK;
@@ -571,7 +571,7 @@ Kernel selectMatmul(Context &ctx, int version,
                           /*nWorkgroups*/ nWorkgroups);
   } else if (version == 7) {
     static constexpr size_t BM = 64;
-    static constexpr size_t BK = 16;
+    static constexpr size_t BK = 8;
     static constexpr size_t BN = 64;
     static constexpr size_t TM = BM / BK;
     static constexpr size_t TN = BN / BK;
@@ -607,32 +607,35 @@ void runTest(int version, size_t M, size_t K, size_t N,
   Tensor input = createTensor(ctx, Shape{M, K}, kf32, inputPtr.get());
   Tensor weights =
       createTensor(ctx, Shape{N, K}, kf32, weightsPtr.get()); // column-major
-  Tensor output = createTensor(ctx, Shape{M, N}, kf32);
 
-  constexpr size_t nIter = 5;
+  constexpr size_t nIter = 30;
 
   // Initialize Kernel and bind GPU buffers
-  LOG(kDefLog, kInfo, "Creating Kernel");
-  Kernel kernel = selectMatmul(ctx, version, {input, weights, output}, M, K, N);
 
-  // Dispatch kernel execution
-  LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...",
-      version, nIter);
 
-  // pre-allocate promises and futures for async dispatch
-  // TODO(avh): implement a pooling mechanism for promises/futures in gpu.h
+  // pre-allocate for async dispatch
   std::array<std::promise<void>, nIter> promises;
   std::array<std::future<void>, nIter> futures;
+  std::array<Kernel, nIter> kernels;
+  std::array<Tensor, nIter> outputs;
   for (int i = 0; i < nIter; i++) {
     futures[i] = promises[i].get_future();
+    outputs[i] = createTensor(ctx, Shape{M, N}, kf32);
+    kernels[i] = selectMatmul(ctx, version, {input, weights, outputs[i]}, M, K, N);
   }
+
+  printf("[ Press enter to start tests ... ]\n");
+  getchar();
+  LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...",
+      version, nIter);
 
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < nIter; i++) {
-    dispatchKernel(ctx, kernel, promises[i]);
+    dispatchKernel(ctx, kernels[i], promises[i]);
+  }
+  for (int i = 0; i < nIter; i++) {
     wait(ctx, futures[i]);
-    resetCommandBuffer(ctx.device, kernel);
   }
   auto end = std::chrono::high_resolution_clock::now();
 
@@ -646,9 +649,9 @@ void runTest(int version, size_t M, size_t K, size_t N,
                  1000000000.0 * static_cast<float>(nIter);
 
   LOG(kDefLog, kInfo, "Copying result to CPU");
-  toCPU(ctx, output, outputPtr.get(), M * N * sizeof(float));
+  toCPU(ctx, outputs[0], outputPtr.get(), M * N * sizeof(float));
   LOG(kDefLog, kInfo, "%s",
-      show<float>(outputPtr.get(), M, N, "Output").c_str());
+      show<float>(outputPtr.get(), M, N, "Output[0]").c_str());
 
   LOG(kDefLog, kInfo, "\n\n===================================================================="
       "============\nExecution Time: (M = %d, K = %d, N = %d) x %d iterations "
@@ -661,7 +664,7 @@ void runTest(int version, size_t M, size_t K, size_t N,
 
 int main() {
   char* version_str = getenv("MATMUL_VERSION");
-  int version = version_str == NULL ? 6 : atoi(version_str);
+  int version = version_str == NULL ? 7 : atoi(version_str);
     // 1 == naive matmul
     // 2 == tiling
     // 3 == 1D blocktiling

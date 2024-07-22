@@ -74,6 +74,7 @@ clean-dawnlib:
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
+	rm -rf examples/float16/build/*
 	rm -rf examples/gpu_puzzles/build/*
 	rm -rf examples/hello_world/build/*
 	rm -rf examples/matmul/build/matmul

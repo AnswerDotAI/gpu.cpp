@@ -291,7 +291,7 @@ struct KernelCode {
     }
     replaceAll(data, "{{workgroupSize}}", toString({workgroupSize, 1, 1}));
     replaceAll(data, "{{precision}}", toString(precision));
-    LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
+    LOG(kDefLog, kTrace, "Shader code:\n%s", data.c_str());
   }
 
   /**
