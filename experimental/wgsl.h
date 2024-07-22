@@ -61,10 +61,10 @@ std::string loopUnrolling(const std::string& code, int threshold = 32) {
 	std::string(match[1]) + "++) /* Skipped */ {"+
 	std::string(match[4]) +
 	"}";
-      LOG(kDefLog, kInfo, "Roll loop:%s", skippedLoop.c_str());
+      // LOG(kDefLog, kInfo, "Roll loop:%s", skippedLoop.c_str());
       unrolledCode = unrolledCode.substr(0, match.position()) + skippedLoop + unrolledCode.substr(match.position() + match.length());
     } else {
-      LOG(kDefLog, kInfo, "Unroll loop(var: %s, start:%d, end:%d, body:%s)", varName.c_str(), start, end, loopBody.c_str());
+      // LOG(kDefLog, kInfo, "Unroll loop(var: %s, start:%d, end:%d, body:%s)", varName.c_str(), start, end, loopBody.c_str());
       std::string unrolledLoop;
       for (int i = start; i < end; ++i) {
         std::string unrolledIteration = loopBody;

@@ -18,7 +18,7 @@ static const char *kLevelStr[] = {"error", "warn", "info", "trace"};
  */
 struct Logger {
   FILE *stream;
-  char buffer[1024];
+  char buffer[32768]; // TODO(avh): Expand as needed or fail gracefully.
   int level;
 };
 
