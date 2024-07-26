@@ -165,7 +165,7 @@ fn matmul(
  * */
 KernelCode MatmulShader(size_t workgroupSize, const char *shaderRaw,
                         NumType precision, size_t M, size_t K, size_t N) {
-  KernelCode shader = createShader(shaderRaw, workgroupSize, precision);
+  KernelCode shader = {shaderRaw, workgroupSize, precision};
   replaceAll(shader.data, "{{M}}", std::to_string(M));
   replaceAll(shader.data, "{{K}}", std::to_string(K));
   replaceAll(shader.data, "{{N}}", std::to_string(N));

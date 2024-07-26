@@ -25,11 +25,11 @@ void testResidual(Context &ctx) {
   Tensor output = createTensor(ctx, {N}, kf32, outputArr.data());
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  ShaderCode shaderCode = createShader(kShaderResidual, workgroupSize, kf32);
+  KernelCode shaderCode = {kShaderResidual, workgroupSize, kf32};
   LOG(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
   Kernel op =
-      createKernel(ctx, createShader(kShaderResidual, workgroupSize, kf32),
-                   Bindings{input1, input2, output}, /* nthreads */ {N, 1, 1});
+      createKernel(ctx, {kShaderResidual, workgroupSize, kf32},
+                   Bindings{input1, input2, output}, {cdiv(N, workgroupSize), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -55,13 +55,13 @@ void testHadamard(Context &ctx) {
   Tensor input1 = createTensor(ctx, {N}, kf32, input1Arr.data());
   Tensor input2 = createTensor(ctx, {N}, kf32, input2Arr.data());
   Tensor output = createTensor(ctx, {N}, kf32, outputArr.data());
-  ShaderCode shaderCode = createShader(kShaderHadamard, workgroupSize, kf32);
+  KernelCode shaderCode = {kShaderHadamard, workgroupSize, kf32};
   LOG(kDefLog, kInfo, "Shader Code :\n%s", shaderCode.data.c_str());
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   Kernel op =
-      createKernel(ctx, createShader(kShaderHadamard, workgroupSize, kf32),
-                   Bindings{input1, input2, output}, /* nthreads */ {N, 1, 1});
+      createKernel(ctx, {kShaderHadamard, workgroupSize, kf32},
+                   Bindings{input1, input2, output}, {cdiv(N, workgroupSize), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   LOG(kDefLog, kInfo, "%s",
@@ -83,7 +83,7 @@ void testMatmul(Context &ctx) {
   Tensor output = createTensor(ctx, {M, N}, kf32, outputArr.data());
   Kernel op = createKernel(
       ctx, MatmulShader(256, kShaderMatMul1, kf32, M, K, N),
-      Bindings{input1, input2, output}, /* nthreads */ {M * N, 1, 1});
+      Bindings{input1, input2, output}, {cdiv(M * N, 256), 1, 1});
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   dispatchKernel(ctx, op, promise);
@@ -141,9 +141,9 @@ void testGelu(Context &ctx) {
   Tensor geluIn = createTensor(ctx, {N}, kf32, inputArr.data());
   Tensor geluOut = createTensor(ctx, {N}, kf32, outputArr.data());
   LOG(kDefLog, kInfo, "Creating GELU Shader");
-  ShaderCode shader = createShader(kShaderGelu, 256, kf32);
+  KernelCode shader = {kShaderGelu, 256, kf32};
   Kernel op = createKernel(ctx, shader, Bindings{geluIn, geluOut},
-                           /* nthreads */ {N, 1, 1});
+                           {cdiv(N, 256), 1, 1});
   LOG(kDefLog, kInfo, "Workgroup size: %s",
       toString(shader.workgroupSize).c_str());
   LOG(kDefLog, kInfo, "dispatching GELU Shader");
@@ -188,7 +188,7 @@ void testLayerNorm(Context &ctx) {
   Tensor output = createTensor(ctx, {N, C}, kf32, outputArr.data());
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, createShader(kShaderLayerNorm1, 256, kf32),
+  Kernel op = createKernel(ctx, {kShaderLayerNorm1, 256, kf32},
                            Bindings{input, weight, bias, output},
                            /* n threads */ {N, 1, 1}, params);
   dispatchKernel(ctx, op, promise);
@@ -234,8 +234,8 @@ void testSoftmax(Context &ctx) {
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(
-      ctx, createShader(kShaderSoftmax1, 256, kf32), Bindings{input, output},
-      /* nthreads */ Shape{B * T, 1, 1}, SoftmaxParam{B * T, C});
+      ctx, {kShaderSoftmax1, 256, kf32}, Bindings{input, output},
+      Shape{cdiv(B * T, 256), 1, 1}, SoftmaxParam{B * T, C});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
