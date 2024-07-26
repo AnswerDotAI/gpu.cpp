@@ -34,6 +34,7 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/gpu_puzzles && make build/gpu_puzzles
 	cd examples/hello_world && make build/hello_world
 	cd examples/matmul && make build/matmul
+	cd examples/transpose && make build/transpose
 	cd examples/physics && make build/physics
 	cd examples/render && make build/render
 
@@ -78,6 +79,7 @@ clean:
 	rm -rf examples/gpu_puzzles/build/*
 	rm -rf examples/hello_world/build/*
 	rm -rf examples/matmul/build/matmul
+	rm -rf examples/transpose/build/transpose
 	rm -rf examples/physics/build/*
 	rm -rf examples/render/build/*
 	rm -f build/gpu.h.pch
@@ -108,7 +110,7 @@ check-linux-vulkan:
 	        echo "Vulkan is installed."; \
 	        vulkaninfo; \
 	    else \
-        	echo "Vulkan is not installed. Please install Vulkan drivers to continue. On Debian / Ubuntu: sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools"; \
+		echo "Vulkan is not installed. Please install Vulkan drivers to continue. On Debian / Ubuntu: sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools"; \
 	        exit 1; \
 	    fi \
 	else \
