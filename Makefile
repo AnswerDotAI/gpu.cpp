@@ -27,8 +27,8 @@ examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world
 
 dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dylib),,run_setup)
 
-run_setup: check-python
-	python3 setup.py
+run_setup:
+	sh ./download_dawn.sh
 
 all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/gpu_puzzles && make build/gpu_puzzles
@@ -97,9 +97,6 @@ check-clang:
 
 check-cmake:
 	@command -v cmake >/dev/null 2>&1 || { echo >&2 "Please install cmake with 'sudo apt-get install cmake' or 'brew install cmake'"; exit 1; }
-
-check-python:
-	@command -v python3 >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 
 
 check-linux-vulkan:
 	@echo "Checking system type and Vulkan availability..."
