@@ -16,14 +16,11 @@ run: ./build/$(TARGET) dawnlib
 
 dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
 
-run_setup: check-python
-	cd $(GPUCPP) && python3 setup.py
+run_setup:
+	cd $(GPUCPP) && sh ./download_dawn.sh
 
 build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o ./build/$(TARGET)
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
-
-check-python:
-	@command -v python3 >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 

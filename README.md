@@ -30,8 +30,6 @@ For more advanced users and release deployments, we include `cmake` examples for
 To build a gpu.cpp project, you will need to have installed on your system:
 
 - `clang++` compiler installed with support for C++17.
-- `python3` and above, to run the script which downloads the Dawn shared library.
-make to build the project.
 - `make` to build the project.
 - Only on Linux systems - Vulkan drivers. If Vulkan is not installed, you can run `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install them.
 
@@ -45,7 +43,7 @@ After cloning the repo, from the top-level gpu.cpp, you should be able to build 
 make
 ```
 
-The first time you build and run the project this way, it will download a prebuilt shared library for the Dawn native WebGPU implementation automatically (using the setup.py script). This places the Dawn shared library in the third_party/lib directory. Afterwards you should see `libdawn.dylib` on MacOS or `libdawn.so` on Linux. This download only occurs once.
+The first time you build and run the project this way, it will download a prebuilt shared library for the Dawn native WebGPU implementation automatically (using the download_dawn.sh script). This places the Dawn shared library in the third_party/lib directory. Afterwards you should see `libdawn.dylib` on MacOS or `libdawn.so` on Linux. This download only occurs once.
 
 The build process itself should take a few seconds. If the build and executions is successful, you should see the output of the GELU computation:
 

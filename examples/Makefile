@@ -59,8 +59,5 @@ clean: $(addprefix clean_, $(TARGETS))
 
 dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
 
-run_setup: check-python
-	cd $(GPUCPP) && (command -v python3 >/dev/null 2>&1 && python3 setup.py || python setup.py)
-
-check-python:
-	@command -v python3 >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 
+run_setup:
+	cd $(GPUCPP) && sh ./download_dawn.sh

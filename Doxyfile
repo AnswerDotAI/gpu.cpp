@@ -1013,7 +1013,7 @@ RECURSIVE              = NO
 # run.
 
 # since this is embedded in the website, no need to render README
-EXCLUDE                = "./setup.py" "./examples" "./README.md"
+EXCLUDE                = "./examples" "./README.md"
 EXCLUDE_PATTERNS       = "*/third_party/* */docs/* */examples/* *.py"
 EXCLUDE_SYMLINKS       = NO
 EXCLUDE_SYMBOLS        = "third_party/ docs/ examples/"
