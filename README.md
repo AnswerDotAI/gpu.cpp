@@ -18,9 +18,9 @@ With gpu.cpp we want to enable a high-leverage library for individual developers
 
 The implementation aims for a small API surface area with minimum boilerplate. There are a small number of library operations to carry out an broad range of low-level GPU operations. We avoid abstractions that add layers of indirection, making the mapping between the gpu.cpp library to raw WebGPU API clear when it's needed.
 
-In this spirit of fast experimentation, we also want near- instantaneous C++ builds taking no more than a second or two even on modestly capable personal computing devices. With this in mind, we not only keep the API surface area small, but also keep the implementation small and we also provide a prebuilt binary of the Dawn native WebGPU implementation.
+In this spirit of fast experimentation, we also want near-instantaneous C++ builds taking no more than a second or two even on modestly capable personal computing devices. With this in mind, we not only keep the API surface area small, but also keep the implementation small and we also provide a prebuilt binary of the Dawn native WebGPU implementation.
 
-The core library implementation in the header-only `gpu.h` source code is around 1000 lines of code. In addition to enabling instantaneous, semi-interactive compilation cycles, the small implementation surface area keeps maintenance burden low and the velocity of improvements high. 
+The core library implementation in the header-only `gpu.h` source code is around 1000 lines of code. In addition to enabling instantaneous, semi-interactive compilation cycles, the small implementation surface area keeps maintenance burden low and the velocity of improvements high.
 We also pre-build Google's Dawn WebGPU implementation as a shared library binary. This allows builds to link the shared library with each build and incorporate Google's powerful native WebGPU implementation without paying the cost of re-compiling Dawn during development cycles.
 
 For more advanced users and release deployments, we include `cmake` examples for building both Dawn with gpu.cpp end-to-end, but this is not required nor recommended for most users to get started.
@@ -31,7 +31,7 @@ To build a gpu.cpp project, you will need to have installed on your system:
 
 - `clang++` compiler installed with support for C++17.
 - `python3` and above, to run the script which downloads the Dawn shared library.
-make to build the project.
+  make to build the project.
 - `make` to build the project.
 - Only on Linux systems - Vulkan drivers. If Vulkan is not installed, you can run `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install them.
 
@@ -115,7 +115,7 @@ fn main(
     let i: u32 = GlobalInvocationID.x;
     if (i < arrayLength(&inp)) {
         let x: f32 = inp[i];
-        out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
+        out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR
                  * (x + .044715 * x * x * x))), x, x > 10.0);
     }
 }
@@ -157,7 +157,7 @@ library. The ahead-of-time resource acquisition functions are prefaced with
 `create*`, such as:
 
 - `createContext()` - constructs a reference to the GPU device context (`Context`).
-- `createTensor()` - acquires a contiguous buffer on the GPU (`Tensor`). 
+- `createTensor()` - acquires a contiguous buffer on the GPU (`Tensor`).
 - `createKernel()` - constructs a handle to resources for the GPU computation (`Kernel`), taking the shader code as input and the tensor resources to bind.
 
 These resource acquisition functions are tied to resource types for interacting with the GPU:
@@ -186,7 +186,7 @@ This example is available in [examples/hello_world/run.cpp](https://github.com/A
 
 You can explore the example projects in
 [examples/](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/) which
-illustrate how to use gpu.cpp as a library. 
+illustrate how to use gpu.cpp as a library.
 
 After you have run `make` in the top-level directory which retrieves the prebuilt Dawn shared library, you can run each example by navigating to its directory and running `make` from the example's directory.
 
@@ -221,9 +221,9 @@ gpu.cpp is aimed at enabling projects requiring portable on-device GPU computati
 
 Although gpu.cpp is meant for any general purpose GPU computation and not strictly AI, one area we're interested in is pushing the limits exploring the intersection of new algorithms for post-training and on-device compute.
 
-To date, AI research has primarily been built with CUDA as the priveledged first-class target. CUDA has been dominant at large scale training and inference but at the other end of the the spectrum in the world of GPU compute on personal devices, there exists far more heterogeneity in the hardware and software stack. 
+To date, AI research has primarily been built with CUDA as the priveledged first-class target. CUDA has been dominant at large scale training and inference but at the other end of the the spectrum in the world of GPU compute on personal devices, there exists far more heterogeneity in the hardware and software stack.
 
-GPU compute in this personal device ecosystem has been largely limited to a small group of experts such as game engine developers and engineers working directly on ML compilers or inference runtimes. Along with that, implementing against the Vulkan or even WebGPU API directly tends to be targeted mostly towards infrastrcture scale efforts - game engines, production ML inference engines, large software packages. 
+GPU compute in this personal device ecosystem has been largely limited to a small group of experts such as game engine developers and engineers working directly on ML compilers or inference runtimes. Along with that, implementing against the Vulkan or even WebGPU API directly tends to be targeted mostly towards infrastrcture scale efforts - game engines, production ML inference engines, large software packages.
 
 We want to make it easier for a broader range of projects to harness the power of GPUs on personal devices. With a small amount of code, we can access the GPU at a low-level, focusing on directly implementing algorithms rather than the scaffolding and tech stack around the GPU. For example, in our AI research there's much to explore with the various forms of dynamic/conditional post-training computation - dynamic use of adapters, sparsity, model compression, realtime multimodal integrations etc.
 
@@ -233,7 +233,7 @@ gpu.cpp lets us implement and drop-in any algorithm with fine-grained control of
 
 gpu.cpp is meant for developers with some familiarity with C++ and GPU programming. It is not a high-level numerical computing or machine learning framework or inference engine, though it can be used in support of such implementations.
 
-Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. gpu.cpp leverages WebGPU as a portable *native* GPU API first and foremost, with the possibility of running in the browser being a convenient additional benefit in the future. 
+Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. gpu.cpp leverages WebGPU as a portable _native_ GPU API first and foremost, with the possibility of running in the browser being a convenient additional benefit in the future.
 
 If you find it counterintuitive, as many do, that WebGPU is a native technology and not just for the web, watch Elie Michel's excellent talk ["WebGPU is Not Just About the Web"](https://www.youtube.com/watch?v=qHrx41aOTUQ).
 
@@ -241,13 +241,13 @@ Finally, the focus of gpu.cpp is general-purpose GPU computation rather than ren
 
 ## Limitations and Upcoming Features
 
-*API Improvements* - gpu.cpp is a work-in-progress and there are many features and improvements to come. At this early stage, we expect the API design to evolve as we identify improvements / needs from use cases. In particular, the handling of structured parameters and asynchronous dispatch will undergo refinement and maturation in the short-term.
+_API Improvements_ - gpu.cpp is a work-in-progress and there are many features and improvements to come. At this early stage, we expect the API design to evolve as we identify improvements / needs from use cases. In particular, the handling of structured parameters and asynchronous dispatch will undergo refinement and maturation in the short-term.
 
-*Browser Targets* - In spite of using WebGPU we haven't tested builds targeting the browser yet though this is a short-term priority.
+_Browser Targets_ - In spite of using WebGPU we haven't tested builds targeting the browser yet though this is a short-term priority.
 
-*Reusable Kernel Library* - Currently the core library is strictly the operations and types for interfacing with the WebGPU API, with some specific use case example WGSL implementations in `examples/`. Over time, as kernel implementations mature we may migrate some of the reusable operations from specific examples into a small reusable kernel library.
+_Reusable Kernel Library_ - Currently the core library is strictly the operations and types for interfacing with the WebGPU API, with some specific use case example WGSL implementations in `examples/`. Over time, as kernel implementations mature we may migrate some of the reusable operations from specific examples into a small reusable kernel library.
 
-*More Use Case Examples and Tests* - Expect an iteration loop of use cases to design tweaks and improvements, which in turn make the use cases cleaner and easier to write. One short term use cases to flesh out the kernels from [llm.c](https://github.com/karpathy/llm.c) in WebGPU form. As these mature into a reusable kernel library, we hope to help realize the potential for WebGPU compute in AI.
+_More Use Case Examples and Tests_ - Expect an iteration loop of use cases to design tweaks and improvements, which in turn make the use cases cleaner and easier to write. One short term use cases to flesh out the kernels from [llm.c](https://github.com/karpathy/llm.c) in WebGPU form. As these mature into a reusable kernel library, we hope to help realize the potential for WebGPU compute in AI.
 
 ## Troubleshooting
 
