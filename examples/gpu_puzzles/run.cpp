@@ -432,7 +432,91 @@ void puzzle12(Context &ctx) {
 }
 
 
-// Puzzles 13 and 14 Coming Soon!
+=// Puzzle 13 : Axis Sum
+// Implement a kernel that computes a sum over each column of a and stores it in out.
+
+const char *kPuzzle13 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+struct Params {
+  TPB: u32,
+  size: u32,
+};
+
+var<workgroup> cache: array<f32, 256>;
+
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    // Your code here
+}
+)";
+void puzzle13(Context &ctx) {
+  printf("\n\nPuzzle 13\n\n");
+  static constexpr size_t N = 6;
+  static constexpr size_t TPB = 8;
+  static constexpr size_t BATCH = 4;
+  Tensor a = createTensor(ctx, {BATCH, N}, kf32, makeData<N * BATCH>().data());
+  Tensor output = createTensor(ctx, {BATCH}, kf32);
+  struct Params {
+    uint32_t TPB = TPB;
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, {kPuzzle13, {TPB, 1, 1}},
+                   Bindings{a, output}, {1, BATCH, 1}, Params{TPB, N});
+  showResult<BATCH>(ctx, op, output);
+}
+
+// Puzzle 14 : Matrix Multiply!!
+// Implement a kernel that computes the matrix product of a and b and stores it in out.
+// Tip: The most efficient algorithm here will copy a block into shared memory before 
+// computing each of the individual row-column dot products. This is easy to do if the 
+// matrix fits in shared memory. Do that case first. Then update your code to compute a 
+// partial dot-product and iteratively move the part you copied into shared memory. You 
+// should be able to do the hard case in 6 global reads.
+const char *kPuzzle14 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> output: array<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+struct Params {
+  TPB: u32,
+  size: u32,
+};
+
+var<workgroup> a_shared: array<f32, 256>;
+var<workgroup> b_shared: array<f32, 256>;
+
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    // Your code here
+}
+)";
+void puzzle14(Context &ctx) {
+  printf("\n\nPuzzle 14\n\n");
+  static constexpr size_t N = 2;
+  static constexpr size_t TPB = 3;
+  Tensor a = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor b = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor output = createTensor(ctx, {N, N}, kf32);
+  struct Params {
+    uint32_t TPB = TPB;
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, {kPuzzle14, {TPB, TPB, 1}},
+                   Bindings{a, b, output}, {1, 1, 1}, Params{TPB, N});
+  showResult<N, N, N>(ctx, op, output);
+}
 
 
 int main(int argc, char **argv) {

@@ -558,7 +558,147 @@ void puzzle12(Context &ctx) {
 }
 
 
-// Puzzles 13 and 14 Coming Soon!
+// Puzzle 13 : Axis Sum
+// Implement a kernel that computes a sum over each column of a and stores it in out.
+
+const char *kPuzzle13 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+struct Params {
+  TPB: u32,
+  size: u32,
+};
+
+var<workgroup> cache: array<f32, 256>;
+
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let i = GlobalInvocationID.x;
+    let local_i = LocalInvocationID.x;
+    let batch = GlobalInvocationID.y;
+
+    if (i < params.size) {
+        // Copy and sync
+        cache[local_i] = a[batch * params.size + i];
+        
+    }
+
+    workgroupBarrier();
+
+
+    // Sum over each col
+    if (i < params.size) {
+      for (var k: u32 = 0u; k < 3u; k = k + 1u) {
+          let p = 1u << k;
+          if (local_i % (p * 2u) == 0u && i + p < params.size) {
+              cache[local_i] = cache[local_i] + cache[local_i + p];
+          }
+      }
+    }
+
+    workgroupBarrier();
+
+    // Each block corresponds to a different output position
+    if (local_i == 0u) {
+        output[batch] = cache[0];
+    }
+}
+)";
+void puzzle13(Context &ctx) {
+  printf("\n\nPuzzle 13\n\n");
+  static constexpr size_t N = 6;
+  static constexpr size_t TPB = 8;
+  static constexpr size_t BATCH = 4;
+  Tensor a = createTensor(ctx, {BATCH, N}, kf32, makeData<N * BATCH>().data());
+  Tensor output = createTensor(ctx, {BATCH}, kf32);
+  struct Params {
+    uint32_t TPB = TPB;
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, {kPuzzle13, {TPB, 1, 1}},
+                   Bindings{a, output}, {1, BATCH, 1}, Params{TPB, N});
+  showResult<BATCH>(ctx, op, output);
+}
+
+// Puzzle 14 : Matrix Multiply!!
+// Implement a kernel that computes the matrix product of a and b and stores it in out.
+// Tip: The most efficient algorithm here will copy a block into shared memory before 
+// computing each of the individual row-column dot products. This is easy to do if the 
+// matrix fits in shared memory. Do that case first. Then update your code to compute a 
+// partial dot-product and iteratively move the part you copied into shared memory. You 
+// should be able to do the hard case in 6 global reads.
+const char *kPuzzle14 = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> output: array<f32>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+struct Params {
+  TPB: u32,
+  size: u32,
+};
+
+var<workgroup> a_shared: array<f32, 256>;
+var<workgroup> b_shared: array<f32, 256>;
+
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+  @builtin(local_invocation_id) LocalInvocationID: vec3<u32>,
+  @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let i = GlobalInvocationID.x;
+    let j = GlobalInvocationID.y;
+    let local_i = LocalInvocationID.x;
+    let local_j = LocalInvocationID.y;
+
+    var acc: f32 = 0.0;
+
+    for (var k: u32 = 0u; k < params.size; k = k + params.TPB) {
+        // Copy in blocks
+        if (i < params.size && k + local_j < params.size) {
+            a_shared[local_i * params.TPB + local_j] = a[i * params.size + (k + local_j)];
+        }
+        if (j < params.size && k + local_i < params.size) {
+            b_shared[local_j * params.TPB + local_i] = b[(k + local_i) * params.size + j];
+        }
+        workgroupBarrier();
+
+        // Matrix Multiply
+        let local_k_max = min(params.TPB, params.size - k);
+        for (var local_k: u32 = 0u; local_k < local_k_max; local_k = local_k + 1u) {
+            acc += a_shared[local_i * params.TPB + local_k] * b_shared[local_k * params.TPB + local_j];
+        }
+        workgroupBarrier();
+    }
+
+    // Copy to out
+    if (i < params.size && j < params.size) {
+        output[i * params.size + j] = acc;
+    }
+}
+)";
+void puzzle14(Context &ctx) {
+  printf("\n\nPuzzle 14\n\n");
+  static constexpr size_t N = 2;
+  static constexpr size_t TPB = 3;
+  Tensor a = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor b = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor output = createTensor(ctx, {N, N}, kf32);
+  struct Params {
+    uint32_t TPB = TPB;
+    uint32_t size = N;
+  };
+
+  Kernel op =
+      createKernel(ctx, {kPuzzle14, {TPB, TPB, 1}},
+                   Bindings{a, b, output}, {1, 1, 1}, Params{TPB, N});
+  showResult<N, N, N>(ctx, op, output);
+}
 
 
 int main(int argc, char **argv) {
@@ -575,7 +715,7 @@ int main(int argc, char **argv) {
   puzzle10(ctx);
   puzzle11(ctx);
   puzzle12(ctx);
-  // puzzle13(ctx);
-  // puzzle14(ctx);
+  puzzle13(ctx);
+  puzzle14(ctx);
   return 0;
 }
