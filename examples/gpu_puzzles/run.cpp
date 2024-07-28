@@ -432,7 +432,7 @@ void puzzle12(Context &ctx) {
 }
 
 
-=// Puzzle 13 : Axis Sum
+// Puzzle 13 : Axis Sum
 // Implement a kernel that computes a sum over each column of a and stores it in out.
 
 const char *kPuzzle13 = R"(
