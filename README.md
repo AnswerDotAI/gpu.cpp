@@ -86,7 +86,7 @@ It takes as input a vector of floats and applies the GELU function to each eleme
 
 The GELU code below will illustrate the three main aspects of setting up a GPU computation with gpu.cpp:
 
-1. The code that runs on the GPU (in WebGPU Shading Language, or WGSL), implementing the compute opporation.
+1. The code that runs on the GPU (in WebGPU Shading Language, or WGSL), implementing the compute operation.
 
 2. The code that runs on the CPU (in C++) that sets up the GPU computation by allocating and preparing resources. For high performance, this code should be run ahead-of-time from the hot paths of the application.
 
@@ -221,9 +221,9 @@ gpu.cpp is aimed at enabling projects requiring portable on-device GPU computati
 
 Although gpu.cpp is meant for any general purpose GPU computation and not strictly AI, one area we're interested in is pushing the limits exploring the intersection of new algorithms for post-training and on-device compute.
 
-To date, AI research has primarily been built with CUDA as the priveledged first-class target. CUDA has been dominant at large scale training and inference but at the other end of the the spectrum in the world of GPU compute on personal devices, there exists far more heterogeneity in the hardware and software stack.
+To date, AI research has primarily been built with CUDA as the privileged first-class target. CUDA has been dominant at large scale training and inference but at the other end of the the spectrum in the world of GPU compute on personal devices, there exists far more heterogeneity in the hardware and software stack.
 
-GPU compute in this personal device ecosystem has been largely limited to a small group of experts such as game engine developers and engineers working directly on ML compilers or inference runtimes. Along with that, implementing against the Vulkan or even WebGPU API directly tends to be targeted mostly towards infrastrcture scale efforts - game engines, production ML inference engines, large software packages.
+GPU compute in this personal device ecosystem has been largely limited to a small group of experts such as game engine developers and engineers working directly on ML compilers or inference runtimes. Along with that, implementing against the Vulkan or even WebGPU API directly tends to be targeted mostly towards infrastructure scale efforts - game engines, production ML inference engines, large software packages.
 
 We want to make it easier for a broader range of projects to harness the power of GPUs on personal devices. With a small amount of code, we can access the GPU at a low-level, focusing on directly implementing algorithms rather than the scaffolding and tech stack around the GPU. For example, in our AI research there's much to explore with the various forms of dynamic/conditional post-training computation - dynamic use of adapters, sparsity, model compression, realtime multimodal integrations etc.
 
