@@ -86,7 +86,7 @@ It takes as input a vector of floats and applies the GELU function to each eleme
 
 The GELU code below will illustrate the three main aspects of setting up a GPU computation with gpu.cpp:
 
-1. The code that runs on the GPU (in WebGPU Shading Language, or WGSL), implementing the compute opporation.
+1. The code that runs on the GPU (in WebGPU Shading Language, or WGSL), implementing the compute operation.
 
 2. The code that runs on the CPU (in C++) that sets up the GPU computation by allocating and preparing resources. For high performance, this code should be run ahead-of-time from the hot paths of the application.
 
