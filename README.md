@@ -1,5 +1,5 @@
 # gpu.cpp
-
+# ...
 gpu.cpp is a lightweight library that makes portable GPU compute with C++ simple.
 
 It focuses on general purpose native GPU computation, leveraging the WebGPU
