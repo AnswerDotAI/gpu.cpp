@@ -16,4 +16,5 @@ In order of beginning to advanced:
 | [shadertui](shadertui) | A terminal UI taker on shadertoy demonstrating runtime live reloading of WGSL. |
 | [physics](physics) | Parallel physics simulation of a double pendulum with each thread starting at a different initial condition. |
 | [matmul](matmul) | Tiled matrix multiplication. |
+| [transpose](transpose) | Tiled matrix transpose. |
 | [webgpu_from_scratch](webgpu_from_scratch) | A minimal from-scratch example of how to use WebGPU directly without this library. This is useful to understand the code internals of gpu.cpp. Note this takes a while to build as it compiles the WebGPU C API implementation. |
