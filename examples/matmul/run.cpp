@@ -14,6 +14,8 @@
 
 using namespace gpu;
 
+const char* versionToStr(int version);
+
 static const char *kShaderMatmul1 = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
@@ -466,6 +468,123 @@ inline KernelCode createMatmulWithVectorization(const char *shaderTemplate, cons
   }
 }
 
+/* 2D block-tiling with transpose
+ *
+ */
+static const char *kShaderMatmulWithTranspose = R"(
+@group(0) @binding(0) var<storage, read_write> a: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> b: array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> c: array<vec4<{{precision}}>>;
+var<workgroup> tileA: array<{{precision}}, {{BM}} * {{BK}}>;
+var<workgroup> tileB: array<{{precision}}, {{BK}} * {{BN}}>;
+
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+    @builtin(global_invocation_id) globalID : vec3<u32>,
+    @builtin(local_invocation_id) localID : vec3<u32>,
+    @builtin(workgroup_id) groupid : vec3<u32>) {
+
+    var threadResults: array<vec4<{{precision}}>, {{TM}} * {{TN4}}>;
+    var localM: array<{{precision}}, {{TM}}>;
+    var localN: array<vec4<{{precision}}>, {{TN4}}>;
+
+    let cRow: u32 = groupid.x;
+    let cCol: u32 = groupid.y;
+    let numThread: u32 = ({{BM}} * {{BN}}) / ({{TM}} * {{TN}});
+
+    // position of the first c element computed by the thread
+    let threadRow: u32 = (localID.x / ({{BN}} / {{TN}})) * {{TM}};
+    let threadCol: u32 = (localID.x % ({{BN}} / {{TN}})) * {{TN}};
+
+    // aPtr and bPtr are the starting positions of the tiles in a and b,
+    // incremented in the bkidx loop. 
+    // cPtr is the starting position of the tile in c which is fixed.
+
+    var aPtr: u32 = cRow * {{BM}} * {{K}};
+    var bPtr: u32 = cCol * {{BN}};
+    let cPtr: u32 = cRow * {{BM}} * {{N4}} + cCol * {{BN4}};
+
+    for (var bkidx = 0; bkidx < {{K}}; bkidx += {{BK}}) {
+
+      // Load tile
+      // Load BM x BK by numThread(BM * BN / (TM * TN))
+      // The number of iteration == BM * BK / (BM * BN / (TM * TN))
+      for (var idx: u32 = 0; idx < {{NUM_TILEA}}; idx++) {
+        tileA[localID.x + idx * numThread] = a[aPtr + ((localID.x + idx * numThread) / {{BK}}) * {{K}} + (localID.x + idx * numThread) % {{BK}}];
+      }
+      // Load BK x BN by numThread(BM * BN / (TM * TN))
+      // The number of iteration == BK * BN / (BM * BN / (TM * TN))
+      for (var idx: u32 = 0; idx < {{NUM_TILEB}}; idx++) {
+        tileB[localID.x + idx * numThread] = b[bPtr + ((localID.x + idx * numThread) / {{BN}}) * {{N}} + ((localID.x + idx * numThread) % {{BN}})];
+      }
+
+      aPtr += {{BK}};
+      bPtr += {{BK}} * {{N}};
+
+      workgroupBarrier();
+      // Compute tile
+      for (var dotIdx: u32 = 0; dotIdx < {{BK}}; dotIdx = dotIdx + 1) {
+        for (var idx: u32 = 0; idx < {{TM}}; idx++) {
+          localM[idx] = tileA[(threadRow + idx) * {{BK}} + dotIdx];
+        }
+        for (var idx: u32 = 0; idx < {{TN4}}; idx++) {
+          localN[idx] = vec4<{{precision}}>(tileB[(threadCol + idx*4    ) + dotIdx * {{BN}}],
+                                            tileB[(threadCol + idx*4 + 1) + dotIdx * {{BN}}],
+                                            tileB[(threadCol + idx*4 + 2) + dotIdx * {{BN}}],
+                                            tileB[(threadCol + idx*4 + 3) + dotIdx * {{BN}}]);
+        }
+        for (var resIdxM: u32 = 0; resIdxM < {{TM}}; resIdxM++) {
+          for (var resIdxN: u32 = 0; resIdxN < {{TN4}}; resIdxN++) {
+            threadResults[resIdxM * {{TN4}} + resIdxN] += localM[resIdxM] * localN[resIdxN];
+          }
+        }
+      }
+      workgroupBarrier();
+    }
+
+    for (var resIdxM: u32 = 0; resIdxM < {{TM}}; resIdxM++) {
+      for (var resIdxN: u32 = 0; resIdxN < {{TN4}}; resIdxN++) {
+        c[cPtr + (threadRow + resIdxM) * {{N4}} + (threadCol/4) + resIdxN] = threadResults[resIdxM * {{TN4}} + resIdxN];
+      }
+    }
+}
+)";
+
+inline KernelCode createMatmulWithTranspose(const char *shaderTemplate, const size_t M,
+                                                const size_t K, const size_t N, const size_t BM,
+                                                const size_t BK, const size_t BN,
+                                                const size_t TM, const size_t TN,
+                                                const Shape &workgroupSize = {256, 1, 1},
+                                                NumType precision = kf32) {
+  assert(BM % TM == 0);
+  assert(BN % TN == 0);
+  assert(K % BK == 0);
+  assert(M % BM == 0);
+  assert(N % BN == 0);
+  // # threads = tile A size == tile B size == # threads for computing C
+  int num_threads = BM * BN / (TM * TN);
+  std::string codeString(shaderTemplate);
+  replaceAll(codeString, {{"{{workgroupSize}}", toString(workgroupSize)},
+                          {"{{precision}}", toString(precision)},
+                          {"{{M}}", toString(M)},
+                          {"{{K}}", toString(K)},
+                          {"{{N}}", toString(N)},
+                          {"{{BM}}", toString(BM)},
+                          {"{{BK}}", toString(BK)},
+                          {"{{BN}}", toString(BN)},
+                          {"{{TM}}", toString(TM)},
+                          {"{{TN}}", toString(TN)},
+                          {"{{NUM_TILEA}}", toString(BM * BK / num_threads)},
+                          {"{{NUM_TILEB}}", toString(BN * BK / num_threads)},
+                          {"{{TN4}}", toString(TN / 4)},
+                          {"{{N4}}", toString(N / 4)},
+                          {"{{BN4}}", toString(BN / 4)},
+                          });
+  std::string unrolledCode = loopUnrolling(codeString);
+  // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
+  return {unrolledCode, workgroupSize};
+}
+
 /**
  * @brief No-Op shader with matmul bindings for performance testing
  */
@@ -519,20 +638,26 @@ Kernel selectMatmul(Context &ctx, int version,
                     size_t M, size_t K, size_t N) {
   Kernel kernel;
   if (version == 1) {
+    Shape wgSize = {256, 1, 1};
+    Shape nWorkgroups = cdiv({M, N, 1}, {16, 16, 1});
+    KernelCode matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
+    kernel = createKernel(ctx, matmul, bindings,
+                          /*nWorkgroups*/ nWorkgroups);
+  } else if (version == 2) {
     Shape wgSize = {16, 16, 1};
     LOG(kDefLog, kInfo, "wgSize: %s", toString(wgSize).c_str());
     KernelCode matmul =
         createMatmul1(kShaderMatmul1, M, K, N, /*wgsize*/ wgSize);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ cdiv({M, N, 1}, wgSize));
-  } else if (version == 2) {
+  } else if (version == 3) {
     static constexpr size_t tileSize = 16;
     KernelCode matmul = createMatmul2(kShaderMatmul2, M, K, N,
                                       /*wgSize*/ {tileSize * tileSize, 1, 1});
     kernel =
         createKernel(ctx, matmul, bindings,
                      /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
-  } else if (version == 3 || version == 5) {
+  } else if (version == 4 || version == 6) {
     static constexpr size_t BM = 64;
     static constexpr size_t BK = 4;
     static constexpr size_t BN = BM;
@@ -548,10 +673,10 @@ Kernel selectMatmul(Context &ctx, int version,
     KernelCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
                                       /*wgSize*/ wgSize,
 				      kf32,
-				      /*Loop unrolling*/ version == 5 ? true: false);
+				      /*Loop unrolling*/ version == 6 ? true: false);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
-  } else if (version == 4 || version == 6) {
+  } else if (version == 5 || version == 7) {
     static constexpr size_t BM = 64;
     static constexpr size_t BK = 8;
     static constexpr size_t BN = 64;
@@ -566,10 +691,10 @@ Kernel selectMatmul(Context &ctx, int version,
     KernelCode matmul = createMatmul4(kShaderMatmul4, M, K, N, BM, BK, BN, TM, TN,
                                       /*wgSize*/ wgSize,
 				      kf32,
-				      /*Loop unrolling*/ version == 6 ? true: false);
+				      /*Loop unrolling*/ version == 7 ? true: false);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
-  } else if (version == 7) {
+  } else if (version == 8) {
     static constexpr size_t BM = 64;
     static constexpr size_t BK = 8;
     static constexpr size_t BN = 64;
@@ -587,10 +712,21 @@ Kernel selectMatmul(Context &ctx, int version,
 						      /*Loop unrolling*/ true);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
-  } else if (version == 8) {
-    Shape wgSize = {256, 1, 1};
-    Shape nWorkgroups = cdiv({M, N, 1}, {16, 16, 1});
-    KernelCode matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
+  } else if (version == 9) {
+    static constexpr size_t BM = 64;
+    static constexpr size_t BK = 8;
+    static constexpr size_t BN = 64;
+    static constexpr size_t TM = BM / BK;
+    static constexpr size_t TN = BN / BK;
+    Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
+    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
+    LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
+    LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d, TN: %d", BM, BK, BN, TM, TN);
+    LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
+    LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
+    KernelCode matmul = createMatmulWithTranspose(kShaderMatmulWithTranspose, M, K, N, BM, BK, BN, TM, TN,
+						  /*wgSize*/ wgSize,
+						  kf32);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
   }
@@ -626,8 +762,8 @@ void runTest(int version, size_t M, size_t K, size_t N,
 
   printf("[ Press enter to start tests ... ]\n");
   getchar();
-  LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...",
-      version, nIter);
+  LOG(kDefLog, kInfo, "Dispatching Kernel version %d: %s, %d iterations ...",
+      version, versionToStr(version), nIter);
 
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
@@ -662,26 +798,43 @@ void runTest(int version, size_t M, size_t K, size_t N,
       M, K, N, nIter, duration.count() / static_cast<double>(nIter) / 1000.0 /* us -> ms */, gflops);
 }
 
+const char* versionToStr(int version){
+  switch (version) {
+  case 1: return "No-Op";
+  case 2: return "naive matmul";
+  case 3: return "tiling";
+  case 4: return "1D blocktiling";
+  case 5: return "2D blocktiling";
+  case 6: return "1D blocktiling with loop unrolling";
+  case 7: return "2D blocktiling with loop unrolling";
+  case 8: return "2D blocktiling with loop unrolling and vectorization";
+  case 9: return "2D blocktiling with loop unrolling, vectorization and transpose";
+  default: return "Not specified";
+  }
+}
+
 int main() {
   char* version_str = getenv("MATMUL_VERSION");
-  int version = version_str == NULL ? 7 : atoi(version_str);
-    // 1 == naive matmul
-    // 2 == tiling
-    // 3 == 1D blocktiling
-    // 4 == 2D blocktiling
-    // 5 == 1D blocktiling with loop unrolling
-    // 6 == 2D blocktiling with loop unrolling
-    // 7 == 2D blocktiling with loop unrolling and vectorization
-    // 8 == No-Op
+  char* kTestSize_str = getenv("MATMUL_SIZE");
+  int version = version_str == NULL ? 9 : atoi(version_str);
+    // 1 == No-Op
+    // 2 == naive matmul
+    // 3 == tiling
+    // 4 == 1D blocktiling
+    // 5 == 2D blocktiling
+    // 6 == 1D blocktiling with loop unrolling
+    // 7 == 2D blocktiling with loop unrolling
+    // 8 == 2D blocktiling with loop unrolling and vectorization
+    // 9 == 2D blocktiling with loop unrolling, vectorization and transpose (default)
 
   size_t M, K, N;  // Matrix dimensions
-  static constexpr int kTestSize = 2;
-  if constexpr (kTestSize == 0) {
+  int kTestSize = kTestSize_str == NULL ? 2 : atoi(kTestSize_str);
+  if (kTestSize == 0) {
     // Tiny test
     M = 32;
     K = 32;
     N = 32;
-  } else if constexpr (kTestSize == 1) {
+  } else if (kTestSize == 1) {
     // Small test
     M = 256;
     K = 128;
@@ -696,11 +849,19 @@ int main() {
   std::unique_ptr<float[]> inputPtr = std::make_unique<float[]>(M * K);
   std::unique_ptr<float[]> weightsPtr = std::make_unique<float[]>(N * K);
   std::unique_ptr<float[]> outputPtr = std::make_unique<float[]>(M * N);
+  bool transposedInput = version == 9;
 
   initData(M, K, N, inputPtr, weightsPtr);
-  runTest(version, M, K, N, inputPtr, weightsPtr, outputPtr);
+  if (transposedInput) {
+    std::unique_ptr<float[]> transposedWeightPtr = std::make_unique<float[]>(K * N);
+    transpose(weightsPtr.get(), transposedWeightPtr.get(), N, K);
+    runTest(version, M, K, N, inputPtr, transposedWeightPtr, outputPtr);
+  } else {
+    runTest(version, M, K, N, inputPtr, weightsPtr, outputPtr);
+  }
 
-  if constexpr (kTestSize <= 1) {
+
+  if (kTestSize <= 1) {
     // Check result with CPU reference implementation for tiny/small tests
     checkCPU(M, K, N, inputPtr, weightsPtr, outputPtr);
   }
