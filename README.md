@@ -94,7 +94,7 @@ The GELU code below will illustrate the three main aspects of setting up a GPU c
 
 Here's a GELU kernel implemented (based on the CUDA implementation in [llm.c](https://github.com/karpathy/llm.c)) as on-device WebGPU WGSL code and invoked from the host using gpu.cpp library functions and types. It can be compiled using a standard C++ compiler (we recommend Clang):
 
-```
+```cpp
 #include <array>
 #include <cstdio>
 #include <future>
