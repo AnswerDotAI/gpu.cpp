@@ -1,9 +1,9 @@
 CXX=clang++
-GPUCPP ?= $(PWD)/../..
+GPUCPP ?= $(PWD)/../../..
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
-TARGET=hello_world
+TARGET=tanh
 ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
     STDLIB :=
 else
