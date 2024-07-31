@@ -158,25 +158,25 @@ int main(int argc, char **argv) {
 
     char buffer[(NROWS + 2) * (NCOLS + 2)];
     char *offset = buffer;
-    sprintf(offset, "+");
+    snprintf(offset, 2, "+");
     for (size_t col = 0; col < NCOLS; ++col) {
-      sprintf(offset + col + 1, "-");
+      snprintf(offset + col + 1, 2, "-");
     }
-    sprintf(buffer + NCOLS + 1, "+\n");
+    snprintf(buffer + NCOLS + 1, 3, "+\n");
     offset += NCOLS + 3;
     for (size_t row = 0; row < NROWS; ++row) {
-      sprintf(offset, "|");
+      snprintf(offset, 2, "|");
       for (size_t col = 0; col < NCOLS; ++col) {
-        sprintf(offset + col + 1, "%c", raster[row * NCOLS + col]);
+        snprintf(offset + col + 1, 2, "%c", raster[row * NCOLS + col]);
       }
-      sprintf(offset + NCOLS + 1, "|\n");
+      snprintf(offset + NCOLS + 1, 3, "|\n");
       offset += NCOLS + 3;
     }
-    sprintf(offset, "+");
+    snprintf(offset, 2, "+");
     for (size_t col = 0; col < NCOLS; ++col) {
-      sprintf(offset + col + 1, "-");
+      snprintf(offset + col + 1, 2, "-");
     }
-    sprintf(offset + NCOLS + 1, "+\n");
+    snprintf(offset + NCOLS + 1, 3, "+\n");
     printf("\033[H\033[HWorkgroup size: %zu %zu %zu \nNumber of Threads: %zu "
            "%zu %d \n%s",
            code.workgroupSize[0], code.workgroupSize[1], code.workgroupSize[2],
