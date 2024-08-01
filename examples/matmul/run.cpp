@@ -14,7 +14,7 @@
 
 using namespace gpu;
 
-const char* versionToStr(int version);
+const std::string versionToStr(int version);
 
 static const char *kShaderMatmul1 = R"(
 @group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
@@ -763,7 +763,7 @@ void runTest(int version, size_t M, size_t K, size_t N,
   printf("[ Press enter to start tests ... ]\n");
   getchar();
   LOG(kDefLog, kInfo, "Dispatching Kernel version %d: %s, %d iterations ...",
-      version, versionToStr(version), nIter);
+      version, versionToStr(version).c_str(), nIter);
 
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
@@ -798,7 +798,7 @@ void runTest(int version, size_t M, size_t K, size_t N,
       M, K, N, nIter, duration.count() / static_cast<double>(nIter) / 1000.0 /* us -> ms */, gflops);
 }
 
-const char* versionToStr(int version){
+const std::string versionToStr(int version){
   switch (version) {
   case 1: return "No-Op";
   case 2: return "naive matmul";
@@ -815,7 +815,6 @@ const char* versionToStr(int version){
 
 int main() {
   char* version_str = getenv("MATMUL_VERSION");
-  char* kTestSize_str = getenv("MATMUL_SIZE");
   int version = version_str == NULL ? 9 : atoi(version_str);
     // 1 == No-Op
     // 2 == naive matmul
@@ -828,6 +827,7 @@ int main() {
     // 9 == 2D blocktiling with loop unrolling, vectorization and transpose (default)
 
   size_t M, K, N;  // Matrix dimensions
+  char* kTestSize_str = getenv("MATMUL_SIZE");
   int kTestSize = kTestSize_str == NULL ? 2 : atoi(kTestSize_str);
   if (kTestSize == 0) {
     // Tiny test
