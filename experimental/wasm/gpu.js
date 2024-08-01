@@ -1,5 +1,7 @@
 // gpu.js
 
+const gpujs = (function() {
+
 class Shape {
     static kMaxRank = 8;
     
@@ -7,7 +9,6 @@ class Shape {
         if (dims.length > Shape.kMaxRank) {
             throw new Error(`Shape can have at most ${Shape.kMaxRank} dimensions`);
         }
-
         this.rank = dims.length;
         
         // Initialize data with the provided dimensions
@@ -19,6 +20,7 @@ class Shape {
         }
     }
 }
+
 class Array {
     constructor(buffer, usage, size) {
         this.buffer = buffer;
@@ -187,6 +189,7 @@ async function createContext() {
     }
     context.device = await context.adapter.requestDevice();
     context.queue = context.device.queue;
+    console.log("Context created");
     return context;
 }
 
@@ -299,7 +302,7 @@ function dispatchKernel(ctx, kernel) {
     return ctx.device.queue.onSubmittedWorkDone();
 }
 
-async function main() {
+async function simpleTest() {
     console.log("Starting main");
     const ctx = await createContext();
 
@@ -338,4 +341,36 @@ async function main() {
     destroyContext(ctx);
 }
 
-main().catch(console.error);
+    // At the end of the file, return an object with all your exports
+    return {
+        Shape,
+        Array,
+        Tensor,
+        TensorView,
+        Bindings,
+        Context,
+        TensorPool,
+        KernelPool,
+        KernelCode,
+        Kernel,
+        NumType,
+        size,
+        sizeBytes,
+        toString,
+        replaceAll,
+        cdiv,
+        cdivShape,
+        createContext,
+        destroyContext,
+        resetCommandBuffer,
+        createKernel,
+        createTensor,
+        toGPU,
+        toCPU,
+        dispatchKernel,
+        simpleTest,
+    };
+})();
+
+
+export default gpujs;

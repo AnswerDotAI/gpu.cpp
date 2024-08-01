@@ -1,13 +1,77 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebGPU Context Creation</title>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>gpu.cpp wasm test</title>
+  </head>
+  <body>
     <h1>gpu.js test</h1>
-    <div id="status">Initializing WebGPU...</div>
-    <script src="gpu.js"></script>
-</body>
+    <div id="status">gpu.cpp -> wasm test</div>
+
+    <script type="module">
+      import gpujs from "./gpu.js";
+
+      let wasmInstance = null;
+      const memory = new WebAssembly.Memory({ initial: 8192, maximum: 8192 });
+
+      function memset(ptr, value, num) {
+        const view = new Uint8Array(memory.buffer);
+        view.fill(value, ptr, ptr + num);
+      }
+
+      async function loadWasm() {
+        const response = await fetch("build/run.wasm");
+        const bytes = await response.arrayBuffer();
+
+        // Create the WebAssembly environment
+        const env = Object.keys(gpujs).reduce(
+          (env, key) => {
+            env[key] = (...args) => {
+              console.log(`Calling ${key} from WebAssembly`);
+              return gpujs[key](...args);
+            };
+            return env;
+          },
+          {
+            memory: memory,
+            jsLOG: (messagePtr) => {
+              console.log("jsLOG called from WebAssembly");
+              console.log("memory ", memory);
+              const view = new Uint8Array(memory.buffer);
+              console.log(
+                "Memory Buffer Slice: ",
+                view.slice(messagePtr, messagePtr + 100),
+              ); // Check buffer content
+
+              let message = "";
+              console.log("messagePtr ", messagePtr);
+              for (let i = messagePtr; view[i] !== 0; i++) {
+                message += String.fromCharCode(view[i]);
+                console.log(view[i]);
+              }
+              console.log(message);
+            },
+            memset,
+          },
+        );
+
+        const { instance } = await WebAssembly.instantiate(bytes, { env });
+        // instance.exports.setMemory(memory.buffer.byteOffset); // Pass the memory buffer to the wasm module
+        return instance;
+      }
+
+      loadWasm()
+        .then((instance) => {
+          console.log("WebAssembly module loaded");
+          instance.exports.main();
+        })
+        .catch((error) => {
+          console.error("Failed to load WebAssembly module:", error);
+        });
+
+      // Make gpujs globally available if needed
+      window.gpujs = gpujs;
+    </script>
+  </body>
 </html>

@@ -1,7 +1,12 @@
-// Hello world llvm wasm test
+#include "wasm.h"
 
-extern "C" {
-  int add(int a, int b) { return a + b; }
-  int mul(int a, int b) { return a * b; }
-  int foo(int a, int b) { return a * a + b + 4; }
+int main() {
+  // Note: This calls createContext but this doesn't work to obtain the return value
+  // due to async
+  // Context* ctx = createContext();
+  // destroyContext(ctx);
+
+  LOG("Hello, World!");
+
+  return 0;
 }
