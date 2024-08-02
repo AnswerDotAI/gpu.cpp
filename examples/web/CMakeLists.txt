@@ -13,10 +13,4 @@ set(SHELL_FILE_PATH "../custom_shell.html")
 # see https://emscripten.org/docs/api_reference/emscripten.h.html#pseudo-synchronous-functions
 target_link_options(run PRIVATE "-sUSE_WEBGPU=1" "-sASYNCIFY=1" "--shell-file=${SHELL_FILE_PATH}")
 
-# em++ compiler arguments
-target_compile_options(run PRIVATE "-sUSE_WEBGPU=1" "-sASYNCIFY=1" "--shell-file=${SHELL_FILE_PATH}")
-
-
-target_include_directories(run PRIVATE "../../../")
-target_include_directories(run PRIVATE "../../../numeric_types")
-target_include_directories(run PRIVATE "../../../utils")
+target_include_directories(run PRIVATE "../../")
