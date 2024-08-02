@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>gpu.cpp</title>
+  <!-- Include xterm.js CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+    }
+    #terminal {
+      height: 100%;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <!-- Terminal container -->
+  <div id="terminal"></div>
+  <!-- Include xterm.js and xterm-addon-fit libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+  <script type="text/javascript">
+    // Initialize xterm.js
+    const terminal = new Terminal();
+    const fitAddon = new FitAddon.FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(document.getElementById('terminal'));
+    fitAddon.fit();
+
+    // This function captures stdout and displays it in the xterm.js terminal
+    var Module = {
+      preRun: [],
+      postRun: [],
+      print: function(text) {
+        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+        console.log(text);  // Log to the console
+        terminal.writeln(text);  // Write to the terminal
+      },
+      printErr: function(text) {
+        if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+        console.error(text);  // Log to the console as an error
+        terminal.writeln(text);  // Write to the terminal as well
+      }
+    };
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>

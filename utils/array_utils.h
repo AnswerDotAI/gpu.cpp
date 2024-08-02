@@ -74,14 +74,14 @@ std::string show(const numtype *a, size_t rows, size_t cols,
       }
       char buffer[50];
       if constexpr (std::is_same<numtype, int>::value) {
-        sprintf(buffer, "%*d", spacing, a[i * cols + j]);
+        snprintf(buffer, spacing, "%*d", spacing, a[i * cols + j]);
       } else if constexpr (std::is_same<numtype, float>::value) {
         if (std::abs(a[i * cols + j]) < 1000 &&
                 std::abs(a[i * cols + j]) > 0.01 ||
             a[i * cols + j] == 0.0) {
-          sprintf(buffer, "%9.2f", a[i * cols + j]);
+          snprintf(buffer, 16, "%9.2f", a[i * cols + j]);
         } else
-          sprintf(buffer, "%10.2e", a[i * cols + j]);
+          snprintf(buffer, 16, "%10.2e", a[i * cols + j]);
       } else {
         throw std::runtime_error("Unsupported number type for show()");
       }

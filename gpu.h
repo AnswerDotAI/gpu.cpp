@@ -20,6 +20,10 @@
 #include "numeric_types/half.h"
 #include "utils/logging.h"
 
+#ifdef __EMSCRIPTEN__
+#include "emscripten/emscripten.h"
+#endif
+
 namespace gpu {
 
 /**
@@ -412,6 +416,14 @@ struct KernelPool {
   }
 };
 
+void processEvents(const WGPUInstance& instance) {
+#ifdef __EMSCRIPTEN__
+  emscripten_sleep(0);
+#else
+  wgpuInstanceProcessEvents(instance);
+#endif
+}
+
 /**
  * @brief Represents a GPU context, aggregates WebGPU API handles to interact
  * with the GPU including the instance, adapter, device, and queue.
@@ -430,19 +442,18 @@ struct Context {
     LOG(kDefLog, kTrace, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
-      wgpuInstanceProcessEvents(instance);
     } else {
       LOG(kDefLog, kWarn, "Queue is null");
     }
     if (device) {
       wgpuDeviceRelease(device);
-      wgpuInstanceProcessEvents(instance);
+      processEvents(instance);
     } else {
       LOG(kDefLog, kWarn, "Device is null");
     }
     if (adapter) {
       wgpuAdapterRelease(adapter);
-      wgpuInstanceProcessEvents(instance);
+      processEvents(instance);
     } else {
       LOG(kDefLog, kWarn, "Adapter is null");
     }
@@ -669,7 +680,13 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
                              const WGPUDeviceDescriptor &devDescriptor = {}) {
   Context context;
   {
+#ifndef __EMSCRIPTEN__
     context.instance = wgpuCreateInstance(&desc);
+#else
+    // Emscripten does not support the instance descriptor
+    // and throws an assertion error if it is not nullptr.
+    context.instance = wgpuCreateInstance(nullptr);
+#endif
     check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
   }
   LOG(kDefLog, kInfo, "Requesting adapter");
@@ -690,6 +707,9 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
     };
     wgpuInstanceRequestAdapter(context.instance, &adapterOpts,
                                onAdapterRequestEnded, (void *)&adapterData);
+    while (!adapterData.requestEnded) {
+      processEvents(context.instance);
+    }
     assert(adapterData.requestEnded);
     context.adapter = adapterData.adapter;
   }
@@ -711,7 +731,6 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
       devData.device = device;
       devData.requestEnded = true;
     };
-
 #ifdef WEBGPU_BACKEND_DAWN
     devDescriptor.deviceLostCallbackInfo = {
         .callback =
@@ -726,9 +745,14 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
             },
     };
 #endif
-
+    LOG(kDefLog, kInfo, "Requesting device");
     wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
                              onDeviceRequestEnded, (void *)&devData);
+    LOG(kDefLog, kInfo, "Waiting for device request to end");
+    while (!devData.requestEnded) {
+      processEvents(context.instance);
+    }
+    LOG(kDefLog, kInfo, "Device request ended");
     assert(devData.requestEnded);
     context.device = devData.device;
     wgpuDeviceSetUncapturedErrorCallback(
@@ -746,7 +770,7 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
 inline void wait(Context &ctx, std::future<void> &future) {
   while (future.wait_for(std::chrono::seconds(0)) !=
          std::future_status::ready) {
-    wgpuInstanceProcessEvents(ctx.instance);
+    processEvents(ctx.instance);
   }
 }
 
@@ -798,8 +822,9 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
  * you.
  *
  * For simple use cases, this overload is recommended as it abstracts away the
- * staging buffer and promise/future management. For more custom use cases where
- * the staging buffer is initialized ahead of time, use the other overload.
+ * staging buffer and promise/future management. For more custom use cases
+ * where the staging buffer is initialized ahead of time, use the other
+ * overload.
  *
  * @param[in] ctx Context instance to manage the operation
  * @param[in] tensor Tensor instance representing the GPU buffer to copy from
@@ -852,7 +877,8 @@ void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data) {
  *
  * @param[in] ctx Context instance to manage the operation
  * @param[in] data Pointer to the CPU memory to copy from
- * @param[in] buffer WGPUBuffer instance representing the GPU buffer to copy to
+ * @param[in] buffer WGPUBuffer instance representing the GPU buffer to copy
+ * to
  * @param[in] size Size of the data buffer in bytes
  *
  * @code
@@ -938,8 +964,8 @@ template <typename T> constexpr bool IsNoParam = std::is_same_v<T, NoParam>;
 inline size_t cdiv(size_t n, size_t d) { return (n + d - 1) / d; }
 
 /**
- * @brief cdiv for shape specification. Mostly useful for evenly dividing total
- * # threads by workgroup size dimensions.
+ * @brief cdiv for shape specification. Mostly useful for evenly dividing
+ * total # threads by workgroup size dimensions.
  */
 inline Shape cdiv(Shape total, Shape group) {
   assert(total.rank == group.rank);
@@ -967,8 +993,8 @@ inline Shape cdiv(Shape total, Shape group) {
  * @param[in] viewOffsets Pointer to an array of view offsets for the input
  * tensors
  * @param[in] nWorkgroups Shape of the workgroup
- * @param[in] params Optional parameters for the kernel. If the kernel does not
- * have any parameters, use NoParam. This is cast as void* to allow for
+ * @param[in] params Optional parameters for the kernel. If the kernel does
+ * not have any parameters, use NoParam. This is cast as void* to allow for
  * arbitrary types to be passed as parameters.
  * @param[in] paramsSize Size of the parameters buffer in bytes.
  * @return Kernel instance representing the created kernel
@@ -1124,8 +1150,8 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
  * to the kernel as inputs and outputs.
  * @param[in] nWorkgroups Number of workgroups in the x, y, z grid, must be a
  * Shape of rank == 3.
- * @param[in] params Optional parameters for the kernel. If the kernel does not
- * have any parameters, use NoParam.
+ * @param[in] params Optional parameters for the kernel. If the kernel does
+ * not have any parameters, use NoParam.
  * @return Kernel instance representing the created kernel
  *
  * @code
@@ -1158,9 +1184,9 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
  * It also sets up a callback to notify when the kernel has finished executing
  * by setting the value of the promise in the kernel instance argument.
  *
- * dispatchKernel does *not* wait for the kernel to finish executing and returns
- * immediately. The caller can wait for the kernel to finish executing by
- * calling wait() on the future in the kernel instance.
+ * dispatchKernel does *not* wait for the kernel to finish executing and
+ * returns immediately. The caller can wait for the kernel to finish executing
+ * by calling wait() on the future in the kernel instance.
  *
  * @param[in] ctx Context instance to manage the kernel, from which the queue
  * for the GPU is obtained
