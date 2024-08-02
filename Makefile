@@ -31,12 +31,14 @@ run_setup: check-python
 	python3 setup.py
 
 all: dawnlib check-clang check-linux-vulkan lib pch
+	cd examples/float16 && make build/float16
 	cd examples/gpu_puzzles && make build/gpu_puzzles
 	cd examples/hello_world && make build/hello_world
 	cd examples/matmul && make build/matmul
-	cd examples/transpose && make build/transpose
 	cd examples/physics && make build/physics
 	cd examples/render && make build/render
+	cd examples/shadertui && make build/shadertui
+	cd examples/transpose && make build/transpose
 
 # Test 16-bit floating point type
 test-half: dawnlib check-clang
@@ -79,9 +81,10 @@ clean:
 	rm -rf examples/gpu_puzzles/build/*
 	rm -rf examples/hello_world/build/*
 	rm -rf examples/matmul/build/matmul
-	rm -rf examples/transpose/build/transpose
 	rm -rf examples/physics/build/*
 	rm -rf examples/render/build/*
+	rm -rf examples/shadertui/build/*
+	rm -rf examples/transpose/build/transpose
 	rm -f build/gpu.h.pch
 	rm -f build/libgpucpp.so
 	rm -f build/half

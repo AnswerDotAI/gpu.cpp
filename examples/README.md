@@ -24,6 +24,7 @@ directory of the repository.
 
 | Example | Description |
 |---------|-------------|
+| [float16](float16) | Hello World example using the float16 WebGPU extension, instead of the default float32. |
 | [matmul](matmul) | Tiled matrix multiplication. |
 | [transpose](transpose) | Tiled matrix transpose. |
 | [webgpu_from_scratch](webgpu_from_scratch) | A minimal from-scratch example of how to use WebGPU directly without this library. This is useful to understand the code internals of gpu.cpp. Note this takes a while to build as it compiles the WebGPU C API implementation. |

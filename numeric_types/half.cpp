@@ -50,18 +50,18 @@ void testRoundTrip(float value) {
   // half h = halfFromFloat(value);
   half h = half(value);
   float result = static_cast<float>(h);
-  char message[256];
+  char message[1024];
 
   if (isnan(value)) {
-    sprintf(message, "NaN correctly round tripped");
+    snprintf(message, sizeof(message), "NaN correctly round tripped");
     printResult(isnan(result), message, value, result);
   } else if (isinf(value)) {
-    sprintf(message, "Infinity correctly round tripped");
+    snprintf(message, sizeof(message), "Infinity correctly round tripped");
     printResult(isinf(result) &&
                     ((value > 0 && result > 0) || (value < 0 && result < 0)),
                 message, value, result);
   } else {
-    sprintf(message, "%.10f correctly round tripped", value);
+    snprintf(message, sizeof(message), "%.10f correctly round tripped", value);
     printResult(approximatelyEqual(result, value, EPSILON), message, value,
                 result);
   }
@@ -72,107 +72,107 @@ void testRoundTrip(uint16_t value) {
   h.data = value;
   float f = halfToFloat(h);
   half result = halfFromFloat(f);
-  char message[256];
-  sprintf(message, "half 0x%04x correctly round tripped", value);
+  char message[512];
+  snprintf(message, sizeof(message), "half 0x%04x correctly round tripped", value);
   printResult(result.data == value, message, (float)value, result.data);
 }
 
 void testRoundTrip(half value) {
   float f = static_cast<float>(value);
   half result = half(f);
-  char message[256];
-  sprintf(message, "half 0x%04x correctly round tripped", value.data);
+  char message[512];
+  snprintf(message, sizeof(message), "half 0x%04x correctly round tripped", value.data);
   printResult(result.data == value.data, message, (float)value, result.data);
 }
 
 void testSpecialCases() {
   half h;
-  char message[256];
+  char message[512];
 
   // Zero
   h.data = 0x0000;
-  sprintf(message, "0x0000 correctly converted to 0.0f");
+  snprintf(message, sizeof(message), "0x0000 correctly converted to 0.0f");
   printResult(halfToFloat(h) == 0.0f, message, 0.0f, halfToFloat(h));
 
   // Negative zero
   h.data = 0x8000;
-  sprintf(message, "0x8000 correctly converted to -0.0f");
+  snprintf(message, sizeof(message), "0x8000 correctly converted to -0.0f");
   printResult(halfToFloat(h) == -0.0f, message, -0.0f, halfToFloat(h));
 
   // Infinity
   h.data = 0x7c00;
-  sprintf(message, "0x7c00 correctly converted to positive infinity");
+  snprintf(message, sizeof(message), "0x7c00 correctly converted to positive infinity");
   printResult(isinf(halfToFloat(h)) && halfToFloat(h) > 0, message, INFINITY,
               halfToFloat(h));
 
   // Negative infinity
   h.data = 0xfc00;
-  sprintf(message, "0xfc00 correctly converted to negative infinity");
+  snprintf(message, sizeof(message), "0xfc00 correctly converted to negative infinity");
   printResult(isinf(halfToFloat(h)) && halfToFloat(h) < 0, message, -INFINITY,
               halfToFloat(h));
 
   // NaN
   h.data = 0x7e00;
-  sprintf(message, "0x7e00 correctly converted to NaN");
+  snprintf(message, sizeof(message), "0x7e00 correctly converted to NaN");
   printResult(isnan(halfToFloat(h)), message, NAN, halfToFloat(h));
 
   // Smallest positive normal number
   h.data = 0x0400;
-  sprintf(message, "0x0400 correctly converted to 6.10352e-05f");
+  snprintf(message, sizeof(message), "0x0400 correctly converted to 6.10352e-05f");
   printResult(approximatelyEqual(halfToFloat(h), 6.10352e-05f, EPSILON),
               message, 6.10352e-05f, halfToFloat(h));
 
   // Largest denormalized number
   h.data = 0x03ff;
-  sprintf(message, "0x03ff correctly converted to 6.09756e-05f");
+  snprintf(message, sizeof(message), "0x03ff correctly converted to 6.09756e-05f");
   printResult(approximatelyEqual(halfToFloat(h), 6.09756e-05f, EPSILON),
               message, 6.09756e-05f, halfToFloat(h));
 
   // Smallest positive denormalized number
   h.data = 0x0001;
-  sprintf(message, "0x0001 correctly converted to 5.96046e-08f");
+  snprintf(message, sizeof(message), "0x0001 correctly converted to 5.96046e-08f");
   printResult(approximatelyEqual(halfToFloat(h), 5.96046e-08f, EPSILON),
               message, 5.96046e-08f, halfToFloat(h));
 
   // Zero
   h = halfFromFloat(0.0f);
-  sprintf(message, "0.0f correctly converted to 0x0000");
+  snprintf(message, sizeof(message), "0.0f correctly converted to 0x0000");
   printResult(h.data == 0x0000, message, 0.0f, h.data);
 
   // Negative zero
   h = halfFromFloat(-0.0f);
-  sprintf(message, "-0.0f correctly converted to 0x8000");
+  snprintf(message, sizeof(message), "-0.0f correctly converted to 0x8000");
   printResult(h.data == 0x8000, message, -0.0f, h.data);
 
   // Infinity
   h = halfFromFloat(INFINITY);
-  sprintf(message, "positive infinity correctly converted to 0x7c00");
+  snprintf(message, sizeof(message), "positive infinity correctly converted to 0x7c00");
   printResult(h.data == 0x7c00, message, INFINITY, h.data);
 
   // Negative infinity
   h = halfFromFloat(-INFINITY);
-  sprintf(message, "negative infinity correctly converted to 0xfc00");
+  snprintf(message, sizeof(message), "negative infinity correctly converted to 0xfc00");
   printResult(h.data == 0xfc00, message, -INFINITY, h.data);
 
   // NaN
   h = halfFromFloat(NAN);
-  sprintf(message, "NaN correctly converted to NaN representation");
+  snprintf(message, sizeof(message), "NaN correctly converted to NaN representation");
   printResult((h.data & 0x7c00) == 0x7c00 && (h.data & 0x03ff) != 0x0000,
               message, NAN, h.data);
 
   // Smallest positive normal number
   h = halfFromFloat(6.10352e-05f);
-  sprintf(message, "6.10352e-05f correctly converted to 0x0400");
+  snprintf(message, sizeof(message), "6.10352e-05f correctly converted to 0x0400");
   printResult(h.data == 0x0400, message, 6.10352e-05f, h.data);
 
   // Largest denormalized number
   h = halfFromFloat(6.09756e-05f);
-  sprintf(message, "6.09756e-05f correctly converted to 0x03ff");
+  snprintf(message, sizeof(message), "6.09756e-05f correctly converted to 0x03ff");
   printResult(h.data == 0x03ff, message, 6.09756e-05f, h.data);
 
   // Smallest positive denormalized number
   h = halfFromFloat(5.96046448e-08f);
-  sprintf(message, "5.96046448e-08f correctly converted to 0x0001");
+  snprintf(message, sizeof(message), "5.96046448e-08f correctly converted to 0x0001");
   printResult(h.data == 0x0001, message, 5.96046e-08f, h.data);
 }
 
