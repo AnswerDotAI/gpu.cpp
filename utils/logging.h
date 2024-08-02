@@ -63,6 +63,14 @@ inline void LOG(Logger& logger, int level, const char *message, ...) {
  */
 static Logger kDefLog = {stdout, "", kInfo};
 
+/**
+ * @brief Set the log level of the default logger.
+ * @param level The log level to set.
+ */
+void setLogLevel(int level) {
+  kDefLog.level = level;
+}
+
 } // namespace gpu
 
 #endif

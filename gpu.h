@@ -416,7 +416,7 @@ struct KernelPool {
   }
 };
 
-void processEvents(const WGPUInstance& instance) {
+inline void processEvents(const WGPUInstance& instance) {
 #ifdef __EMSCRIPTEN__
   emscripten_sleep(0);
 #else
