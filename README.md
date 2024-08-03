@@ -45,7 +45,7 @@ After cloning the repo, from the top-level gpu.cpp, you should be able to build 
 make
 ```
 
-The first time you build and run the project this way, it will download a prebuilt shared library for the Dawn native WebGPU implementation automatically (using the setup.py script). This places the Dawn shared library in the third_party/lib directory. Afterwards you should see `libdawn.dylib` on MacOS or `libdawn.so` on Linux. This download only occurs once.
+The first time you build and run the project this way, it will download a prebuilt shared library for the Dawn native WebGPU implementation automatically (using the setup.py script). This places the Dawn shared library in the `third_party/lib` directory. Afterwards you should see `libdawn.dylib` on MacOS or `libdawn.so` on Linux. This download only occurs once.
 
 The build process itself should take a few seconds. If the build and executions is successful, you should see the output of the GELU computation:
 
@@ -190,7 +190,7 @@ illustrate how to use gpu.cpp as a library.
 
 After you have run `make` in the top-level directory which retrieves the prebuilt Dawn shared library, you can run each example by navigating to its directory and running `make` from the example's directory.
 
-An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It is only weakly optimized (up to 1D blocktiling, kernel number 4) at ~ 1.2+ TFLOPs on a Macbook Pro M1 laptop, which has a theoretical peak of 10.4 TFLOPs. Contributions to optimize this further are welcome - kernels 5-9 of Simon's post would be a natural starting point.
+An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It currently runs at ~ 2.5+ TFLOPs on a Macbook Pro M1 Max laptop, which has a theoretical peak of 10.4 TFLOPs. Contributions to optimize this further are welcome.
 
 A parallel physics simulation of an ensemble of double pendulums simulated in parallel with different initial conditions on the GPU is shown in [examples/physics](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/physics).
 
