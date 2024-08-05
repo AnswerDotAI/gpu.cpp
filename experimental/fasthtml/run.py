@@ -7,6 +7,9 @@ import uvicorn
 TARGET = os.getenv("TARGET", "debug")
 
 ace_editor = Script(src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js")
+gpucpp_runtime = Script(src="/build/run.js")    
+gpucpp_wasm = Script(src="/build/run.wasm")    
+
 global_style = Style("""
 #editor {
     height: 50vh;
@@ -17,6 +20,7 @@ global_style = Style("""
 HDRS = (
         picolink,
     ace_editor,
+    gpucpp_runtime,
     global_style,
     *Socials(
         title="gpu.cpp gpu puzzles",
@@ -38,6 +42,10 @@ rt = app.route
 @app.get("/build/{fname:path}.{ext:static}")
 async def build(fname: str, ext: str):
     return FileResponse(f"build/{fname}.{ext}")
+
+@app.get("/build/run.wasm")
+async def serve_wasm(fname: str, ext: str):
+    return FileResponse(f"build/run.wasm")
 
 def page():
     return Title("GPU Puzzles"), Body(
