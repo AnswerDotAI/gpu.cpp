@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "utils/logging.h"
+#include "numeric_types/half.h"
 
 namespace gpu {
 
@@ -52,12 +53,14 @@ std::string show(const numtype *a, size_t rows, size_t cols,
   }
   // spacing as log10 of max value
   int spacing = 1;
-  numtype max = *std::max_element(a, a + rows * cols);
   if constexpr (std::is_same<numtype, int>::value) {
+    int max = *std::max_element(a, a + rows * cols);
     spacing = std::max(0, (int)log10(max + .01)) + 2;
   } else if constexpr (std::is_same<numtype, float>::value) {
     // spacing = std::max(0, (int)log10(max + .01)) + 1;
     spacing = 8; // scientific notation
+  } else if constexpr (std::is_same<numtype, half>::value) {
+    spacing = 8;
   } else {
     throw std::runtime_error("Unsupported number type for show()");
   }
@@ -82,6 +85,14 @@ std::string show(const numtype *a, size_t rows, size_t cols,
           snprintf(buffer, 16, "%9.2f", a[i * cols + j]);
         } else
           snprintf(buffer, 16, "%10.2e", a[i * cols + j]);
+      } else if constexpr (std::is_same<numtype, half>::value) {
+	float tmp = halfToFloat(a[i * cols + j]);
+        if (std::abs(tmp) < 1000 &&
+                std::abs(tmp) > 0.01 ||
+            tmp == 0.0) {
+          snprintf(buffer, 16, "%9.2f", tmp);
+        } else
+          snprintf(buffer, 16, "%10.2e", tmp);
       } else {
         throw std::runtime_error("Unsupported number type for show()");
       }
@@ -199,11 +210,19 @@ void randint(std::array<numtype, size> &a, std::mt19937 &gen, int min = -1,
  * @param mean The mean of the Gaussian distribution.
  * @param std The standard deviation of the Gaussian distribution.
  */
-void randn(float *a, size_t N, std::mt19937 &gen, float mean = 0.0,
-           float std = 1.0) {
+inline void randn(float *a, size_t N, std::mt19937 &gen, float mean = 0.0,
+                  float std = 1.0) {
   std::normal_distribution<float> dist(mean, std);
   for (int i = 0; i < N; i++) {
     a[i] = static_cast<float>(dist(gen));
+  }
+}
+
+inline void randn(half *a, size_t N, std::mt19937 &gen, float mean = 0.0,
+                  float std = 1.0) {
+  std::normal_distribution<float> dist(mean, std);
+  for (int i = 0; i < N; i++) {
+    a[i] = halfFromFloat(dist(gen));
   }
 }
 
@@ -254,6 +273,14 @@ inline void transpose(float *input, float *output, size_t M, size_t N) {
   }
 }
 
+inline void transpose(half *input, half *output, size_t M, size_t N) {
+  for (size_t i = 0; i < M; i++) {
+    for (size_t j = 0; j < N; j++) {
+      output[j * M + i] = input[i * N + j];
+    }
+  }
+}
+
 /**
  * @brief Flip a matrix horizontally or vertically.
  * @param a The matrix to flip.
@@ -285,10 +312,22 @@ inline void flip(float *a, size_t R, size_t C, bool horizontal = true) {
  * @param tol The tolerance for closeness.
  * @return bool True if the arrays are close, false otherwise.
  */
-bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
+inline bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
   for (size_t i = 0; i < n; i++) {
     if (std::abs(a[i] - b[i]) > tol || std::isnan(a[i]) || std::isnan(b[i])) {
       LOG(kDefLog, kError, "Mismatch at index %d: %f != %f", i, a[i], b[i]);
+      return false;
+    }
+  }
+  return true;
+}
+
+inline bool isclose(half *a, half *b, size_t n, float tol = 1) {
+  for (size_t i = 0; i < n; i++) {
+    float ai = halfToFloat(a[i]);
+    float bi = halfToFloat(b[i]);
+    if (std::abs(ai - bi) > tol || std::isnan(ai) || std::isnan(bi)) {
+      LOG(kDefLog, kError, "Mismatch at index %d: %f != %f", i, ai, bi);
       return false;
     }
   }
