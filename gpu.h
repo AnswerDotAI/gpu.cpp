@@ -174,7 +174,7 @@ struct Context; // Forward declaration so that TensorPool can have a pointer to
  * resources.
  */
 struct TensorPool {
-  inline TensorPool(Context *ctx) : ctx(ctx), data() {};
+  inline TensorPool(Context *ctx) : ctx(ctx), data(){};
   Context *ctx;
   std::unordered_map<WGPUBuffer, Tensor> data;
   ~TensorPool();
@@ -416,7 +416,7 @@ struct KernelPool {
   }
 };
 
-inline void processEvents(const WGPUInstance& instance) {
+inline void processEvents(const WGPUInstance &instance) {
 #ifdef __EMSCRIPTEN__
   emscripten_sleep(0);
 #else
@@ -680,15 +680,17 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
                              const WGPUDeviceDescriptor &devDescriptor = {}) {
   Context context;
   {
-#ifndef __EMSCRIPTEN__
-    context.instance = wgpuCreateInstance(&desc);
-#else
+#ifdef __EMSCRIPTEN__
     // Emscripten does not support the instance descriptor
     // and throws an assertion error if it is not nullptr.
     context.instance = wgpuCreateInstance(nullptr);
+#else
+    context.instance = wgpuCreateInstance(&desc);
 #endif
+    // check status
     check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
   }
+
   LOG(kDefLog, kInfo, "Requesting adapter");
   {
     struct AdapterData {
@@ -700,19 +702,38 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
                                     WGPUAdapter adapter, char const *message,
                                     void *pUserData) {
       AdapterData &adapterData = *reinterpret_cast<AdapterData *>(pUserData);
+      LOG(kDefLog, kInfo, "WGPURequestAdapterStatus_Success: %d",
+          WGPURequestAdapterStatus_Success);
+      LOG(kDefLog, kInfo, "WGPURequestAdapterStatus_Unavailable: %d",
+          WGPURequestAdapterStatus_Unavailable);
+      LOG(kDefLog, kInfo, "Status: %d", status);
+#ifdef __EMSCRIPTEN__
+      if (status != WGPURequestAdapterStatus_Success) {
+        LOG(kDefLog, kError, "Could not get WebGPU adapter: %s", message);
+        LOG(kDefLog, kError,
+            "\n\nA common reason is that the browser does not have WebGPU "
+            "enabled, particularly on Linux.\n"
+            "- Open `chrome://flags/` in the browser and make sure "
+            "\"WebGPU Support\" is enabled.\n"
+        "- Chrome is launched with vulkan enabled. From the command line launch chrome as `google-chrome --enable-features=Vulkan`\n");
+      }
+#endif
       check(status == WGPURequestAdapterStatus_Success,
             "Request WebGPU adapter", __FILE__, __LINE__);
       adapterData.adapter = adapter;
       adapterData.requestEnded = true;
     };
+
     wgpuInstanceRequestAdapter(context.instance, &adapterOpts,
                                onAdapterRequestEnded, (void *)&adapterData);
+
     while (!adapterData.requestEnded) {
       processEvents(context.instance);
     }
     assert(adapterData.requestEnded);
     context.adapter = adapterData.adapter;
   }
+
   LOG(kDefLog, kInfo, "Requesting device");
   {
     struct DeviceData {
@@ -745,7 +766,6 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
             },
     };
 #endif
-    LOG(kDefLog, kInfo, "Requesting device");
     wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
                              onDeviceRequestEnded, (void *)&devData);
     LOG(kDefLog, kInfo, "Waiting for device request to end");
