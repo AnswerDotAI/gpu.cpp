@@ -1,62 +1,72 @@
+#include "gpu.h"
 #include <array>
 #include <cstdio>
+#include <emscripten/emscripten.h>
 #include <future>
 #include <memory>
-#include "gpu.h"
+#include <string>
 
-// #include <webgpu/webgpu.h>
-#include "emscripten/emscripten.h"
+using namespace gpu;
 
-using namespace gpu; // createContext, createTensor, createKernel,
-                     // createShader, dispatchKernel, wait, toCPU
-                     // Tensor, Kernel, Context, Shape, kf32
+EM_JS(void, js_print, (const char *str), {
+  if (typeof window != 'undefined' && window.customPrint) {
+    window.customPrint(UTF8ToString(str));
+  } else {
+    console.log("window.customPrint is not defined.");
+    console.log(UTF8ToString(str));
+  }
+});
 
-static const char *kGelu = R"(
-const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
-@group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> dummy: array<{{precision}}>;
-@compute @workgroup_size({{workgroupSize}})
-fn main(
-    @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    let i: u32 = GlobalInvocationID.x;
-    if (i < arrayLength(&inp)) {
-        let x: f32 = inp[i];
-        out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
-                 * (x + .044715 * x * x * x))), x, x > 10.0);
-    }
-}
-)";
+extern "C" {
 
-int main(int argc, char **argv) {
-  printf("\033[2J\033[1;1H");
-  printf("\nHello gpu.cpp!\n");
-  printf("--------------\n\n");
-
-  // const WGPUInstanceDescriptor descriptor = { };
-  // std::unique_ptr<WGPUInstanceDescriptor> descriptor = std::make_unique<WGPUInstanceDescriptor>();
-
-  // WGPUInstance instance = wgpuCreateInstance({});
+EMSCRIPTEN_KEEPALIVE
+void executeKernel(const char *kernelCode) {
   Context ctx = createContext({});
   static constexpr size_t N = 5000;
   std::array<float, N> inputArr, outputArr;
+
   for (int i = 0; i < N; ++i) {
-    inputArr[i] = static_cast<float>(i) / 10.0; // dummy input data
+    inputArr[i] = static_cast<float>(i);
   }
+
   Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = createTensor(ctx, Shape{N}, kf32);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kGelu, 256, kf32},
-                           Bindings{input, output},
-                           {cdiv(N, 256), 1, 1});
-  dispatchKernel(ctx, op, promise);
-  wait(ctx, future);
-  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 12; ++i) {
-    printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
+
+  try {
+    Kernel op = createKernel(ctx, {kernelCode, 256, kf32},
+                             Bindings{input, output}, {cdiv(N, 256), 1, 1});
+
+    dispatchKernel(ctx, op, promise);
+    wait(ctx, future);
+  } catch (const std::exception &e) {
+    js_print("Invalid kernel code.");
+    exit(1);
   }
-  printf("  ...\n\n");
-  printf("Computed %zu values of GELU(x)\n\n", N);
-  return 0;
+
+  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+
+  char buffer[1024];
+  for (int i = 0; i < 12; ++i) {
+    snprintf(buffer, sizeof(buffer), "  kernel(%.1f) = %.4f", inputArr[i],
+             outputArr[i]);
+    js_print(buffer);
+  }
+  snprintf(buffer, sizeof(buffer), "  ...");
+  js_print(buffer);
+  snprintf(buffer, sizeof(buffer), "Computed %zu values", N);
+  js_print(buffer);
 }
+}
+
+#ifndef STANDALONE_WASM
+#include "emscripten/bind.h"
+EMSCRIPTEN_BINDINGS(module) {
+  emscripten::function("executeKernel", emscripten::optional_override(
+                                            [](const std::string &kernelCode) {
+                                              executeKernel(kernelCode.c_str());
+                                            }));
+}
+#endif

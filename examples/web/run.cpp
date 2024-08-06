@@ -4,7 +4,6 @@
 #include <memory>
 #include "gpu.h"
 
-// #include <webgpu/webgpu.h>
 #include "emscripten/emscripten.h"
 
 using namespace gpu; // createContext, createTensor, createKernel,
@@ -33,10 +32,6 @@ int main(int argc, char **argv) {
   printf("\nHello gpu.cpp!\n");
   printf("--------------\n\n");
 
-  // const WGPUInstanceDescriptor descriptor = { };
-  // std::unique_ptr<WGPUInstanceDescriptor> descriptor = std::make_unique<WGPUInstanceDescriptor>();
-
-  // WGPUInstance instance = wgpuCreateInstance({});
   Context ctx = createContext({});
   static constexpr size_t N = 5000;
   std::array<float, N> inputArr, outputArr;

@@ -8,6 +8,7 @@ let editor;
 let completionTippy;
 let currentCompletion = '';
 
+
 function initEditor() {
     editor = ace.edit("editor");
     editor.setTheme("ace/theme/monokai");
@@ -23,20 +24,16 @@ function initEditor() {
     editor.setKeyboardHandler("ace/keyboard/vim");
     
     editor.setValue(
-"// Puzzle 1 : Map\\n\
-// Implement a kernel that adds 10 to each position of vector\\n\
-// a and stores it in vector out. You have 1 thread per position.\\n\
-//\\n\
-// Warning: You are in vim mode.\\n\
+"// Start editing here to see the results.\\n\// Warning: You are in vim mode.\\n\
 \\n\
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;\\n\
+@group(0) @binding(0) var<storage, read_write> input: array<f32>;\\n\
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;\\n\
 @compute @workgroup_size(256)\\n\
 fn main(\\n\
   @builtin(local_invocation_id) LocalInvocationID: vec3<u32>) {\\n\
     let local_idx = LocalInvocationID.x;\\n\
-    if (local_idx < arrayLength(&a)) {\\n\
-      output[local_idx] = a[local_idx] + 10;\\n\
+    if (local_idx < arrayLength(&input)) {\\n\
+      output[local_idx] = input[local_idx] + 1;\\n\
     }\\n\
   }\\n\
 ");
@@ -54,6 +51,24 @@ fn main(\\n\
         if (delta.action === 'insert' && (delta.lines[0] === '.' || delta.lines[0] === ' ')) {
             showCompletionSuggestion();
         }
+
+        // Recover from errors TODO(avh): only do this if there's an error
+        createModule().then((Module) => {
+            // Keep your existing Module setup
+            Module.print = window.customPrint;
+            Module.printErr = window.customPrint;
+            window.Module = Module;
+            console.log("Module ready");
+        });
+
+        if (window.Module && window.Module.executeKernel) {
+            console.log("Executing kernel");
+            window.terminal.clear();
+            window.Module.executeKernel(editor.getValue());
+        } else {
+            console.log("Module not ready");
+        }
+
     });
 
     completionTippy = tippy(document.getElementById('editor'), {
