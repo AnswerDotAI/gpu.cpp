@@ -31,7 +31,6 @@ To build a gpu.cpp project, you will need to have installed on your system:
 
 - `clang++` compiler installed with support for C++17.
 - `python3` and above, to run the script which downloads the Dawn shared library.
-  make to build the project.
 - `make` to build the project.
 - Only on Linux systems - Vulkan drivers. If Vulkan is not installed, you can run `sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools` to install them.
 
