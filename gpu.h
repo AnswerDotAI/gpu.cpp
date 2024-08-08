@@ -318,6 +318,9 @@ struct KernelCode {
                     const Shape &workgroupSize = {256, 1, 1},
                     NumType precision = kf32)
       : data(pData), workgroupSize(workgroupSize), precision(precision) {
+    if (precision == kf16) {
+      data = "enable f16;\n" + data;
+    }
     replaceAll(data, "{{workgroupSize}}", toString(workgroupSize));
     replaceAll(data, "{{precision}}", toString(precision));
     LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
