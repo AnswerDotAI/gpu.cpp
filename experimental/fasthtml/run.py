@@ -6,43 +6,22 @@ import uvicorn
 
 TARGET = os.getenv("TARGET", "debug")
 
-ace_editor = Script(src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js")
-gpucpp_runtime = Script(src="/build/run.js")
-gpucpp_wasm = Script(src="/build/run.wasm")
-tippy_css = Link(rel="stylesheet", href="https://unpkg.com/tippy.js@6/dist/tippy.css")
-tippy_js = Script(src="https://unpkg.com/@popperjs/core@2")
-tippy_js2 = Script(src="https://unpkg.com/tippy.js@6")
-xterm_css = Link(
-    rel="stylesheet", href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"
-)
-xterm_js = Script(src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js")
-xterm_fit_js = Script(
-    src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"
-)
-
-global_style = Style(
-    """
+global_style = """
 #editor {
     height: 50vh;
     width: 50vw;
 }
 """
-)
 
-terminal_init = \
-    """
+terminal_init = """
     const terminal = new Terminal();
     const fitAddon = new FitAddon.FitAddon();
     terminal.loadAddon(fitAddon);
-    // terminal.open(document.getElementById('output'));
     window.terminal = terminal;
-    // fitAddon.fit();
     console.log("Terminal initialized");
 """
 
-print_script = (
-    Script(
-        """
+print_script = """
 window.customPrint = function(text) {
   console.log(text);
   if (window.terminal) {
@@ -55,12 +34,9 @@ createModule().then((Module) => {
   Module.print = window.customPrint;
   Module.printErr = window.customPrint;
   window.Module = Module;
-  console.log("Module ready");
-  // window.Module.executeKernel(editor.getValue());
+  console.log("Initial module created");
 });
 """
-    ),
-)
 
 bind_terminal = """
     window.terminal.open(document.getElementById('output'));
@@ -79,24 +55,26 @@ fn main(
             output[i] = input[i] + 1;
         }
     }
-  """
+"""
 
 # TODO(avh) : Global state handling of terminal binding, module creation, etc.
 # could be improved
 
 HDRS = (
     picolink,
-    ace_editor,
-    xterm_css,
-    xterm_js,
-    xterm_fit_js,
+    # ace code editor
+    Script(src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"),
+    # xterm terminal for output
+    Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"),
+    Script(src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"),
+    Script(src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"),
     Script(terminal_init),
-    gpucpp_runtime,
-    print_script,
-    global_style,
-    tippy_css,
-    tippy_js,
-    tippy_js2,
+    Script(src="/build/run.js"),  # gpu.cpp runtime
+    Script(print_script),
+    Style(global_style),
+    Link(rel="stylesheet", href="https://unpkg.com/tippy.js@6/dist/tippy.css"),
+    Script(src="https://unpkg.com/@popperjs/core@2"),
+    Script(src="https://unpkg.com/tippy.js@6"),
     *Socials(
         title="gpu.cpp gpu puzzles",
         description="",
@@ -125,30 +103,29 @@ async def serve_wasm(fname: str, ext: str):
     return FileResponse(f"build/run.wasm")
 
 
-def page():
+def output():
+    return Div(
+        "Output",
+        id="output",
+        style="width: 34vw; height:100vh; background-color: #444; float: right;",
+    ), Script(bind_terminal)
+
+
+@rt("/")
+def get():
     return (
-        Title("GPU Puzzles"),
+        Title("WGSL Editor"),
         Body(
             Div(
                 Div(
                     CodeEditor(initial_content=gelu_kernel),
                     style="width: 66vw; height:100vh; background-color: #333; float: left;",
                 ),
-                Div(
-                    "Output",
-                    id="output",
-                    style="width: 34vw; height:100vh; background-color: #444; float: right;",
-                ),
+                output(),
             ),
-            Script(bind_terminal),
             style="height: 100vh; overflow: hidden;",
         ),
     )
-
-
-@rt("/")
-def get():
-    return page()
 
 
 rt = app.route

@@ -54,8 +54,7 @@ void executeKernel(const char *kernelCode) {
              inputArr[i], outputArr[i]);
     js_print(buffer);
   }
-  snprintf(buffer, sizeof(buffer), "  ...");
-  js_print(buffer);
+  js_print(" ...");
   for (int i = N - 10; i < N; ++i) {
     snprintf(buffer, sizeof(buffer), "  [%d] kernel(%.1f) = %.4f", i,
              inputArr[i], outputArr[i]);
