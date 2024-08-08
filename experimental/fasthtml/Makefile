@@ -11,10 +11,6 @@ NO_MODULARIZE_FLAGS=-s EXPORTED_FUNCTIONS=['_executeKernel'] -s EXPORTED_RUNTIME
 
 default: server
 
-# build/run.html: check-emsdk run.cpp
-#	em++ run.cpp -o build/run.html \
-#		$(COMMON_FLAGS) $(JS_FLAGS) --shell-file ./custom_shell.html
-
 build/run.js: check-emsdk run.cpp
 	em++ run.cpp -o build/run.js \
 		$(COMMON_FLAGS) $(JS_FLAGS) $(MODULARIZE_FLAGS)
@@ -22,6 +18,10 @@ build/run.js: check-emsdk run.cpp
 build/run.wasm: check-emsdk run.cpp
 	em++ run.cpp -o build/run.wasm \
 		$(COMMON_FLAGS) $(WASM_FLAGS)
+
+watch:
+	@echo "Watching for changes..."
+	ls run.cpp | entr -c make build/run.js
 
 server: build/run.js
 	python3 run.py

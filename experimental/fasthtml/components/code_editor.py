@@ -2,12 +2,13 @@
 
 from fasthtml.common import *
 from .toolbar import Toolbar
+import json
 
-editor_script = Script("""
+def editor_script(initial_content: str) -> Script:
+    return Script("""
 let editor;
 let completionTippy;
 let currentCompletion = '';
-
 
 function initEditor() {
     editor = ace.edit("editor");
@@ -16,32 +17,18 @@ function initEditor() {
     editor.setOptions({
         fontSize: "14px",
         showPrintMargin: false,
-        // disable showing errors in gutter Ace WGSL parser is out of date
+        // disable showing errors in gutter, Ace's WGSL parser is out of date
         showGutter: false,
         highlightActiveLine: true,
         wrap: true,
     });
     editor.setKeyboardHandler("ace/keyboard/vim");
     
-    editor.setValue(
-"// Start editing here to see the results.\\n\// Warning: You are in vim mode.\\n\
-\\n\
-@group(0) @binding(0) var<storage, read_write> input: array<f32>;\\n\
-@group(0) @binding(1) var<storage, read_write> output : array<f32>;\\n\
-@compute @workgroup_size(256)\\n\
-fn main(\\n\
-  @builtin(local_invocation_id) LocalInvocationID: vec3<u32>) {\\n\
-    let local_idx = LocalInvocationID.x;\\n\
-    if (local_idx < arrayLength(&input)) {\\n\
-      output[local_idx] = input[local_idx] + 1;\\n\
-    }\\n\
-  }\\n\
-");
-    
+    editor.setValue(""" + json.dumps(initial_content) + ");" + 
+"""
     window.addEventListener('resize', function() {
         editor.resize();
     });
-
     document.getElementById('language').addEventListener('change', function(e) {
         let mode = "ace/mode/" + e.target.value;
         editor.session.setMode(mode);
@@ -149,7 +136,7 @@ async function showCompletionSuggestion() {
 document.addEventListener('DOMContentLoaded', initEditor);
 """)
 
-def CodeEditor():
+def CodeEditor(initial_content: str):
     return (
         Div(
             Toolbar(),
@@ -167,5 +154,5 @@ def CodeEditor():
             # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
             style="height: 100vh; overflow: hidden;"
         ),
-        editor_script
+        editor_script(initial_content)
     )

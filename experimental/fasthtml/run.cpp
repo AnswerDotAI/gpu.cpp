@@ -49,17 +49,23 @@ void executeKernel(const char *kernelCode) {
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
 
   char buffer[1024];
-  for (int i = 0; i < 12; ++i) {
-    snprintf(buffer, sizeof(buffer), "  kernel(%.1f) = %.4f", inputArr[i],
-             outputArr[i]);
+  for (int i = 0; i < 10; ++i) {
+    snprintf(buffer, sizeof(buffer), "  [%d] kernel(%.1f) = %.4f", i,
+             inputArr[i], outputArr[i]);
     js_print(buffer);
   }
   snprintf(buffer, sizeof(buffer), "  ...");
   js_print(buffer);
+  for (int i = N - 10; i < N; ++i) {
+    snprintf(buffer, sizeof(buffer), "  [%d] kernel(%.1f) = %.4f", i,
+             inputArr[i], outputArr[i]);
+    js_print(buffer);
+  }
   snprintf(buffer, sizeof(buffer), "Computed %zu values", N);
   js_print(buffer);
-}
-}
+} // executeKernel
+
+} // extern "C"
 
 #ifndef STANDALONE_WASM
 #include "emscripten/bind.h"
