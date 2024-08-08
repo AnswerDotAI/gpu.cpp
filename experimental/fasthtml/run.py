@@ -48,13 +48,12 @@ gelu_kernel = """// Start editing here to see the results.
 @group(0) @binding(0) var<storage, read_write> input : array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @compute @workgroup_size(256)
-fn main(
-    @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-        let i: u32 = GlobalInvocationID.x;
-        if (i < arrayLength(&input)) {
-            output[i] = input[i] + 1;
-        }
+fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let i: u32 = GlobalInvocationID.x;
+    if (i < arrayLength(&input)) {
+        output[i] = input[i] + 1;
     }
+}
 """
 
 # TODO(avh) : Global state handling of terminal binding, module creation, etc.
@@ -107,7 +106,7 @@ def output():
     return Div(
         "Output",
         id="output",
-        style="width: 34vw; height:100vh; background-color: #444; float: right;",
+        style="width: 50vw; height:100vh; background-color: #444; float: right;",
     ), Script(bind_terminal)
 
 
@@ -119,7 +118,7 @@ def get():
             Div(
                 Div(
                     CodeEditor(initial_content=gelu_kernel),
-                    style="width: 66vw; height:100vh; background-color: #333; float: left;",
+                    style="width: 50vw; height:100vh; background-color: #333; float: left;",
                 ),
                 output(),
             ),
