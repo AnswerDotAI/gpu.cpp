@@ -58,6 +58,7 @@ else()
         message(STATUS "Found libdawn: ${LIBDAWN}")
         # Link against libdawn
         target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
+        # if not found, try download from release
     else()
         message(
             FATAL_ERROR "libdawn not found, try downloading from the release")
@@ -67,13 +68,14 @@ else()
                 DOWNLOAD_DIR
                 "${TARGET_FILE_PATH}/third_party/lib")
         FetchContent_MakeAvailable(libdawn)
-    find_library(LIBDAWN dawn REQUIRED PATHS "${TARGET_FILE_PATH}/third_party/lib")
+        find_library(LIBDAWN dawn REQUIRED
+                     PATHS "${TARGET_FILE_PATH}/third_party/lib")
         if(LIBDAWN)
             message(STATUS "Found libdawn: ${LIBDAWN}")
             # Link against libdawn
             target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
         else()
-            message(
-                FATAL_ERROR "libdawn not found")
+            message(FATAL_ERROR "libdawn not found")
         endif()
+    endif()
 endif()
