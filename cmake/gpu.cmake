@@ -61,9 +61,14 @@ else()
         # if not found, try download from release
     else()
         message("libdawn not found, try downloading from the release")
+        if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+            set(libdawn_ext "dylib")
+        elseif(UNIX)
+            set(libdawn_ext "so")
+        endif()
         FetchContent_Declare(
             libdawn
-            URL https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib
+            URL https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.${libdawn_ext}
             DOWNLOAD_NO_EXTRACT TRUE
             SOURCE_DIR "${TARGET_FILE_PATH}/third_party/lib")
         FetchContent_MakeAvailable(libdawn)
