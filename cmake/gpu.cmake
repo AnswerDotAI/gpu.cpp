@@ -64,8 +64,8 @@ else()
         FetchContent_Declare(
             libdawn
             URL https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib
-                DOWNLOAD_DIR
-                "${TARGET_FILE_PATH}/third_party/lib")
+            DOWNLOAD_NO_EXTRACT TRUE
+            SOURCE_DIR "${TARGET_FILE_PATH}/third_party/lib")
         FetchContent_MakeAvailable(libdawn)
         find_library(LIBDAWN dawn REQUIRED
                      PATHS "${TARGET_FILE_PATH}/third_party/lib")
