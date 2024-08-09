@@ -63,7 +63,7 @@ else()
         message("libdawn not found, try downloading from the release")
         FetchContent_Declare(
             libdawn
-            url https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib
+            URL https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib
                 DOWNLOAD_DIR
                 "${TARGET_FILE_PATH}/third_party/lib")
         FetchContent_MakeAvailable(libdawn)
