@@ -60,8 +60,7 @@ else()
         target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
         # if not found, try download from release
     else()
-        message(
-            FATAL_ERROR "libdawn not found, try downloading from the release")
+        message("libdawn not found, try downloading from the release")
         FetchContent_Declare(
             libdawn
             url https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib
