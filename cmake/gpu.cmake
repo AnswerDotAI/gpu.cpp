@@ -14,20 +14,23 @@ if(EXISTS ${FILEPATH_CURRENT_DIR})
 elseif(EXISTS ${FILEPATH_PROJECT_ROOT})
     set(TARGET_FILE_PATH ${PROJECT_ROOT})
 else()
-    message(FATAL_ERROR "File ${FILENAME} not found in either ${CMAKE_CURRENT_SOURCE_DIR} or ${CMAKE_CURRENT_SOURCE_DIR}/../../")
+    message(
+        FATAL_ERROR
+            "File ${FILENAME} not found in either ${CMAKE_CURRENT_SOURCE_DIR} or ${CMAKE_CURRENT_SOURCE_DIR}/../../"
+    )
 endif()
 
 # Define architecture and build type directories or file names
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-  set(ARCH "x64")
+    set(ARCH "x64")
 else()
-  set(ARCH "x86")
+    set(ARCH "x86")
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  set(BUILD_TYPE "Debug")
+    set(BUILD_TYPE "Debug")
 else()
-  set(BUILD_TYPE "Release")
+    set(BUILD_TYPE "Release")
 endif()
 
 add_library(webgpulib SHARED IMPORTED)
@@ -38,22 +41,39 @@ add_dependencies(gpu webgpulib)
 target_include_directories(gpu INTERFACE ${TARGET_FILE_PATH})
 
 # Add headers webgpu.h
-target_include_directories(wgpu INTERFACE ${TARGET_FILE_PATH}/third_party/headers)
+target_include_directories(wgpu
+                           INTERFACE ${TARGET_FILE_PATH}/third_party/headers)
 if(WIN32)
-    set(DLL_PATH "${TARGET_FILE_PATH}/third_party/lib/libdawn_${ARCH}_${BUILD_TYPE}.dll")
+    set(DLL_PATH
+        "${TARGET_FILE_PATH}/third_party/lib/libdawn_${ARCH}_${BUILD_TYPE}.dll")
     if(EXISTS ${DLL_PATH})
-            file(COPY ${DLL_PATH} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-            target_link_libraries(webgpulib INTERFACE ${DLL_PATH})
+        file(COPY ${DLL_PATH} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+        target_link_libraries(webgpulib INTERFACE ${DLL_PATH})
     else()
-    message(FATAL_ERROR "libdawn dll not found at: ${DLL_PATH}")
-endif()
+        message(FATAL_ERROR "libdawn dll not found at: ${DLL_PATH}")
+    endif()
 else()
-    find_library(LIBDAWN dawn REQUIRED PATHS "${TARGET_FILE_PATH}/third_party/lib")
+    find_library(LIBDAWN dawn PATHS "${TARGET_FILE_PATH}/third_party/lib")
     if(LIBDAWN)
         message(STATUS "Found libdawn: ${LIBDAWN}")
-    # Link against libdawn
+        # Link against libdawn
         target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
     else()
-        message(FATAL_ERROR "libdawn not found")
+        message(
+            FATAL_ERROR "libdawn not found, try downloading from the release")
+        FetchContent_Declare(
+            libdawn
+            url https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib
+                DOWNLOAD_DIR
+                "${TARGET_FILE_PATH}/third_party/lib")
+        FetchContent_MakeAvailable(libdawn)
+        find_library(LIBDAWN dawn PATHS "${TARGET_FILE_PATH}/third_party/lib")
+    if(LIBDAWN)
+        message(STATUS "Found libdawn: ${LIBDAWN}")
+        # Link against libdawn
+        target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
+            else()
+        message(
+            FATAL_ERROR "libdawn not found")
     endif()
 endif()
