@@ -55,18 +55,6 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     }
 }
 """
-# Adapted from: https://github.com/AnswerDotAI/fasthtml-example/tree/baa67c5b2ca4d4a9ba091b9f9b72b8a2de384a37/code_editor
-
-def Toolbar():
-    return Div(
-        Select(
-            Option("WGSL", value="wgsl"),
-            Option("C++", value="c++"),
-            id="language",
-            cls="mr-2 p-2 border rounded"
-        ),
-        cls="bg-gray-200 p-4 shadow-md flex items-center w-full"
-    )
 
 def editor_script(initial_content: str) -> str:
     with open("code_editor.js", 'r') as file:
@@ -132,16 +120,14 @@ if TARGET == "release":
 else:
     app = FastHTMLWithLiveReload(hdrs=HDRS)
 
-rt = app.route
-
 
 @app.get("/build/run.js")
-async def serve_wasm(fname: str, ext: str):
+async def serve_js():
     return FileResponse(f"build/run.js")
 
 
 @app.get("/build/run.wasm")
-async def serve_wasm(fname: str, ext: str):
+async def serve_wasm():
     return FileResponse(f"build/run.wasm")
 
 
@@ -152,6 +138,8 @@ def output():
         style="width: 50vw; height:100vh; background-color: #444; float: right;",
     ), Script(bind_terminal)
 
+
+rt = app.route
 
 @rt("/")
 def get():
@@ -171,9 +159,8 @@ def get():
 
 
 if __name__ == "__main__":
-    run_uv(
-        fname=None,
-        app="app",
+    serve(
+        appname=None,
         host="0.0.0.0",
         port=int(os.getenv("PORT", 8000)),
         reload=True,

@@ -5,6 +5,7 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace gpu;
 
@@ -75,14 +76,26 @@ bool runCheck(const char *kernelCode, const Shape &wgSize,
 #ifndef STANDALONE_WASM
 #include "emscripten/bind.h"
 EMSCRIPTEN_BINDINGS(module) {
+
+  emscripten::value_array<std::array<size_t, 3>>("ArrayST")
+      .element(emscripten::index<0>())
+      .element(emscripten::index<1>())
+      .element(emscripten::index<2>());
+  emscripten::register_vector<std::vector<float>>("VectorFloat");
+  emscripten::register_vector<std::vector<int>>("VectorInt");
+
   emscripten::function(
       "executeKernel",
       emscripten::optional_override([](const std::string &kernelCode,
                                        const std::array<size_t, 3>& wgSize,
                                        const std::array<size_t, 3>& nWorkgroups) {
         runCheck(kernelCode.c_str(),
-                      Shape{wgSize[0], wgSize[1], wgSize[2]},
-                      Shape{nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]});
+                      Shape{static_cast<size_t>(wgSize[0]),
+                            static_cast<size_t>(wgSize[1]),
+                            static_cast<size_t>(wgSize[2])},
+                      Shape{static_cast<size_t>(nWorkgroups[0]),
+                            static_cast<size_t>(nWorkgroups[1]),
+                            static_cast<size_t>(nWorkgroups[2])});
       }));
   emscripten::function("checkAnswer", &checkAnswer);
 }

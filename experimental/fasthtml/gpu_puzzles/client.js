@@ -91,13 +91,3 @@ function customPrint(text) {
     console.warn("Terminal not initialized");
   }
 }
-
-function updateEditor(delta) {
-  if (delta.action === 'insert' && (delta.lines[0] === '.' || delta.lines[0] === ' ')) {
-    showCompletionSuggestion();
-  }
-
-  if (!AppState.isModuleReady) {
-    console.log("Module not ready, waiting...");
-    return;
-  }
