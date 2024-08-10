@@ -7,7 +7,6 @@ function updateEditor(delta) {
     if (delta.action === 'insert' && (delta.lines[0] === '.' || delta.lines[0] === ' ')) {
         showCompletionSuggestion();
     }
-
     // Recover from errors TODO(avh): only do this if there's an error
     createModule().then((Module) => {
         // Keep your existing Module setup
@@ -16,7 +15,6 @@ function updateEditor(delta) {
         window.Module = Module;
         console.log("updateEditor() - Module ready");
     });
-
     if (window.Module && window.Module.executeKernel) {
         console.log("Executing kernel");
         window.terminal.clear();

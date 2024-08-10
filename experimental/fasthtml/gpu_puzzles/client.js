@@ -7,12 +7,12 @@ const State = {
   isModuleReady: false
 };
 
-
 function initializeApp() {
   initializeTerminal();
   initializeEditor();
   initializeModule();
   setupEventListeners();
+  console.log("App initialized");
 }
 
 function initializeTerminal() {
@@ -58,7 +58,7 @@ function initializeModule() {
     AppState.isModuleReady = true;
     console.log("Module initialized");
     // Attempt to run the kernel with the initial content
-    updateEditor({ action: 'insert', lines: [''] });
+    AppState.editor.updateEditor({ action: 'insert', lines: [''] });
   }).catch(error => {
     console.error("Failed to initialize module:", error);
   });

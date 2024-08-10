@@ -13,31 +13,6 @@ global_style = """
 }
 """
 
-terminal_init = """
-    const terminal = new Terminal();
-    const fitAddon = new FitAddon.FitAddon();
-    terminal.loadAddon(fitAddon);
-    window.terminal = terminal;
-    console.log("Terminal initialized");
-"""
-
-print_script = """
-window.customPrint = function(text) {
-  console.log(text);
-  if (window.terminal) {
-    window.terminal.writeln(text);
-  } else {
-    console.warn("Terminal not initialized");
-  }
-};
-createModule().then((Module) => {
-  Module.print = window.customPrint;
-  Module.printErr = window.customPrint;
-  window.Module = Module;
-  console.log("Initial module created");
-});
-"""
-
 bind_terminal = """
     window.terminal.open(document.getElementById('output'));
     fitAddon.fit();
@@ -59,23 +34,6 @@ fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     }
 }
 """.strip()
-
-cpp_code = """
-  static constexpr size_t N = 4;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
-  Tensor output = createTensor(ctx, {N}, kf32);
-  Kernel op = createKernel(ctx, {kPuzzle1, N}, Bindings{a, output},
-                           /*nWorkgroups */ {1, 1, 1});
-
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  dispatchKernel(ctx, op, promise);
-  std::array<float, R * C> outputArr;
-  wait(ctx, future);
-  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  printf("%s", show<float, R, C>(outputArr, "output").c_str());
-""".strip()
-
 
 def controls():
     # left and right buttons
@@ -202,12 +160,20 @@ def CodeEditor(initial_content: str):
             # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
             style="height: 33vh; overflow: hidden;",
         ),
-        # Script(editor_script(initial_content)),
+        Script(editor_script(initial_content)),
     )
 
 
 # TODO(avh) : Global state handling of terminal binding, module creation, etc.
 # could be improved
+
+init_app = """
+document.addEventListener('DOMContentLoaded', () => {
+    window.AppState = Object.create(State);
+    const AppState = window.AppState;
+    initializeApp();
+});
+""".strip()
 
 HDRS = (
     picolink,
@@ -217,15 +183,13 @@ HDRS = (
     Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"),
     Script(src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"),
     Script(src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"),
-    # Script(terminal_init),
     Script(src="/build/run.js"),  # gpu.cpp runtime
-    # Script(print_script),
     Style(global_style),
     Link(rel="stylesheet", href="https://unpkg.com/tippy.js@6/dist/tippy.css"),
     Script(src="https://unpkg.com/@popperjs/core@2"),
     Script(src="https://unpkg.com/tippy.js@6"),
     Script(src="/client.js"),
-    Script("document.addEventListener('DOMContentLoaded', () => { initializeApp(); });"),
+    Script(init_app),
     *Socials(
         title="gpu.cpp gpu puzzles",
         description="",
