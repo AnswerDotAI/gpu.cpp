@@ -26,7 +26,8 @@ EMSCRIPTEN_KEEPALIVE bool checkAnswer(std::array<float, 5000> &outputArr) {
 
 EMSCRIPTEN_KEEPALIVE
 void executeKernel(const char *kernelCode, const Shape &wgSize,
-                   const Shape &nWorkgroups, std::array<float, 5000> &outputArr) {
+                   const Shape &nWorkgroups,
+                   std::array<float, 5000> &outputArr) {
   constexpr size_t N = 5000;
   Context ctx = createContext({});
   std::array<float, N> inputArr;
@@ -65,7 +66,7 @@ void executeKernel(const char *kernelCode, const Shape &wgSize,
 
 EMSCRIPTEN_KEEPALIVE
 bool runCheck(const char *kernelCode, const Shape &wgSize,
-                   const Shape &nWorkgroups) {
+              const Shape &nWorkgroups) {
   std::array<float, 5000> outputArr;
   executeKernel(kernelCode, wgSize, nWorkgroups, outputArr);
   return checkAnswer(outputArr);
@@ -86,17 +87,17 @@ EMSCRIPTEN_BINDINGS(module) {
 
   emscripten::function(
       "executeKernel",
-      emscripten::optional_override([](const std::string &kernelCode,
-                                       const std::array<size_t, 3>& wgSize,
-                                       const std::array<size_t, 3>& nWorkgroups) {
-        runCheck(kernelCode.c_str(),
-                      Shape{static_cast<size_t>(wgSize[0]),
-                            static_cast<size_t>(wgSize[1]),
-                            static_cast<size_t>(wgSize[2])},
-                      Shape{static_cast<size_t>(nWorkgroups[0]),
-                            static_cast<size_t>(nWorkgroups[1]),
-                            static_cast<size_t>(nWorkgroups[2])});
-      }));
+      emscripten::optional_override(
+          [](const std::string &kernelCode, const std::array<size_t, 3> &wgSize,
+             const std::array<size_t, 3> &nWorkgroups) {
+            runCheck(kernelCode.c_str(),
+                     Shape{static_cast<size_t>(wgSize[0]),
+                           static_cast<size_t>(wgSize[1]),
+                           static_cast<size_t>(wgSize[2])},
+                     Shape{static_cast<size_t>(nWorkgroups[0]),
+                           static_cast<size_t>(nWorkgroups[1]),
+                           static_cast<size_t>(nWorkgroups[2])});
+          }));
   emscripten::function("checkAnswer", &checkAnswer);
 }
 #endif

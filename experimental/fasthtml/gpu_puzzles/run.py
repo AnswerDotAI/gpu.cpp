@@ -6,19 +6,7 @@ import json
 
 TARGET = os.getenv("TARGET", "debug")
 
-global_style = """
-#editor {
-    height: 50vh;
-    width: 50vw;
-}
-"""
-
-bind_terminal = """
-    window.terminal.open(document.getElementById('output'));
-    fitAddon.fit();
-"""
-
-header = """
+PREAMBLE = """
 // Start editing here to see the results.
 // Warning: You are in vim mode.
 @group(0) @binding(0) var<storage, read_write> input : array<f32>;
@@ -26,7 +14,7 @@ header = """
 @compute @workgroup_size({{workgroupSize}})
 """.strip()
 
-gelu_kernel = """
+INITIAL_CODE = """
 fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let i: u32 = GlobalInvocationID.x;
     if (i < arrayLength(&input)) {
@@ -130,18 +118,8 @@ def dispatchInputs():
     )
 
 
-def editor_script(initial_content: str) -> str:
-    with open("code_editor.js", "r") as file:
-        file_content = file.read()
-    initial_content = json.dumps(initial_content)
-    return f"""{file_content}
-document.addEventListener('DOMContentLoaded', () => {{
-    initEditor({initial_content});
-    updateEditor("");
-}});"""
 
-
-def CodeEditor(initial_content: str):
+def CodeEditor(initial_code: str):
     return (
         Div(
             Div(
@@ -160,36 +138,36 @@ def CodeEditor(initial_content: str):
             # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
             style="height: 33vh; overflow: hidden;",
         ),
-        Script(editor_script(initial_content)),
     )
 
 
-# TODO(avh) : Global state handling of terminal binding, module creation, etc.
-# could be improved
-
-init_app = """
-document.addEventListener('DOMContentLoaded', () => {
+def init_app(initial_code: str) -> str:
+    return f"""
+document.addEventListener('DOMContentLoaded', () => {{
     window.AppState = Object.create(State);
+    window.customPrint = customPrint;
     const AppState = window.AppState;
+    AppState.preamble = {json.dumps(PREAMBLE)};
     initializeApp();
-});
+    initEditor({json.dumps(initial_code)});
+    updateEditor("");
+}});
 """.strip()
 
 HDRS = (
     picolink,
     # ace code editor
     Script(src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"),
-    # xterm terminal for output
     Link(rel="stylesheet", href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css"),
     Script(src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"),
     Script(src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"),
     Script(src="/build/run.js"),  # gpu.cpp runtime
-    Style(global_style),
+    Style("#editor { height: 50vh; width: 50vw; }"),
     Link(rel="stylesheet", href="https://unpkg.com/tippy.js@6/dist/tippy.css"),
     Script(src="https://unpkg.com/@popperjs/core@2"),
     Script(src="https://unpkg.com/tippy.js@6"),
     Script(src="/client.js"),
-    Script(init_app),
+    Script(init_app(INITIAL_CODE)),
     *Socials(
         title="gpu.cpp gpu puzzles",
         description="",
@@ -229,7 +207,6 @@ def output():
             style="width: 50vw; height:100vh; background-color: #444; float: right;",
         ),
     )
-    # Script(bind_terminal)
 
 rt = app.route
 
@@ -245,11 +222,11 @@ def get():
                     "GPU Code (WGSL):",
                     Div(
                         Pre(
-                            header.replace("{{workgroupSize}}", "256, 1, 1"),
+                            PREAMBLE.replace("{{workgroupSize}}", "256, 1, 1"),
                             style="font-family: monospace; font-size: 0.8rem;",
                         )
                     ),
-                    CodeEditor(initial_content=gelu_kernel),
+                    CodeEditor(initial_code=INITIAL_CODE),
                     style="width: 50vw; height:100vh; background-color: #333; float: left;",
                 ),
                 output(),
