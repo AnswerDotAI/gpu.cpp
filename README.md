@@ -269,3 +269,67 @@ Thanks also to fellow colleagues at Answer.AI team for their support, testing he
 Join our community in the `#gpu-cpp` channel on the [AnswerDotAI Discord with this invite link](https://discord.gg/zmJVhXsC7f). Feel free to get in touch via X [@austinvhuang](https://twitter.com/austinvhuang) as well.
 
 Feedback, issues and pull requests are welcome.
+
+## Style and Design Guidelines
+
+For contributors, here are general rules of thumb regarding the design and
+style of the gpu.cpp library:
+
+Aesthetics - Maximize Leverage and Account for Various Sources of Friction:
+
+- In addition to performance, time-to-grok the codebase, compilation time,
+  number of failure modes for builds are things worth optimizing for.
+- Increase the implementation surface area only when there's a clear goal
+  behind doing so. This maximizes leverage per unit effort, increases
+  optionality in how the library can be used, and keeps compile times low.
+
+Overloads and Templates:
+
+- Particularly for core implementation code, prefer value types over templates
+  where possible. It's generally easy to add a more typesafe templated wrapper
+  around a value type core implementation. Whereas reversing a core
+  implementation that's templated often leads to a more significant refactor.
+- For comptime polymorphism prefer trivial function overloads over templates.
+  Besides compile time benefits, this makes it trivial to reason about which
+  version of a function is being called.
+
+Avoid Encapsulation and Methods:
+
+- To build systems effectively, we need to construct them out of subsystems for
+  which the behavior is known and thereby composable and predictable. 
+- Prefer transparency over encapsulation. Don't use abstract classes as
+  interface specifications, the library and its function signatures is the
+  interface.
+- Use struct as a default over class unless there's a clear reason otherwise.
+- Instead of methods, pass the "owning object" object as a reference to a
+  function. In general this convention can perform any operation that a method
+  can, but with more flexibility and less coupling. Using mutating functions
+  generalizes more cleanly to operations that have side effects on more than
+  one parameter, whereas methods priveledge the the owning class, treating the
+  single variable case as a special case and making it harder to generalize to
+  multiple parameters.
+- Methods are usually only used for constructor/destructor/operator priveledged
+  cases.
+- For operations requesting GPU resources and more complex initialization, use
+  factory functions following the `create[X]` convention - createTensor,
+  createKernel, createContext etc.
+- Use (as-trivial-as-possible) constructors for simple supporting types (mostly
+  providing metadata for a dispatch) Shape, KernelCode, etc.
+
+Ownership:
+
+- Prefer stack allocation for ownership, use unique_ptr for ownership when the
+  heap is needed. Use raw pointers only for non-owning views. Avoid shared_ptr
+  unless there's a clear rationale for shared ownership.
+- Use pools as a single point of control to manage sets of resources. Consider
+  incorporating a pool in Context if the resource is universal enough to the
+  overall API.
+
+Separating Resource Acquisition from Hot Paths:
+
+- In general, resource acquisition should be done ahead of time from the hot
+  paths of the application. This is to ensure that the hot paths are as fast as
+  possible and don't have to deal with resource allocation or data movement.
+- Operations in the API should be implemented with a use in mind - typically
+  either ahead-of-time resource preparation/acquisition, hot-paths, or
+  non-critical testing/observability code.
