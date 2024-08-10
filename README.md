@@ -270,36 +270,42 @@ Join our community in the `#gpu-cpp` channel on the [AnswerDotAI Discord with th
 
 Feedback, issues and pull requests are welcome.
 
-## Style and Design Guidelines
+## Code Guidelines for Contributors
 
 For contributors, here are general rules of thumb regarding the design and
 style of the gpu.cpp library:
 
-Aesthetics - Maximize Leverage and Account for Various Sources of Friction:
+Aesthetics - Maximize Leverage and Account for Sources of Friction:
 
 - In addition to performance, time-to-grok the codebase, compilation time,
   number of failure modes for builds are things worth optimizing for.
 - Increase the implementation surface area only when there's a clear goal
   behind doing so. This maximizes leverage per unit effort, increases
   optionality in how the library can be used, and keeps compile times low.
+- Taking inspiration from the time-tested horizontal extensibility
+  of neural network libraries like PyTorch, to a first approximation the library
+  architecture could be described as a bag of composable functions.
+- Design choices general attempt to blend the composability of functional
+  programming with the performance awareness of data oriented design.
 
 Overloads and Templates:
 
-- Particularly for core implementation code, prefer value types over templates
-  where possible. It's generally easy to add a more typesafe templated wrapper
-  around a value type core implementation. Whereas reversing a core
-  implementation that's templated often leads to a more significant refactor.
-- For comptime polymorphism prefer trivial function overloads over templates.
-  Besides compile time benefits, this makes it trivial to reason about which
-  version of a function is being called.
+- Prefer value-level types over type-level templates, especially for core
+  implementation code. It's easy to add a more typesafe templated wrapper
+  around a value type core implementation. Whereas moving templated core
+  implementations from comptime to runtime leads to a more significant
+  refactor.
+- For comptime polymorphism, prefer trivial function overloads over templates.
+  Besides compile time benefits, this reasoning about which version of a
+  function is being called becomes explicit and scanable in the codebase.
 
 Avoid Encapsulation and Methods:
 
 - To build systems effectively, we need to construct them out of subsystems for
-  which the behavior is known and thereby composable and predictable. 
-- Prefer transparency over encapsulation. Don't use abstract classes as
-  interface specifications, the library and its function signatures is the
-  interface.
+  which the behavior is known and thereby composable and predictable.
+  Therefore, we prefer transparency and avoid encapsulation. Don't use abstract
+  classes as interface specifications, the library and its function signatures
+  is the interface.
 - Use struct as a default over class unless there's a clear reason otherwise.
 - Instead of methods, pass the "owning object" object as a reference to a
   function. In general this convention can perform any operation that a method
