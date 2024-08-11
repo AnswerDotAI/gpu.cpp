@@ -9,11 +9,9 @@ set(FILEPATH_PROJECT_ROOT "${PROJECT_ROOT}/${FILENAME}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_gpu.cmake")
 
 # Check if the file exists in the current directory
-find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${FILEPATH_CURRENT_DIR}
-                  ${TARGET_FILE_PATH})
+find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${FILENAME} TARGET_FILE_PATH)
 if("${TARGET_FILE_PATH}" STREQUAL "")
-    find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_ROOT}
-                      ${TARGET_FILE_PATH})
+    find_project_root(${FILEPATH_CURRENT_DIR} ${FILENAME} TARGET_FILE_PATH)
     if("${TARGET_FILE_PATH}" STREQUAL "")
         message(
             FATAL_ERROR
@@ -45,49 +43,27 @@ target_include_directories(gpu INTERFACE ${TARGET_FILE_PATH})
 # Add headers webgpu.h
 target_include_directories(wgpu
                            INTERFACE ${TARGET_FILE_PATH}/third_party/headers)
-# FetchContent_Declare( DAWN_EXT GIT_REPOSITORY
-# "https://dawn.googlesource.com/dawn" GIT_TAG "main" INSTALL_DIR
-# "${TARGET_FILE_PATH}/third_party/dawn" CONFIGURE_COMMAND "python3
-# tools/fetch_dawn_dependencies.py" CMAKE_ARGS "-DDAWN_ENABLE_INSTALL=ON
-# -DDAWN_BUILD_MONOLITHIC_LIBRARY=ON -DCMAKE_BUILD_TYPE=Debug
-# -DBUILD_SAMPLES=OFF" )
+include(ExternalProject)
 
-# FetchContent_MakeAvailable(DAWN_EXT)
+set(DAWN_EXT_PREFIX "${TARGET_FILE_PATH}/third_party/local/dawn")
 
-if(WIN32)
-    set(DLL_PATH
-        "${TARGET_FILE_PATH}/third_party/lib/libdawn_${ARCH}_${BUILD_TYPE}.dll")
-    if(EXISTS ${DLL_PATH})
-        file(COPY ${DLL_PATH} DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
-        target_link_libraries(webgpulib INTERFACE ${DLL_PATH})
-    else()
-        message(FATAL_ERROR "libdawn dll not found at: ${DLL_PATH}")
-    endif()
-else()
-    find_library(LIBDAWN dawn PATHS "${TARGET_FILE_PATH}/third_party/lib")
-    if(LIBDAWN)
-        message(STATUS "Found libdawn: ${LIBDAWN}") # Link against libdawn
-        target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
-        # if not found, try download from release else()
-        message("libdawn not found, try downloading from the release")
-        if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-            set(libdawn_ext "dylib")
-        elseif(UNIX)
-            set(libdawn_ext "so")
-        endif()
-        FetchContent_Declare(
-            libdawn
-            URL https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.${libdawn_ext}
-            DOWNLOAD_NO_EXTRACT TRUE
-            SOURCE_DIR "${TARGET_FILE_PATH}/third_party/lib")
-        FetchContent_MakeAvailable(libdawn)
-        find_library(LIBDAWN dawn REQUIRED
-                     PATHS "${TARGET_FILE_PATH}/third_party/lib")
-        if(LIBDAWN)
-            message(STATUS "Found libdawn: ${LIBDAWN}") # Link against libdawn
-            target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
-        else()
-            message(FATAL_ERROR "libdawn not found")
-        endif()
-    endif()
-endif()
+ExternalProject_Add(
+    dawn_project
+    PREFIX ${DAWN_EXT_PREFIX}
+    GIT_REPOSITORY "https://dawn.googlesource.com/dawn"
+    GIT_TAG "main"
+    SOURCE_DIR "${DAWN_EXT_PREFIX}/source"
+    BINARY_DIR "${DAWN_EXT_PREFIX}/build"
+    INSTALL_DIR "${DAWN_EXT_PREFIX}/install"
+    GIT_SUBMODULES ""
+    # setting cmake args doesn't work and I don't know why
+    CONFIGURE_COMMAND
+        ${CMAKE_COMMAND} -S ${DAWN_EXT_PREFIX}/source -B
+        ${DAWN_EXT_PREFIX}/build -DDAWN_FETCH_DEPENDENCIES=ON
+        -DDAWN_ENABLE_INSTALL=ON -DDAWN_BUILD_MONOLITHIC_LIBRARY=ON
+        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -G ${CMAKE_GENERATOR}
+    INSTALL_COMMAND ${CMAKE_COMMAND} --install . --prefix
+                    ${DAWN_EXT_PREFIX}/install
+    LOG_INSTALL ON)
+find_library(LIBDAWN dawn PATHS "${DAWN_EXT_PREFIX}/install/lib")
+target_link_libraries(webgpulib INTERFACE ${LIBDAWN})

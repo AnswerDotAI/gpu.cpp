@@ -9,14 +9,16 @@ source
 third_party/lib/libdawn.*
 third_party/lib/*.so
 third_party/lib/*.dylib
+third_party/local/*
 
 # formatter files
 .cmake-format.py
 
-# cmake generated files
-compile_commands.json
+# cmake build directories
 out
+build
 
 # clangd files
 .cache
+compile_commands.json
 

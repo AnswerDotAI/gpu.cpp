@@ -14,11 +14,11 @@ set(FILEPATH_PROJECT_ROOT "${PROJECT_ROOT}/${FILENAME}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_gpu.cmake")
 
 # Check if the file exists in the current directory
-find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${FILEPATH_CURRENT_DIR}
-                  ${TARGET_FILE_PATH})
+find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${FILENAME}
+                  TARGET_FILE_PATH)
 if("${TARGET_FILE_PATH}" STREQUAL "")
-    find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_ROOT}
-                      ${TARGET_FILE_PATH})
+    find_project_root(${FILEPATH_CURRENT_DIR} ${FILENAME}
+                      TARGET_FILE_PATH)
     if("${TARGET_FILE_PATH}" STREQUAL "")
         message(
             FATAL_ERROR
