@@ -1,6 +1,3 @@
-# Specify the filename to search for
-set(FILENAME "gpu.h")
-
 get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
 get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
 
@@ -8,16 +5,21 @@ get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
 set(FILEPATH_CURRENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
 set(FILEPATH_PROJECT_ROOT "${PROJECT_ROOT}/${FILENAME}")
 
+# Include file finding utility script
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_gpu.cmake")
+
 # Check if the file exists in the current directory
-if(EXISTS ${FILEPATH_CURRENT_DIR})
-    set(TARGET_FILE_PATH ${CMAKE_CURRENT_SOURCE_DIR})
-elseif(EXISTS ${FILEPATH_PROJECT_ROOT})
-    set(TARGET_FILE_PATH ${PROJECT_ROOT})
-else()
-    message(
-        FATAL_ERROR
-            "File ${FILENAME} not found in either ${CMAKE_CURRENT_SOURCE_DIR} or ${CMAKE_CURRENT_SOURCE_DIR}/../../"
-    )
+find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${FILEPATH_CURRENT_DIR}
+                  ${TARGET_FILE_PATH})
+if("${TARGET_FILE_PATH}" STREQUAL "")
+    find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${PROJECT_ROOT}
+                      ${TARGET_FILE_PATH})
+    if("${TARGET_FILE_PATH}" STREQUAL "")
+        message(
+            FATAL_ERROR
+                "File ${FILENAME} not found in either ${CMAKE_CURRENT_SOURCE_DIR} or ${CMAKE_CURRENT_SOURCE_DIR}/../../"
+        )
+    endif()
 endif()
 
 # Define architecture and build type directories or file names
@@ -43,6 +45,15 @@ target_include_directories(gpu INTERFACE ${TARGET_FILE_PATH})
 # Add headers webgpu.h
 target_include_directories(wgpu
                            INTERFACE ${TARGET_FILE_PATH}/third_party/headers)
+# FetchContent_Declare( DAWN_EXT GIT_REPOSITORY
+# "https://dawn.googlesource.com/dawn" GIT_TAG "main" INSTALL_DIR
+# "${TARGET_FILE_PATH}/third_party/dawn" CONFIGURE_COMMAND "python3
+# tools/fetch_dawn_dependencies.py" CMAKE_ARGS "-DDAWN_ENABLE_INSTALL=ON
+# -DDAWN_BUILD_MONOLITHIC_LIBRARY=ON -DCMAKE_BUILD_TYPE=Debug
+# -DBUILD_SAMPLES=OFF" )
+
+# FetchContent_MakeAvailable(DAWN_EXT)
+
 if(WIN32)
     set(DLL_PATH
         "${TARGET_FILE_PATH}/third_party/lib/libdawn_${ARCH}_${BUILD_TYPE}.dll")
@@ -55,11 +66,9 @@ if(WIN32)
 else()
     find_library(LIBDAWN dawn PATHS "${TARGET_FILE_PATH}/third_party/lib")
     if(LIBDAWN)
-        message(STATUS "Found libdawn: ${LIBDAWN}")
-        # Link against libdawn
+        message(STATUS "Found libdawn: ${LIBDAWN}") # Link against libdawn
         target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
-        # if not found, try download from release
-    else()
+        # if not found, try download from release else()
         message("libdawn not found, try downloading from the release")
         if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
             set(libdawn_ext "dylib")
@@ -75,8 +84,7 @@ else()
         find_library(LIBDAWN dawn REQUIRED
                      PATHS "${TARGET_FILE_PATH}/third_party/lib")
         if(LIBDAWN)
-            message(STATUS "Found libdawn: ${LIBDAWN}")
-            # Link against libdawn
+            message(STATUS "Found libdawn: ${LIBDAWN}") # Link against libdawn
             target_link_libraries(webgpulib INTERFACE ${LIBDAWN})
         else()
             message(FATAL_ERROR "libdawn not found")
