@@ -31,18 +31,18 @@ def controls():
             Div(
                 Button(
                     "<<",
-                    cls="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded",
+                    cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
                     id="prev",
                 ),
                 # don't start a new row for div
                 Div(
                     "Puzzle 1: Map",
                     id="puzzle_name",
-                    style="font-size: 1.5rem; width: 15vw;",
+                    style="font-size: 1.5rem; width: 15vw; font-weight: bold;"
                 ),
                 Button(
                     ">>",
-                    cls="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded",
+                    cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
                     id="next",
                 ),
                 # no space between buttons
@@ -55,7 +55,7 @@ def controls():
         Div(
             "Puzzle description",
             id="puzzle_description",
-            style="font-size: 1rem; margin-top: 2rem; margin-bottom: 2rem; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
+            style="font-size: 20vh; margin-top: 6vh; margin-bottom: 6vh; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
         ),
     )
 
@@ -209,15 +209,15 @@ async def serve_wasm():
 def output():
     return (
         Div(
-            id="output",
-            style="width: 50vw; height:50vh; float: right;",
-        ),
-        Div(
             "(Result Check)",
-            style="width: 50vw; height:4rem; float: right; font-size: 2rem; text-align: center;",
+            style="width: 50vw; height:14vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: 13vh;",
             id="correct",
         ),
-        Img(src="https://gpucpp.answer.ai/images/shadertui2-small-crop2-loop.gif", style="width: 50vw;"),
+        Div(
+            id="output",
+            style="width: 50vw; height:630vh; float: right;",
+        ),
+
     )
 
 

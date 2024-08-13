@@ -1,197 +1,244 @@
-#ifndef TESTING_H
-#define TESTING_H
+#ifndef EVALUATOR_H
+#define EVALUATOR_H
 
 #include "gpu.h"
 #include "utils/array_utils.h"
 #include <array>
 #include <cstdio>
 #include <future>
-#include <iostream>
+#include <vector>
+#include <numeric>
+#include <cstddef> // for size_t
 
 using namespace gpu;
 
+constexpr size_t kNumTestCases = 2;
+
 struct TestCase {
-  std::vector<float> input;
-  std::vector<float> expectedOutput;
-  std::array<int, 3> workgroupSize = {1, 1, 1};
-  std::array<int, 3> gridSize = {1, 1, 1};
-  std::array<int, 3> sharedMemorySize = {1, 1, 1};
+    std::vector<float> input;
+    std::vector<float> expectedOutput;
+    Shape workgroupSize = {1, 1, 1};
+    Shape gridSize = {1, 1, 1};
+    Shape sharedMemorySize = {1, 1, 1};
 };
 
-struct Puzzle {
-  std::vector<TestCase> testCases;
-  std::function<std::vector<float>(
-      Context &, std::vector<float>, std::vector<float>, std::array<int, 3>,
-      std::array<int, 3>, std::array<int, 3>, std::string)>
-      hostCode;
-};
+typedef std::array<std::vector<TestCase>, kNumTestCases> TestCases;
 
-// Class to handle the evaluation
-class Evaluator {
-public:
-  Evaluator() {
-    // Initialize test cases for 14 puzzles
-    initTestCases();
-  }
+// TODO: Use these spec functions in the evaluations
 
-  bool evaluate(Context &ctx, std::string kernelCode, int puzzleIndex) {
-    if (puzzleIndex >= puzzles.size()) {
-      std::cout << "Invalid puzzle index!\n";
-      return false;
+void map_spec(const float* a, size_t length, float* result) {
+    for (size_t i = 0; i < length; ++i) {
+        result[i] = a[i] + 10;
     }
+}
 
-    auto &puzzle = puzzles[puzzleIndex];
-
-    // Optionally execute the custom function before running test cases
-
-    bool allPassed = true;
-    for (int i = 0; i < puzzle.testCases.size(); ++i) {
-      auto &testCase = puzzle.testCases[i];
-      std::cout << "\n<------------------------------->\n";
-      std::cout << "Running test case " << i + 1 << "...\n";
-
-      auto start = std::chrono::high_resolution_clock::now();
-
-      std::vector<float> output = puzzle.hostCode(
-          ctx, puzzle.testCases[i].input, puzzle.testCases[i].expectedOutput,
-          puzzle.testCases[i].workgroupSize, puzzle.testCases[i].gridSize,
-          puzzle.testCases[i].sharedMemorySize, kernelCode);
-
-      auto end = std::chrono::high_resolution_clock::now();
-
-      std::chrono::duration<double> elapsed = end - start;
-      std::cout << "Time taken: " << elapsed.count() << " s\n";
-
-      if (checkOutput(output, testCase.expectedOutput)) {
-        std::cout << "Test case " << i + 1 << " passed!\n";
-      } else {
-        std::cout << "Test case " << i + 1 << " failed.\n";
-        std::cout << "Expected: ";
-        printVector(testCase.expectedOutput);
-        std::cout << "Got: ";
-        printVector(output);
-        allPassed = false;
-      }
-      std::cout << "<------------------------------->\n";
+// C++ version of zip_spec
+void zip_spec(const float* a, const float* b, size_t length, float* result) {
+    for (size_t i = 0; i < length; ++i) {
+        result[i] = a[i] + b[i];
     }
-    return allPassed;
-  }
+}
 
-private:
-  std::vector<Puzzle> puzzles;
+// C++ version of pool_spec
+void pool_spec(const float* a, size_t length, float* result) {
+    for (size_t i = 0; i < length; ++i) {
+        float sum = 0;
+        for (size_t j = (i < 2 ? 0 : i - 2); j <= i; ++j) {
+            sum += a[j];
+        }
+        result[i] = sum;
+    }
+}
 
-  // Initialize the test cases
-  void initTestCases() {
-    // Fill in your test cases here
-    // Example:
-    Puzzle puzzle1;
-    // input, expected output, workgroup size, grid size, shared memory size
-    puzzle1.testCases.push_back({{0, 1, 2, 3}, {10, 11, 12, 13}});
-    puzzle1.testCases.push_back(
-        {{0, 1, 2, 3, 4, 5, 6, 7, 8}, {10, 11, 12, 13, 14, 15, 16, 17, 18}});
-    puzzle1.testCases.push_back({{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-                                 {10, 11, 12, 13, 14, 15, 16, 17, 18, 19}});
+// C++ version of dot_spec
+void dot_spec(const float* a, const float* b, size_t length, float* result) {
+    *result = std::inner_product(a, a + length, b, 0.0f);
+}
 
-    puzzle1.hostCode = [](Context &ctx, std::vector<float> input,
-                          std::vector<float> expectedOutput,
-                          std::array<int, 3> workgroupSize,
-                          std::array<int, 3> gridSize,
-                          std::array<int, 3> sharedMemorySize,
-                          std::string kernelString) {
-      printf("Puzzle 1\n");
+// C++ version of conv_spec
+void conv_spec(const float* a, const float* b, size_t a_length, size_t b_length, float* result) {
+    for (size_t i = 0; i < a_length; ++i) {
+        result[i] = 0.0f;
+        for (size_t j = 0; j < b_length; ++j) {
+            if (i + j < a_length) {
+                result[i] += a[i + j] * b[j];
+            }
+        }
+    }
+}
 
-      size_t N = input.size();
+// C++ version of sum_spec
+void sum_spec(const float* a, size_t length, size_t TPB, float* result) {
+    size_t out_size = (length + TPB - 1) / TPB;
+    for (size_t j = 0, i = 0; i < length; i += TPB, ++j) {
+        result[j] = 0.0f;
+        for (size_t k = i; k < i + TPB && k < length; ++k) {
+            result[j] += a[k];
+        }
+    }
+}
 
-      Tensor a = createTensor(ctx, {N}, kf32, input.data());
-      Tensor output = createTensor(ctx, {N}, kf32);
+// C++ version of matmul_spec
+void matmul_spec(const float* a, const float* b, size_t N, float* result) {
+    for (size_t i = 0; i < N; ++i) {
+        for (size_t j = 0; j < N; ++j) {
+            result[i * N + j] = 0.0f;
+            for (size_t k = 0; k < N; ++k) {
+                result[i * N + j] += a[i * N + k] * b[k * N + j];
+            }
+        }
+    }
+}
 
-      Kernel op = createKernel(ctx, {kernelString, N}, Bindings{a, output},
-                               /*nWorkgroups */
-                               {static_cast<unsigned long>(gridSize[0]),
-                                static_cast<unsigned long>(gridSize[1]),
-                                static_cast<unsigned long>(gridSize[2])});
+// Function to run Puzzle 1
+std::vector<float> runPuzzle1(Context &ctx, const TestCase &testCase,
+                              const std::string &kernelString) {
+    std::printf("Puzzle 1\n");
 
-      std::promise<void> promise;
-      std::future<void> future = promise.get_future();
+    size_t N = testCase.input.size();
 
-      dispatchKernel(ctx, op, promise);
+    Tensor a = createTensor(ctx, {N}, kf32, testCase.input.data());
+    Tensor output = createTensor(ctx, {N}, kf32);
 
-      std::vector<float> outputArr(N);
-      wait(ctx, future);
-      toCPU(ctx, output, outputArr.data(), outputArr.size() * sizeof(float));
+    Kernel op = createKernel(ctx, {kernelString, N}, Bindings{a, output},
+                             testCase.gridSize);
 
-      return outputArr;
+    std::promise<void> promise;
+    std::future<void> future = promise.get_future();
+
+    dispatchKernel(ctx, op, promise);
+
+    std::vector<float> outputArr(N);
+    wait(ctx, future);
+    toCPU(ctx, output, outputArr.data(), outputArr.size() * sizeof(float));
+
+    return outputArr;
+}
+
+// Function to run Puzzle 2
+std::vector<float> runPuzzle2(Context &ctx, const TestCase &testCase,
+                              const std::string &kernelString) {
+    std::printf("Puzzle 2\n");
+
+    size_t N = testCase.input.size() / 2;
+
+    std::vector<float> aVec(testCase.input.begin(), testCase.input.begin() + N);
+    std::vector<float> bVec(testCase.input.begin() + N, testCase.input.end());
+
+    Tensor a = createTensor(ctx, {N}, kf32, aVec.data());
+    Tensor b = createTensor(ctx, {N}, kf32, bVec.data());
+    Tensor output = createTensor(ctx, {N}, kf32);
+
+    Kernel op = createKernel(ctx, {kernelString, N}, Bindings{a, b, output},
+                             testCase.gridSize);
+
+    std::promise<void> promise;
+    std::future<void> future = promise.get_future();
+
+    dispatchKernel(ctx, op, promise);
+
+    std::vector<float> outputArr(N);
+    wait(ctx, future);
+    toCPU(ctx, output, outputArr.data(), outputArr.size() * sizeof(float));
+
+    return outputArr;
+}
+
+// Function to initialize the test cases
+TestCases createTestCases() {
+    TestCases testCases;
+
+    // Initialize test cases for Puzzle 1
+    testCases[0] = {
+        {{0, 1, 2, 3}, {10, 11, 12, 13}}, // Test case 1
+        {{0, 1, 2, 3, 4, 5, 6, 7, 8},
+         {10, 11, 12, 13, 14, 15, 16, 17, 18}}, // Test case 2
+        {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+         {10, 11, 12, 13, 14, 15, 16, 17, 18, 19}} // Test case 3
     };
 
-    puzzles.push_back(puzzle1);
-
-    Puzzle puzzle2;
-
-    puzzle2.testCases.push_back({{{0, 1, 2, 0}}, {2, 1}});
-    puzzle2.testCases.push_back(
-        {{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}, {5, 7, 9, 11, 13}});
-
-    puzzle2.hostCode = [](Context &ctx, std::vector<float> input,
-                          std::vector<float> expectedOutput,
-                          std::array<int, 3> workgroupSize,
-                          std::array<int, 3> gridSize,
-                          std::array<int, 3> sharedMemorySize,
-                          std::string kernelString) {
-      printf("Puzzle 2\n");
-
-      size_t N = input.size() / 2;
-
-      std::vector<float> aVec(input.begin(), input.begin() + N);
-      std::vector<float> bVec(input.begin() + N, input.end());
-
-      Tensor a = createTensor(ctx, {N}, kf32, aVec.data());
-      Tensor b = createTensor(ctx, {N}, kf32, bVec.data());
-      Tensor output = createTensor(ctx, {N}, kf32);
-
-      Kernel op = createKernel(ctx, {kernelString, N}, Bindings{a, b, output},
-                               /*nWorkgroups */
-                               {static_cast<unsigned long>(gridSize[0]),
-                                static_cast<unsigned long>(gridSize[1]),
-                                static_cast<unsigned long>(gridSize[2])});
-
-      std::promise<void> promise;
-      std::future<void> future = promise.get_future();
-
-      dispatchKernel(ctx, op, promise);
-
-      std::vector<float> outputArr(N);
-      wait(ctx, future);
-      toCPU(ctx, output, outputArr.data(), outputArr.size() * sizeof(float));
-
-      return outputArr;
+    // Initialize test cases for Puzzle 2
+    testCases[1] = {
+        {{0, 1, 2, 0}, {2, 1}},                             // Test case 1
+        {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, {5, 7, 9, 11, 13}} // Test case 2
     };
 
-    puzzles.push_back(puzzle2);
-    // Add more test cases for the 14 puzzles
-  }
+    return testCases;
+}
 
-  // Function to check if the output matches the expected output
-  bool checkOutput(const std::vector<float> &output,
-                   const std::vector<float> &expectedOutput) {
+// Function to check if the output matches the expected output
+bool checkOutput(const std::vector<float> &output,
+                 const std::vector<float> &expectedOutput) {
     if (output.size() != expectedOutput.size())
-      return false;
-    for (size_t i = 0; i < output.size(); ++i) {
-      if (output[i] != expectedOutput[i])
         return false;
+    for (size_t i = 0; i < output.size(); ++i) {
+        if (output[i] != expectedOutput[i])
+            return false;
     }
     return true;
-  }
+}
 
-  // Helper function to print a vector
-  void printVector(const std::vector<float> &vec) {
-    std::cout << "[";
+// Helper function to print a vector
+void printVec(const std::vector<float> &vec) {
+    std::printf("[");
     for (size_t i = 0; i < vec.size(); ++i) {
-      std::cout << vec[i];
-      if (i != vec.size() - 1)
-        std::cout << ", ";
+        std::printf("%f", vec[i]);
+        if (i != vec.size() - 1)
+            std::printf(", ");
     }
-    std::cout << "]\n";
-  }
-};
+    std::printf("]\n");
+}
+
+// Function to evaluate the test cases
+bool evaluate(Context &ctx, TestCases &allTestCases,
+              const std::string &kernelCode, int puzzleIndex) {
+    if (puzzleIndex >= kNumTestCases) {
+        std::printf("Invalid puzzle index!\n");
+        return false;
+    }
+
+    const auto &testCases = allTestCases[puzzleIndex];
+
+    bool allPassed = true;
+    for (int i = 0; i < testCases.size(); ++i) {
+        const auto &testCase = testCases[i];
+        std::printf("\n<------------------------------->\n");
+        std::printf("Running test case %d...\n", i + 1);
+
+        auto start = std::chrono::high_resolution_clock::now();
+
+        std::vector<float> output;
+        switch (puzzleIndex) {
+        case 0:
+            output = runPuzzle1(ctx, testCase, kernelCode);
+            break;
+        case 1:
+            output = runPuzzle2(ctx, testCase, kernelCode);
+            break;
+        // Add more cases for additional puzzles
+        default:
+            std::printf("Invalid puzzle index!\n");
+            return false;
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+
+        std::printf("Time taken: %f s\n", elapsed.count());
+
+        if (checkOutput(output, testCase.expectedOutput)) {
+            std::printf("Test case %d passed!\n", i + 1);
+        } else {
+            std::printf("Test case %d failed.\n", i + 1);
+            std::printf("Expected: ");
+            printVec(testCase.expectedOutput);
+            std::printf("Got: ");
+            printVec(output);
+            allPassed = false;
+        }
+        std::printf("<------------------------------->\n");
+    }
+    return allPassed;
+}
 
 #endif // EVALUATOR_H

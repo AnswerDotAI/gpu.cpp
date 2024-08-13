@@ -72,9 +72,8 @@ bool runCheck(const char *kernelCode, const Shape &wgSize,
   Context ctx = createContext({});
   std::array<float, kN> outputArr;
   executeKernel(ctx, kernelCode, wgSize, nWorkgroups, outputArr);
-  Evaluator evaluator;
-  return evaluator.evaluate(ctx, std::string(kernelCode), 0);
-  // return checkAnswer(outputArr);
+  TestCases testCases = createTestCases();
+  return evaluate(ctx, testCases, std::string(kernelCode), 0);
 }
 
 } // extern "C"

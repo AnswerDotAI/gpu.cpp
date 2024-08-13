@@ -553,7 +553,7 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype) {
  * @endcode
  */
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           float *data) {
+                           const float *data) {
   assert(dtype == kf32);
   Tensor tensor =
       createTensor(ctx.pool, ctx.device, shape, dtype,
@@ -583,7 +583,7 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
  * @endcode
  */
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           half *data) {
+                           const half *data) {
   assert(dtype == kf16);
   Tensor tensor =
       createTensor(ctx.pool, ctx.device, shape, dtype,

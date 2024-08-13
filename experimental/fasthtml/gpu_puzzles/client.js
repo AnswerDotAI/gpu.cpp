@@ -85,6 +85,10 @@ const PuzzleSpec = [
   },
 ];
 
+////////////////////////////////////////
+// Initialization
+////////////////////////////////////////
+
 function initializeApp(initial_content) {
   initializeTerminal();
   initializeEditor(initial_content);
@@ -166,7 +170,7 @@ function setupEventListeners() {
 }
 
 ////////////////////////////////////////
-// Printing to terminal
+// Printing to output window
 ////////////////////////////////////////
 
 function customPrint(text) {
@@ -177,6 +181,10 @@ function customPrint(text) {
     console.warn("Terminal not initialized");
   }
 }
+
+////////////////////////////////////////
+// Update
+////////////////////////////////////////
 
 function updateDispatchParams() {
   wgSize = [
@@ -200,25 +208,22 @@ function updateDispatchParams() {
   console.log("New preamble:\n", AppState.preamble);
 }
 
-////////////////////////////////////////
-// Code Editor
-////////////////////////////////////////
-
-function waitForDispatchReady() {
-  return new Promise((resolve) => {
-    function checkReady() {
-      if (AppState.isDispatchReady) {
-        resolve();
-      } else {
-        console.log("Waiting...");
-        setTimeout(checkReady, 100); // Check every 100ms
-      }
-    }
-    checkReady();
-  });
-}
-
 async function updateEditor() {
+
+  function waitForDispatchReady() {
+    return new Promise((resolve) => {
+      function checkReady() {
+        if (AppState.isDispatchReady) {
+          resolve();
+        } else {
+          console.log("Waiting...");
+          setTimeout(checkReady, 100); // Check every 100ms
+        }
+      }
+      checkReady();
+    });
+  }
+
   // Recover from errors TODO(avh): only do this if there's an error
   createModule().then((Module) => {
     console.log("updateEditor() - Module ready");
@@ -268,6 +273,10 @@ function update(event) {
   updateEditor();
   render();
 }
+
+////////////////////////////////////////
+// Render
+////////////////////////////////////////
 
 function render() {
   document.getElementById("preamble").innerHTML = AppState.preamble;
