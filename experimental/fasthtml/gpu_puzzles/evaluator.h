@@ -34,16 +34,17 @@ public:
     initTestCases();
   }
 
-  void evaluate(Context &ctx, std::string kernelCode, int puzzleIndex) {
+  bool evaluate(Context &ctx, std::string kernelCode, int puzzleIndex) {
     if (puzzleIndex >= puzzles.size()) {
       std::cout << "Invalid puzzle index!\n";
-      return;
+      return false;
     }
 
     auto &puzzle = puzzles[puzzleIndex];
 
     // Optionally execute the custom function before running test cases
 
+    bool allPassed = true;
     for (int i = 0; i < puzzle.testCases.size(); ++i) {
       auto &testCase = puzzle.testCases[i];
       std::cout << "\n<------------------------------->\n";
@@ -69,9 +70,11 @@ public:
         printVector(testCase.expectedOutput);
         std::cout << "Got: ";
         printVector(output);
+        allPassed = false;
       }
       std::cout << "<------------------------------->\n";
     }
+    return allPassed;
   }
 
 private:

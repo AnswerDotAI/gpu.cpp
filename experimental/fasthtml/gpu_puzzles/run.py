@@ -17,31 +17,46 @@ PREAMBLE = """
 INITIAL_CODE = """
 fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let i: u32 = GlobalInvocationID.x;
-    if (i < arrayLength(&input)) {
-        output[i] = input[i] + 1;
-    }
+    output[i] = input[i];
 }
 """.strip()
 
+CORRECT = False
+
+
 def controls():
     # left and right buttons
-    return Div(
+    return (
         Div(
-            Button(
-                "<-",
-                cls="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded",
-                id="prev",
+            Div(
+                Button(
+                    "<<",
+                    cls="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded",
+                    id="prev",
+                ),
+                # don't start a new row for div
+                Div(
+                    "Puzzle 1: Map",
+                    id="puzzle_name",
+                    style="font-size: 1.5rem; width: 15vw;",
+                ),
+                Button(
+                    ">>",
+                    cls="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded",
+                    id="next",
+                ),
+                # no space between buttons
+                style="display: flex;  align-items: center; justify-content: center;",
+                # cls="flex justify-between space-x-2",
             ),
-            "Puzzle 1: Map",
-            Button(
-                "->",
-                cls="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded",
-                id="next",
-            ),
-            cls="flex justify-between space-x-2",
+            # cls="mb-4",
+            style="text-align: center;",
         ),
-        cls="mb-4",
-        style="text-align: center;",
+        Div(
+            "Puzzle description",
+            id="puzzle_description",
+            style="font-size: 1rem; margin-top: 2rem; margin-bottom: 2rem; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
+        ),
     )
 
 
@@ -57,7 +72,7 @@ def dispatchInputs():
                         cls="w-1/3 p-2 border rounded",
                         value="256",
                         placeholder="X",
-                        style="width: 8vw",
+                        style="width: 5vw",
                     ),
                     Input(
                         type="number",
@@ -65,7 +80,7 @@ def dispatchInputs():
                         cls="w-1/3 p-2 border rounded",
                         value="1",
                         placeholder="Y",
-                        style="width: 8vw",
+                        style="width: 5vw",
                     ),
                     Input(
                         type="number",
@@ -73,13 +88,14 @@ def dispatchInputs():
                         cls="w-1/3 p-2 border rounded",
                         value="1",
                         placeholder="Z",
-                        style="width: 8vw",
+                        style="width: 5vw",
                     ),
                     cls="flex justify-between space-x-2",
                 ),
                 cls="flex justify-between space-x-2",
             ),
             cls="mb-4",
+            style="margin-right: 2rem; margin-left: 2rem;",
         ),
         Div(
             Div("Grid Size", cls="font-bold mb-1 text-center"),
@@ -91,7 +107,7 @@ def dispatchInputs():
                         cls="w-1/3 p-2 border rounded",
                         value="256",
                         placeholder="X",
-                        style="width: 8vw",
+                        style="width: 5vw",
                     ),
                     Input(
                         type="number",
@@ -99,7 +115,7 @@ def dispatchInputs():
                         cls="w-1/3 p-2 border rounded",
                         value="1",
                         placeholder="Y",
-                        style="width: 8vw",
+                        style="width: 5vw",
                     ),
                     Input(
                         type="number",
@@ -107,7 +123,7 @@ def dispatchInputs():
                         cls="w-1/3 p-2 border rounded",
                         value="1",
                         placeholder="Z",
-                        style="width: 8vw",
+                        style="width: 5vw",
                     ),
                     cls="flex justify-between space-x-2",
                 ),
@@ -115,28 +131,19 @@ def dispatchInputs():
             ),
         ),
         cls="w-full max-w-md",
+        style="display: flex; justify-content: center; margin-top: 2rem; margin-left: 2rem; margin-right: 2rem;",
     )
-
 
 
 def CodeEditor(initial_code: str):
     return (
         Div(
             Div(
-                Div(id="editor", style="height: 90vh; width: 100vw;"),
-                Script(
-                    """
-                    me().on('contextmenu', ev => {
-                        ev.preventDefault()
-                        me('#context-menu').send('show', {x: ev.pageX, y: ev.pageY})
-                    })
-                """
-                ),
-                # cls="flex-grow w-full"
-                style="height: 50vh; overflow: hidden;",
+                Div(id="editor", style="height: 60vh; width: 100vw;"),
+                style="height: 60vh; overflow: hidden;",
             ),
             # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
-            style="height: 33vh; overflow: hidden;",
+            style="height: 60vh; overflow: hidden;",
         ),
     )
 
@@ -148,11 +155,11 @@ document.addEventListener('DOMContentLoaded', () => {{
     window.customPrint = customPrint;
     const AppState = window.AppState;
     AppState.preamble = {json.dumps(PREAMBLE)};
-    initializeApp();
-    initEditor({json.dumps(initial_code)});
-    updateEditor("");
+    AppState.preamble_template = {json.dumps(PREAMBLE)};
+    initializeApp({json.dumps(initial_code)});
 }});
 """.strip()
+
 
 HDRS = (
     picolink,
@@ -202,15 +209,19 @@ async def serve_wasm():
 def output():
     return (
         Div(
-            "Output",
             id="output",
-            style="width: 50vw; height:100vh; background-color: #444; float: right;",
+            style="width: 50vw; height:50vh; float: right;",
         ),
+        Div(
+            "(Result Check)",
+            style="width: 50vw; height:4rem; float: right; font-size: 2rem; text-align: center;",
+            id="correct",
+        ),
+        Img(src="https://gpucpp.answer.ai/images/shadertui2-small-crop2-loop.gif", style="width: 50vw;"),
     )
 
-rt = app.route
 
-@rt("/")
+@app.get("/")
 def get():
     return (
         Title("WGSL Editor"),
@@ -223,11 +234,12 @@ def get():
                     Div(
                         Pre(
                             PREAMBLE.replace("{{workgroupSize}}", "256, 1, 1"),
-                            style="font-family: monospace; font-size: 0.8rem;",
+                            style="font-family: monospace; font-size: 1.0rem;",
+                            id="preamble",
                         )
                     ),
                     CodeEditor(initial_code=INITIAL_CODE),
-                    style="width: 50vw; height:100vh; background-color: #333; float: left;",
+                    style="width: 50vw; height:100vh; float: left;",
                 ),
                 output(),
             ),

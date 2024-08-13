@@ -1,16 +1,93 @@
 const State = {
+  preamble_template: "",
   preamble: "",
+  wgSize: [],
+  gridSize: [],
   editor: null,
   terminal: null,
   module: null,
-  completionTippy: null,
-  currentCompletion: '',
-  isModuleReady: false
+  isModuleReady: false,
+  checkAnswer: false,
+  isDispatchReady: true, // don't allow multiple overlapping dispatches
+  puzzleIndex: 0,
 };
 
-function initializeApp() {
+const PuzzleSpec = [
+  {
+    name: "Map",
+    description:
+      'Implement a "kernel" (GPU function) that adds 10 to each position of vector `a` and stores it in vector `out`. You have 1 thread per position.',
+  },
+  {
+    name: "Zip",
+    description:
+      "Implement a kernel that adds together each position of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+  },
+  {
+    name: "Guards",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have more threads than positions.",
+  },
+  {
+    name: "Map 2D",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. Input `a` is 2D and square. You have more threads than positions.",
+  },
+  {
+    name: "Broadcast",
+    description:
+      "Implement a kernel that adds `a` and `b` and stores it in `out`. Inputs `a` and `b` are vectors. You have more threads than positions.",
+  },
+  {
+    name: "Blocks",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`.",
+  },
+  {
+    name: "Blocks 2D",
+    description:
+      "Implement the same kernel in 2D. You have fewer threads per block than the size of `a` in both directions.",
+  },
+  {
+    name: "Shared",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`. Use shared memory and `cuda.syncthreads` to ensure threads do not cross.",
+  },
+  {
+    name: "Pooling",
+    description:
+      "Implement a kernel that sums together the last 3 positions of `a` and stores it in `out`. You have 1 thread per position.",
+  },
+  {
+    name: "Dot Product",
+    description:
+      "Implement a kernel that computes the dot-product of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+  },
+  {
+    name: "1D Convolution",
+    description:
+      "Implement a kernel that computes a 1D convolution between `a` and `b` and stores it in `out`. Handle the general case.",
+  },
+  {
+    name: "Prefix Sum",
+    description:
+      "Implement a kernel that computes a sum over `a` and stores it in `out`. If the size of `a` is greater than the block size, only store the sum of each block using parallel prefix sum.",
+  },
+  {
+    name: "Axis Sum",
+    description:
+      "Implement a kernel that computes a sum over each column of `a` and stores it in `out`.",
+  },
+  {
+    name: "Matrix Multiply",
+    description:
+      "Implement a kernel that multiplies square matrices `a` and `b` and stores the result in `out`. Optimize by using shared memory for partial dot-products.",
+  },
+];
+
+function initializeApp(initial_content) {
   initializeTerminal();
-  initializeEditor();
+  initializeEditor(initial_content);
   initializeModule();
   setupEventListeners();
   console.log("App initialized");
@@ -20,68 +97,71 @@ function initializeTerminal() {
   AppState.terminal = new Terminal();
   const fitAddon = new FitAddon.FitAddon();
   AppState.terminal.loadAddon(fitAddon);
-  AppState.terminal.open(document.getElementById('output'));
+  AppState.terminal.open(document.getElementById("output"));
   fitAddon.fit();
   window.AppState = AppState;
   console.log("Terminal initialized");
 }
 
-
 function initializeEditor(initialContent) {
   AppState.editor = ace.edit("editor");
-  AppState.editor.setTheme("ace/theme/monokai");
+  // AppState.editor.setTheme("ace/theme/monokai");
+  AppState.editor.setTheme("ace/theme/dracula");
   AppState.editor.session.setMode("ace/mode/javascript");
   AppState.editor.setOptions({
-    fontSize: "14px",
+    fontSize: "16px",
     showPrintMargin: false,
     showGutter: false,
     highlightActiveLine: true,
     wrap: true,
   });
   AppState.editor.setKeyboardHandler("ace/keyboard/vim");
-  AppState.editor.setValue(initialContent || '');
-  
-  AppState.completionTippy = tippy(document.getElementById('editor'), {
-    content: 'Loading...',
-    trigger: 'manual',
-    placement: 'top-start',
-    arrow: true,
-    interactive: true
-  });
-
+  AppState.editor.setValue(initialContent || "");
+  console.log("Initial content:\n", initialContent);
   console.log("Editor initialized");
 }
 
 function initializeModule() {
-  createModule().then((Module) => {
-    AppState.module = Module;
-    AppState.module.print = customPrint;
-    AppState.module.printErr = customPrint;
-    AppState.isModuleReady = true;
-    console.log("Module initialized");
-    // Attempt to run the kernel with the initial content
-    updateEditor({ action: 'insert', lines: [''] });
-  }).catch(error => {
-    console.error("Failed to initialize module:", error);
-  });
+  createModule()
+    .then((Module) => {
+      AppState.module = Module;
+      AppState.module.print = customPrint;
+      AppState.module.printErr = customPrint;
+      AppState.isModuleReady = true;
+      console.log("Module initialized");
+      update({ type: "init" });
+    })
+    .catch((error) => {
+      console.error("Failed to initialize module:", error);
+    });
 }
 
 function setupEventListeners() {
-  AppState.editor.session.on('change', updateEditor);
-  window.addEventListener('resize', () => AppState.editor.resize());
-  
-  AppState.editor.commands.addCommand({
-    name: 'insertCompletion',
-    bindKey: {win: 'Tab', mac: 'Tab'},
-    exec: function(editor) {
-      if (AppState.currentCompletion) {
-        editor.insert(AppState.currentCompletion);
-        AppState.currentCompletion = '';
-        AppState.completionTippy.hide();
-      } else {
-        editor.indent();
-      }
-    }
+  AppState.editor.session.on("change", () => update({ type: "edit" }));
+  window.addEventListener("resize", () => AppState.editor.resize());
+  document
+    .getElementById("workgroup_x")
+    .addEventListener("change", () => update({ type: "wgUpdate" }));
+  document
+    .getElementById("workgroup_y")
+    .addEventListener("change", () => update({ type: "wgUpdate" }));
+  document
+    .getElementById("workgroup_z")
+    .addEventListener("change", () => update({ type: "wgUpdate" }));
+  document
+    .getElementById("grid_x")
+    .addEventListener("change", () => update({ type: "gridUpdate" }));
+  document
+    .getElementById("grid_y")
+    .addEventListener("change", () => update({ type: "gridUpdate" }));
+  document
+    .getElementById("grid_z")
+    .addEventListener("change", () => update({ type: "gridUpdate" }));
+  document.getElementById("prev").addEventListener("click", () => {
+    update({ type: "selectPuzzle", value: "prev" });
+  });
+  document.getElementById("next").addEventListener("click", () => {
+    update({ type: "selectPuzzle", value: "next" });
   });
 }
 
@@ -98,127 +178,109 @@ function customPrint(text) {
   }
 }
 
+function updateDispatchParams() {
+  wgSize = [
+    document.getElementById("workgroup_x").value,
+    document.getElementById("workgroup_y").value,
+    document.getElementById("workgroup_z").value,
+  ];
+  gridSize = [
+    document.getElementById("grid_x").value,
+    document.getElementById("grid_y").value,
+    document.getElementById("grid_z").value,
+  ];
+  wgSize = wgSize.map((x) => parseInt(x));
+  gridSize = gridSize.map((x) => parseInt(x));
+  AppState.wgSize = wgSize;
+  AppState.gridSize = gridSize;
+  AppState.preamble = AppState.preamble_template.replace(
+    /{{workgroupSize}}/g,
+    wgSize.join(", "),
+  );
+  console.log("New preamble:\n", AppState.preamble);
+}
+
 ////////////////////////////////////////
 // Code Editor
 ////////////////////////////////////////
 
-async function showCompletionSuggestion() {
-    const cursorPosition = editor.getCursorPosition();
-    const screenPosition = editor.renderer.textToScreenCoordinates(cursorPosition.row, cursorPosition.column);
-
-    completionTippy.setContent('Loading...');
-    completionTippy.setProps({
-        getReferenceClientRect: () => ({
-            width: 0,
-            height: 0,
-            top: screenPosition.pageY,
-            bottom: screenPosition.pageY,
-            left: screenPosition.pageX,
-            right: screenPosition.pageX,
-        })
-    });
-    completionTippy.show();
-
-    try {
-        const response = await fetch('/complete', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                code: editor.getValue(),
-                row: cursorPosition.row,
-                column: cursorPosition.column
-            }),
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        currentCompletion = data.completion;
-        completionTippy.setContent(`${currentCompletion} (Press Tab to insert)`);
-    } catch (error) {
-        console.error('Error:', error);
-        completionTippy.setContent('Error fetching completion');
-        currentCompletion = '';
+function waitForDispatchReady() {
+  return new Promise((resolve) => {
+    function checkReady() {
+      if (AppState.isDispatchReady) {
+        resolve();
+      } else {
+        console.log("Waiting...");
+        setTimeout(checkReady, 100); // Check every 100ms
+      }
     }
-
-    setTimeout(() => {
-        if (currentCompletion) {
-            completionTippy.hide();
-            currentCompletion = '';
-        }
-    }, 5000);
+    checkReady();
+  });
 }
 
-function updateEditor(delta) {
-    if (delta.action === 'insert' && (delta.lines[0] === '.' || delta.lines[0] === ' ')) {
-        showCompletionSuggestion();
+async function updateEditor() {
+  // Recover from errors TODO(avh): only do this if there's an error
+  createModule().then((Module) => {
+    console.log("updateEditor() - Module ready");
+  });
+  if (AppState.module && AppState.module.runCheck) {
+    if (!AppState.isDispatchReady) {
+      console.log("Waiting for dispatch to be ready");
+      await waitForDispatchReady();
     }
-    // Recover from errors TODO(avh): only do this if there's an error
-    createModule().then((Module) => {
-        // Keep your existing Module setup
-        console.log("updateEditor() - Module ready");
-    });
-    if (AppState.module && AppState.module.executeKernel) {
-        console.log("Executing kernel");
-        AppState.terminal.clear();
-        wgSize = [256, 1, 1];
-        gridSize = [256, 1, 1];
-        AppState.module.executeKernel(AppState.preamble + AppState.editor.getValue(), wgSize, gridSize);
-    } else {
-        console.log("updateEditor() - Module not ready");
-    }
+
+    console.log("Executing kernel");
+    AppState.terminal.clear();
+    console.log("Code:\n", AppState.preamble + AppState.editor.getValue());
+    AppState.isDispatchReady = false;
+    AppState.module
+      .runCheck(
+        AppState.preamble + AppState.editor.getValue(),
+        AppState.wgSize,
+        AppState.gridSize,
+      )
+      .then((result) => {
+        console.log("check:", result);
+        AppState.checkAnswer = result;
+        AppState.isDispatchReady = true;
+        render();
+      });
+  } else {
+    console.log("updateEditor() - Module not ready");
+  }
 }
 
-function initEditor(initial_code) {
-    AppState.editor = ace.edit("editor");
-    editor = AppState.editor;
-    // editor = ace.edit("editor");
-    editor.setTheme("ace/theme/monokai");
-    editor.session.setMode("ace/mode/javascript");
-    editor.setOptions({
-        fontSize: "14px",
-        showPrintMargin: false,
-        // disable showing errors in gutter, Ace's WGSL parser is out of date
-        showGutter: false,
-        highlightActiveLine: true,
-        wrap: true,
-    });
-    editor.setKeyboardHandler("ace/keyboard/vim");
-    editor.setValue(initial_code);
-    window.addEventListener('resize', function() {
-        editor.resize();
-    });
-    // document.getElementById('language').addEventListener('change', function(e) {
-    //       let mode = "ace/mode/" + e.target.value;
-    //     editor.session.setMode(mode);
-    // });
+function update(event) {
+  console.log("Updating");
+  if ((event.type === "selectPuzzle") & (event.value === "prev")) {
+    AppState.puzzleIndex = (AppState.puzzleIndex - 1);
+  }
+  if ((event.type === "selectPuzzle") & (event.value === "next")) {
+    AppState.puzzleIndex = (AppState.puzzleIndex + 1);
+  }
+  if (AppState.puzzleIndex < 0) {
+    AppState.puzzleIndex = PuzzleSpec.length - 1;
+  }
+  if (AppState.puzzleIndex >= PuzzleSpec.length) {
+    AppState.puzzleIndex = 0;
+  }
+  updateDispatchParams();
+  updateEditor();
+  render();
+}
 
-    editor.session.on('change', updateEditor);
-
-    completionTippy = tippy(document.getElementById('editor'), {
-        content: 'Loading...',
-        trigger: 'manual',
-        placement: 'top-start',
-        arrow: true,
-        interactive: true
-    });
-
-    // Override the default tab behavior
-    editor.commands.addCommand({
-        name: 'insertCompletion',
-        bindKey: {win: 'Tab', mac: 'Tab'},
-        exec: function(editor) {
-            if (currentCompletion) {
-                editor.insert(currentCompletion);
-                currentCompletion = '';
-                completionTippy.hide();
-            } else {
-                editor.indent();
-            }
-        }
-    });
+function render() {
+  document.getElementById("preamble").innerHTML = AppState.preamble;
+  // update DIV
+  console.log("AppState.checkAnswer: ", AppState.checkAnswer);
+  document.getElementById("correct").textContent = AppState.checkAnswer
+    ? "Your answer is adequate."
+    : "You are WRONG.";
+  document.getElementById("puzzle_name").textContent =
+    "Puzzle " +
+    (AppState.puzzleIndex + 1) +
+    ": " +
+    PuzzleSpec[AppState.puzzleIndex].name;
+  document.getElementById("puzzle_description").textContent =
+    PuzzleSpec[AppState.puzzleIndex].description;
 }
