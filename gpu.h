@@ -755,7 +755,7 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
       devData.device = device;
       devData.requestEnded = true;
     };
-#ifdef WEBGPU_BACKEND_DAWN
+#if defined(WEBGPU_BACKEND_DAWN) && !defined(__EMSCRIPTEN__)
     devDescriptor.deviceLostCallbackInfo = {
         .callback =
             [](WGPUDevice const *device, WGPUDeviceLostReason reason,
