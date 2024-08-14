@@ -240,6 +240,7 @@ async function updateEditor() {
         AppState.preamble + AppState.editor.getValue(),
         AppState.wgSize,
         AppState.gridSize,
+        AppState.puzzleIndex,
       )
       .catch((error) => {
         console.error("execution failed", error);

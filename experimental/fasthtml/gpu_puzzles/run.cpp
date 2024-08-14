@@ -83,15 +83,14 @@ void runCheck(const char *kernelCode, const Shape &wgSize,
 
 EMSCRIPTEN_KEEPALIVE
 bool evaluate(const char *kernelCode, const Shape &wgSize,
-              const Shape &nWorkgroups) {
+              const Shape &nWorkgroups, int puzzleIndex) {
   char buffer[1024]; // for printing
 
   snprintf(buffer, sizeof(buffer), "Evaluating kernel with workgroup size (%zu, %zu, %zu) and nWorkgroups (%zu, %zu, %zu)",
            wgSize[0], wgSize[1], wgSize[2], nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]);
   js_print(buffer);
   Context ctx = createContext({});
-  TestCases testCases = createTestCases();
-  return evaluate(ctx, testCases, kernelCode, 0);
+  return evaluate(ctx, kernelCode, puzzleIndex);
 }
 
 } // extern "C"
@@ -112,14 +111,14 @@ EMSCRIPTEN_BINDINGS(module) {
       "evaluate",
       emscripten::optional_override(
           [](const std::string &kernelCode, const std::array<size_t, 3> &wgSize,
-             const std::array<size_t, 3> &nWorkgroups) {
+             const std::array<size_t, 3> &nWorkgroups, int puzzleIndex) {
             return evaluate(kernelCode.c_str(),
                      Shape{static_cast<size_t>(wgSize[0]),
                            static_cast<size_t>(wgSize[1]),
                            static_cast<size_t>(wgSize[2])},
                      Shape{static_cast<size_t>(nWorkgroups[0]),
                            static_cast<size_t>(nWorkgroups[1]),
-                           static_cast<size_t>(nWorkgroups[2])});
+                           static_cast<size_t>(nWorkgroups[2])}, puzzleIndex);
           }));
 }
 #endif
