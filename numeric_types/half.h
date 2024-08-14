@@ -8,8 +8,8 @@
 #include <cstdio>
 
 struct half;
-half halfFromFloat(float f);
-float halfToFloat(half h);
+static half halfFromFloat(float f);
+static float halfToFloat(half h);
 
 /**
  * Experimental implementation of half-precision 16-bit floating point numbers.
