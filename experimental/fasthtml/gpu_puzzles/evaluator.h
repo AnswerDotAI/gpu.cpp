@@ -127,9 +127,9 @@ std::vector<float> runPuzzle2(Context &ctx, const TestCase &testCase,
 
     Tensor a = createTensor(ctx, {N}, kf32, aVec.data());
     Tensor b = createTensor(ctx, {N}, kf32, bVec.data());
-    Tensor output = createTensor(ctx, {N}, kf32);
+    Tensor outputTensor = createTensor(ctx, {N}, kf32);
 
-    Kernel op = createKernel(ctx, {kernelString, N}, Bindings{a, b, output},
+    Kernel op = createKernel(ctx, {kernelString, N}, Bindings{a, b, outputTensor},
                              testCase.gridSize);
 
     std::promise<void> promise;
@@ -137,11 +137,11 @@ std::vector<float> runPuzzle2(Context &ctx, const TestCase &testCase,
 
     dispatchKernel(ctx, op, promise);
 
-    std::vector<float> outputArr(N);
+    std::vector<float> outputVec(N);
     wait(ctx, future);
-    toCPU(ctx, output, outputArr.data(), outputArr.size() * sizeof(float));
+    toCPU(ctx, outputTensor, outputVec.data(), outputVec.size() * sizeof(float));
 
-    return outputArr;
+    return outputVec;
 }
 
 // Function to initialize the test cases

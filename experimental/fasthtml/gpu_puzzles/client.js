@@ -209,14 +209,13 @@ function updateDispatchParams() {
 }
 
 async function updateEditor() {
-
   function waitForDispatchReady() {
     return new Promise((resolve) => {
       function checkReady() {
         if (AppState.isDispatchReady) {
           resolve();
         } else {
-          console.log("Waiting...");
+          console.log("Waiting for dispatch to be ready");
           setTimeout(checkReady, 100); // Check every 100ms
         }
       }
@@ -228,28 +227,51 @@ async function updateEditor() {
   createModule().then((Module) => {
     console.log("updateEditor() - Module ready");
   });
-  if (AppState.module && AppState.module.runCheck) {
+  if (AppState.module) {
     if (!AppState.isDispatchReady) {
-      console.log("Waiting for dispatch to be ready");
       await waitForDispatchReady();
     }
-
     console.log("Executing kernel");
     AppState.terminal.clear();
     console.log("Code:\n", AppState.preamble + AppState.editor.getValue());
     AppState.isDispatchReady = false;
-    AppState.module
-      .runCheck(
+    try {
+    promise = AppState.module.evaluate(
         AppState.preamble + AppState.editor.getValue(),
         AppState.wgSize,
         AppState.gridSize,
       )
+      .catch((error) => {
+        console.error("execution failed", error);
+        AppState.isDispatchReady = true;
+        console.log("dispatch ready");
+        render();
+      })
       .then((result) => {
         console.log("check:", result);
         AppState.checkAnswer = result;
         AppState.isDispatchReady = true;
+        console.log("dispatch ready");
         render();
-      });
+      })
+      .finally(() => {
+        console.log("finally");
+        AppState.isDispatchReady = true;
+        console.log("dispatch ready");
+      })
+      ;
+    } catch (error) {
+      console.error("execution failed 2", error);
+      AppState.isDispatchReady = true;
+      console.log("dispatch ready");
+    }
+    if (promise) {
+      await promise;
+    } else {
+      console.error("did not get promise");
+      AppState.isDispatchReady = true;
+      console.log("dispatch ready");
+    }
   } else {
     console.log("updateEditor() - Module not ready");
   }
@@ -258,10 +280,10 @@ async function updateEditor() {
 function update(event) {
   console.log("Updating");
   if ((event.type === "selectPuzzle") & (event.value === "prev")) {
-    AppState.puzzleIndex = (AppState.puzzleIndex - 1);
+    AppState.puzzleIndex = AppState.puzzleIndex - 1;
   }
   if ((event.type === "selectPuzzle") & (event.value === "next")) {
-    AppState.puzzleIndex = (AppState.puzzleIndex + 1);
+    AppState.puzzleIndex = AppState.puzzleIndex + 1;
   }
   if (AppState.puzzleIndex < 0) {
     AppState.puzzleIndex = PuzzleSpec.length - 1;

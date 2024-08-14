@@ -11,6 +11,8 @@
 
 using namespace gpu;
 
+constexpr size_t kN = 100;
+
 EM_JS(void, js_print, (const char *str), {
   if (typeof window != 'undefined' && window.customPrint) {
     window.customPrint(UTF8ToString(str));
@@ -20,60 +22,76 @@ EM_JS(void, js_print, (const char *str), {
   }
 });
 
-constexpr size_t kN = 5000;
+template <size_t nInputs>
+struct HostSpec {
+  const Shape wgSize;
+  const Shape nWorkgroups;
+  const std::string kernelCode;
+  std::array<std::vector<float>, nInputs> inputs;
+};
+
+template <size_t nInputs>
+void executeKernel(Context& ctx, 
+                    const HostSpec<nInputs>& spec,
+                   float* outputPtr, size_t outputSize) {
+  std::array<Tensor, nInputs + 1> bindingsArr; // + 1 for output binding
+  for (size_t inputIndex = 0; inputIndex < nInputs; ++inputIndex) {
+    bindingsArr[inputIndex] = createTensor(ctx, Shape{spec.inputs[inputIndex].size()}, kf32, spec.inputs[inputIndex].data());
+  }
+  Tensor output = createTensor(ctx, Shape{outputSize}, kf32);
+  bindingsArr[nInputs] = output;
+  Bindings bindings{bindingsArr};
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = createKernel(ctx, {spec.kernelCode, spec.wgSize, kf32},
+  bindings, spec.nWorkgroups);
+  dispatchKernel(ctx, op, promise);
+  wait(ctx, future);
+  toCPU(ctx, output, outputPtr, outputSize * sizeof(float));
+}
 
 extern "C" {
 
-EMSCRIPTEN_KEEPALIVE bool checkAnswer(std::array<float, kN> &outputArr) {
-  return outputArr[0] == 10;
-  // return false;
+void generatePreamble(size_t nInputs, Shape& wgSize, Shape& nWorkgroups, const char* out, size_t outSize) {
+  std::string result = "";
+  for (size_t i = 0; i < nInputs; ++i) {
+    result += "@group(0) @binding(" + std::to_string(i) + ") var input" + std::to_string(i) + " : array;\n";
+  }
+  result += "@group(0) @binding(" + std::to_string(nInputs) + ") var output : array;\n";
+  result += "@compute @workgroup_size(" + std::to_string(wgSize[0]) + ", " + std::to_string(wgSize[1]) + ", " + std::to_string(wgSize[2]) + ")\n";
+  std::strncpy(const_cast<char*>(out), result.c_str(), outSize);
+}
+
+
+EMSCRIPTEN_KEEPALIVE
+void runCheck(const char *kernelCode, const Shape &wgSize,
+              const Shape &nWorkgroups) {
+  Context ctx = createContext({});
+  std::array<float, kN> output;
+  std::vector<float> input(N);
+  for (int i = 0; i < kN; ++i) {
+    input[i] = static_cast<float>(i);
+  }
+  HostSpec<1> spec = {
+    wgSize,
+    nWorkgroups,
+    kernelCode,
+    std::array<std::vector<float>, 1> {input}
+  };
+  executeKernel<1>(ctx, spec, output.data(), kN); 
 }
 
 EMSCRIPTEN_KEEPALIVE
-void executeKernel(Context& ctx, const char *kernelCode, const Shape &wgSize,
-                   const Shape &nWorkgroups,
-                   std::array<float, kN> &outputArr) {
-
-  // TODO(avh): use puzzle dispatch from scaffold.h for host implementation
-  char buffer[1024]; // for printing
-  constexpr size_t N = 5000;
-  std::array<float, N> inputArr;
-  for (int i = 0; i < N; ++i) {
-    inputArr[i] = static_cast<float>(i);
-  }
-  Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
-  Tensor output = createTensor(ctx, Shape{N}, kf32);
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kernelCode, wgSize, kf32},
-                             Bindings{input, output}, nWorkgroups);
-  
-  dispatchKernel(ctx, op, promise);
-  wait(ctx, future);
-  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  for (int i = 0; i < 10; ++i) {
-    snprintf(buffer, sizeof(buffer), "  [%d] kernel(%.1f) = %.4f", i,
-             inputArr[i], outputArr[i]);
-    js_print(buffer);
-  }
-  js_print(" ...");
-  for (int i = N - 10; i < N; ++i) {
-    snprintf(buffer, sizeof(buffer), "  [%d] kernel(%.1f) = %.4f", i,
-             inputArr[i], outputArr[i]);
-    js_print(buffer);
-  }
-  snprintf(buffer, sizeof(buffer), "Computed %zu values", N);
-  js_print(buffer);
-} // executeKernel
-
-EMSCRIPTEN_KEEPALIVE
-bool runCheck(const char *kernelCode, const Shape &wgSize,
+bool evaluate(const char *kernelCode, const Shape &wgSize,
               const Shape &nWorkgroups) {
+  char buffer[1024]; // for printing
+
+  snprintf(buffer, sizeof(buffer), "Evaluating kernel with workgroup size (%zu, %zu, %zu) and nWorkgroups (%zu, %zu, %zu)",
+           wgSize[0], wgSize[1], wgSize[2], nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]);
+  js_print(buffer);
   Context ctx = createContext({});
-  std::array<float, kN> outputArr;
-  executeKernel(ctx, kernelCode, wgSize, nWorkgroups, outputArr);
   TestCases testCases = createTestCases();
-  return evaluate(ctx, testCases, std::string(kernelCode), 0);
+  return evaluate(ctx, testCases, kernelCode, 0);
 }
 
 } // extern "C"
@@ -89,12 +107,13 @@ EMSCRIPTEN_BINDINGS(module) {
   emscripten::register_vector<std::vector<float>>("VectorFloat");
   emscripten::register_vector<std::vector<int>>("VectorInt");
 
+
   emscripten::function(
-      "runCheck",
+      "evaluate",
       emscripten::optional_override(
           [](const std::string &kernelCode, const std::array<size_t, 3> &wgSize,
              const std::array<size_t, 3> &nWorkgroups) {
-            return runCheck(kernelCode.c_str(),
+            return evaluate(kernelCode.c_str(),
                      Shape{static_cast<size_t>(wgSize[0]),
                            static_cast<size_t>(wgSize[1]),
                            static_cast<size_t>(wgSize[2])},
@@ -102,7 +121,5 @@ EMSCRIPTEN_BINDINGS(module) {
                            static_cast<size_t>(nWorkgroups[1]),
                            static_cast<size_t>(nWorkgroups[2])});
           }));
-
-  emscripten::function("checkAnswer", &checkAnswer);
 }
 #endif

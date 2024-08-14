@@ -133,6 +133,14 @@ template <std::size_t N> struct Bindings {
     }
   }
 
+  Bindings(const std::array<Tensor, N> &init) {
+    std::copy(begin(init), end(init), begin(data));
+    std::fill(begin(viewOffsets), end(viewOffsets), 0);
+    for (size_t i = 0; i < N; ++i) {
+      viewSpans[i] = data[i].data.size;
+    }
+  }
+
   Bindings(const std::initializer_list<TensorView> &init) {
     size_t i = 0;
     for (const auto &tv : init) {
@@ -174,7 +182,7 @@ struct Context; // Forward declaration so that TensorPool can have a pointer to
  * resources.
  */
 struct TensorPool {
-  inline TensorPool(Context *ctx) : ctx(ctx), data(){};
+  inline TensorPool(Context *ctx) : ctx(ctx), data() {};
   Context *ctx;
   std::unordered_map<WGPUBuffer, Tensor> data;
   ~TensorPool();
@@ -718,7 +726,8 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
             "enabled, particularly on Linux.\n"
             "- Open `chrome://flags/` in the browser and make sure "
             "\"WebGPU Support\" is enabled.\n"
-        "- Chrome is launched with vulkan enabled. From the command line launch chrome as `google-chrome --enable-features=Vulkan`\n");
+            "- Chrome is launched with vulkan enabled. From the command line "
+            "launch chrome as `google-chrome --enable-features=Vulkan`\n");
       }
 #endif
       check(status == WGPURequestAdapterStatus_Success,
@@ -755,20 +764,6 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
       devData.device = device;
       devData.requestEnded = true;
     };
-#if defined(WEBGPU_BACKEND_DAWN) && !defined(__EMSCRIPTEN__)
-    devDescriptor.deviceLostCallbackInfo = {
-        .callback =
-            [](WGPUDevice const *device, WGPUDeviceLostReason reason,
-               char const *message, void *userdata) {
-              if (reason != WGPUDeviceLostReason_Destroyed) {
-                LOG(kDefLog, kError, "Device lost (code %d):\n%s", reason,
-                    message);
-              } else {
-                LOG(kDefLog, kInfo, "Device destroyed: %s", message);
-              }
-            },
-    };
-#endif
     wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
                              onDeviceRequestEnded, (void *)&devData);
     LOG(kDefLog, kInfo, "Waiting for device request to end");
