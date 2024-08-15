@@ -1,6 +1,6 @@
 #include "evaluator.h"
 #include "gpu.h"
-#include "scaffold.h"
+// #include "scaffold.h"
 #include "webprint.h"
 #include <array>
 #include <cstdio>
@@ -60,28 +60,7 @@ void generatePreamble(size_t nInputs, Shape &wgSize, Shape &nWorkgroups,
 }
 
 EMSCRIPTEN_KEEPALIVE
-void runCheck(const char *kernelCode, const Shape &wgSize,
-              const Shape &nWorkgroups) {
-  Context ctx = createContext({});
-  std::array<float, kN> output;
-  std::vector<float> input(N);
-  for (int i = 0; i < kN; ++i) {
-    input[i] = static_cast<float>(i);
-  }
-  HostSpec<1> spec = {wgSize, nWorkgroups, kernelCode,
-                      std::array<std::vector<float>, 1>{input}};
-  executeKernel<1>(ctx, spec, output.data(), kN);
-}
-
-EMSCRIPTEN_KEEPALIVE
-bool evaluate(const char *kernelCode, const Shape &wgSize,
-              const Shape &nWorkgroups, int puzzleIndex) {
-  /*
-  char buffer[1024]; // for printing
-  snprintf(buffer, sizeof(buffer), "Evaluating kernel with workgroup size (%zu,
-  %zu, %zu) and nWorkgroups (%zu, %zu, %zu)", wgSize[0], wgSize[1], wgSize[2],
-  nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]); js_print(buffer);
-  */
+bool evaluate(const char *kernelCode, int puzzleIndex) {
 
   Context ctx = createContext({});
   return evaluate(ctx, kernelCode, puzzleIndex);
@@ -100,37 +79,15 @@ EMSCRIPTEN_BINDINGS(module) {
   emscripten::register_vector<std::vector<float>>("VectorFloat");
   emscripten::register_vector<std::vector<int>>("VectorInt");
 
-  emscripten::function(
-      "evaluate",
-      emscripten::optional_override(
-          [](const std::string &kernelCode, const std::array<size_t, 3> &wgSize,
-             const std::array<size_t, 3> &nWorkgroups, int puzzleIndex) {
-            return evaluate(kernelCode.c_str(),
-                            Shape{static_cast<size_t>(wgSize[0]),
-                                  static_cast<size_t>(wgSize[1]),
-                                  static_cast<size_t>(wgSize[2])},
-                            Shape{static_cast<size_t>(nWorkgroups[0]),
-                                  static_cast<size_t>(nWorkgroups[1]),
-                                  static_cast<size_t>(nWorkgroups[2])},
-                            puzzleIndex);
-          }));
-
-  emscripten::function(
-      "getWorkgroupSize", emscripten::optional_override([](int puzzleIndex) {
-        Shape wgSize = getWorkgroupSize(puzzleIndex);
-        return std::array<size_t, 3>{wgSize[0], wgSize[1], wgSize[2]};
-      }));
-
-  emscripten::function("getNumWorkgroups",
-                       emscripten::optional_override([](int puzzleIndex) {
-                         Shape nWorkgroups = getNumWorkgroups(puzzleIndex);
-                         return std::array<size_t, 3>{
-                             nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]};
-                       }));
+  emscripten::function("evaluate",
+                       emscripten::optional_override(
+                           [](const std::string &kernelCode, int puzzleIndex) {
+                             return evaluate(kernelCode.c_str(), puzzleIndex);
+                           }));
 
   emscripten::function("getTemplate",
-      emscripten::optional_override([](int puzzleIndex) {
-        return getTemplate(puzzleIndex);
-      }));
+                       emscripten::optional_override([](int puzzleIndex) {
+                         return getTemplate(puzzleIndex);
+                       }));
 }
 #endif

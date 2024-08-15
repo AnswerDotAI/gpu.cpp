@@ -52,8 +52,6 @@ inline KernelCode createCustomSharedMemory(
   return {codeString, workgroupSize};
 }
 
-// TODO: Use these spec functions in the evaluations
-
 void map_spec(const float *a, size_t length, float *result) {
   for (size_t i = 0; i < length; ++i) {
     result[i] = a[i] + 10;
@@ -929,23 +927,6 @@ std::string getTemplate(int puzzleIndex) {
 }
 )";
   return result;
-}
-
-Shape getWorkgroupSize(int puzzleIndex) {
-  const auto allTestCases = createTestCases();
-  wprintf("Workgroup size: %d\n",
-          allTestCases[puzzleIndex][0].workgroupSize[0]);
-  return allTestCases[puzzleIndex][0].workgroupSize;
-}
-
-size_t getNumInputs(int puzzleIndex) {
-  const auto allTestCases = createTestCases();
-  return allTestCases[puzzleIndex][0].nInputs;
-}
-
-Shape getNumWorkgroups(int puzzleIndex) {
-  const auto allTestCases = createTestCases();
-  return allTestCases[puzzleIndex][0].gridSize;
 }
 
 // Function to check if the output matches the expected output

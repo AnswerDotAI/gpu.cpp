@@ -7,8 +7,8 @@ import json
 TARGET = os.getenv("TARGET", "debug")
 
 body_style = """
-    background: linear-gradient(rgba(14, 14, 14, 0.78),
-                                rgba(0, 0, 0, 0.8),
+    background: linear-gradient(rgba(14, 14, 14, 0.75),
+                                rgba(0, 0, 0, 0.85),
                                 rgba(0, 0, 0, 1.0),
                                 rgba(0, 0, 0, 0.88),
                                 rgba(3, 3, 3, 0.8),
@@ -40,11 +40,8 @@ def controls():
                     cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
                     id="next",
                 ),
-                # no space between buttons
                 style="display: flex;  align-items: center; justify-content: center;",
-                # cls="flex justify-between space-x-2",
             ),
-            # cls="mb-4",
             style="text-align: center; margin-top: 5vh; margin-left: 2rem; margin-right: 2rem;",
         ),
         Div(
@@ -54,80 +51,6 @@ def controls():
         ),
     )
 
-
-def dispatchInputs():
-    return Div(
-        Div(
-            Div("Workgroup Size", cls="font-bold mb-1 text-center"),
-            Div(
-                Div(
-                    Input(
-                        type="number",
-                        id="workgroup_x",
-                        cls="w-1/3 p-2 border rounded",
-                        value="256",
-                        placeholder="X",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="workgroup_y",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Y",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="workgroup_z",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Z",
-                        style="width: 5vw",
-                    ),
-                    cls="flex justify-between space-x-2",
-                ),
-                cls="flex justify-between space-x-2",
-            ),
-            cls="mb-4",
-            style="margin-right: 2rem; margin-left: 2rem;",
-        ),
-        Div(
-            Div("Grid Size", cls="font-bold mb-1 text-center"),
-            Div(
-                Div(
-                    Input(
-                        type="number",
-                        id="grid_x",
-                        cls="w-1/3 p-2 border rounded",
-                        value="256",
-                        placeholder="X",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="grid_y",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Y",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="grid_z",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Z",
-                        style="width: 5vw",
-                    ),
-                    cls="flex justify-between space-x-2",
-                ),
-                cls="flex justify-between space-x-2",
-            ),
-        ),
-        cls="w-full max-w-md",
-        style="display: flex; justify-content: center; margin-top: 2rem; margin-left: 2rem; margin-right: 2rem;",
-    )
 
 
 
@@ -211,7 +134,6 @@ def CodeEditor():
                 Div(id="editor", style="height: 79vh; width: 100vw;"),
                 style="height: 79vh; overflow: hidden;",
             ),
-            # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
             style="height: 79vh; overflow: hidden;",
         ),
     )
@@ -224,14 +146,11 @@ def get():
             Div(
                 Div(
                     controls(),
-                    # no dispatch inputs since they are set by the puzle parameters
-                    #dispatchInputs(),
                     CodeEditor(),
                     style="width: 49vw; height:100vh; float: left;",
                 ),
                 output(),
             ),
-            # style="height: 100vh; overflow: hidden;",
             style = body_style,
         ),
     )

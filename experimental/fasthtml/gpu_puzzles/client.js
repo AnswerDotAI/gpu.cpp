@@ -1,87 +1,85 @@
 const State = {
-  preamble_template : "",
-  preamble : "",
-  wgSize : [1, 1, 1],
-  gridSize : [1, 1, 1],
-  editor : null,
-  terminal : null,
-  module : null,
-  isModuleReady : false,
-  checkAnswer : false,
-  isDispatchReady : true, // don't allow multiple overlapping dispatches
-  puzzleIndex : 0,
+  preamble_template: "",
+  preamble: "",
+  editor: null,
+  terminal: null,
+  module: null,
+  isModuleReady: false,
+  checkAnswer: false,
+  isDispatchReady: true, // don't allow multiple overlapping dispatches
+  puzzleIndex: 0,
 };
 
 const PuzzleSpec = [
   {
-    name : "Map",
-    description :
-        'Implement a "kernel" (GPU function) that adds 10 to each position of vector `a` and stores it in vector `out`. You have 1 thread per position.',
+    name: "Map",
+    description:
+      'Implement a "kernel" (GPU function) that adds 10 to each position of vector `a` and stores it in vector `out`. You have 1 thread per position.',
   },
   {
-    name : "Zip",
-    description :
-        "Implement a kernel that adds together each position of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+    name: "Zip",
+    description:
+      "Implement a kernel that adds together each position of `a` and `b` and stores it in `out`. You have 1 thread per position.",
   },
   {
-    name : "Guards",
-    description :
-        "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have more threads than positions.",
+    name: "Guards",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have more threads than positions.",
   },
   {
-    name : "Map 2D",
-    description :
-        "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. Input `a` is 2D and square. You have more threads than positions.",
+    name: "Map 2D",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. Input `a` is 2D and square. You have more threads than positions.",
   },
   {
-    name : "Broadcast",
-    description :
-        "Implement a kernel that adds `a` and `b` and stores it in `out`. Inputs `a` and `b` are vectors. You have more threads than positions.",
+    name: "Broadcast",
+    description:
+      "Implement a kernel that adds `a` and `b` and stores it in `out`. Inputs `a` and `b` are vectors. You have more threads than positions.",
   },
   {
-    name : "Blocks",
-    description :
-        "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`.",
+    name: "Blocks",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`.",
   },
   {
-    name : "Blocks 2D",
-    description :
-        "Implement the same kernel in 2D. You have fewer threads per block than the size of `a` in both directions.",
+    name: "Blocks 2D",
+    description:
+      "Implement the same kernel in 2D. You have fewer threads per block than the size of `a` in both directions.",
   },
   {
-    name : "Shared",
-    description :
-        "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`. Use shared memory and `cuda.syncthreads` to ensure threads do not cross.",
+    name: "Shared",
+    description:
+      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`. Use shared memory and `cuda.syncthreads` to ensure threads do not cross.",
   },
   {
-    name : "Pooling",
-    description :
-        "Implement a kernel that sums together the last 3 positions of `a` and stores it in `out`. You have 1 thread per position.",
+    name: "Pooling",
+    description:
+      "Implement a kernel that sums together the last 3 positions of `a` and stores it in `out`. You have 1 thread per position.",
   },
   {
-    name : "Dot Product",
-    description :
-        "Implement a kernel that computes the dot-product of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+    name: "Dot Product",
+    description:
+      "Implement a kernel that computes the dot-product of `a` and `b` and stores it in `out`. You have 1 thread per position.",
   },
   {
-    name : "1D Convolution",
-    description :
-        "Implement a kernel that computes a 1D convolution between `a` and `b` and stores it in `out`. Handle the general case.",
+    name: "1D Convolution",
+    description:
+      "Implement a kernel that computes a 1D convolution between `a` and `b` and stores it in `out`. Handle the general case.",
   },
   {
-    name : "Prefix Sum",
-    description :
-        "Implement a kernel that computes a sum over `a` and stores it in `out`. If the size of `a` is greater than the block size, only store the sum of each block using parallel prefix sum.",
+    name: "Prefix Sum",
+    description:
+      "Implement a kernel that computes a sum over `a` and stores it in `out`. If the size of `a` is greater than the block size, only store the sum of each block using parallel prefix sum.",
   },
   {
-    name : "Axis Sum",
-    description :
-        "Implement a kernel that computes a sum over each column of `a` and stores it in `out`.",
+    name: "Axis Sum",
+    description:
+      "Implement a kernel that computes a sum over each column of `a` and stores it in `out`.",
   },
   {
-    name : "Matrix Multiply",
-    description :
-        "Implement a kernel that multiplies square matrices `a` and `b` and stores the result in `out`. Optimize by using shared memory for partial dot-products.",
+    name: "Matrix Multiply",
+    description:
+      "Implement a kernel that multiplies square matrices `a` and `b` and stores the result in `out`. Optimize by using shared memory for partial dot-products.",
   },
 ];
 
@@ -113,11 +111,11 @@ function initializeEditor(initialContent) {
   AppState.editor.setTheme("ace/theme/dracula");
   AppState.editor.session.setMode("ace/mode/javascript");
   AppState.editor.setOptions({
-    fontSize : "16px",
-    showPrintMargin : false,
-    showGutter : false,
-    highlightActiveLine : true,
-    wrap : true,
+    fontSize: "16px",
+    showPrintMargin: false,
+    showGutter: false,
+    highlightActiveLine: true,
+    wrap: true,
   });
   AppState.editor.setKeyboardHandler("ace/keyboard/vim");
   AppState.editor.setValue(initialContent || "");
@@ -127,39 +125,29 @@ function initializeEditor(initialContent) {
 
 function initializeModule() {
   createModule()
-      .then((Module) => {
-        AppState.module = Module;
-        AppState.module.print = customPrint;
-        AppState.module.printErr = customPrint;
-        AppState.isModuleReady = true;
-        console.log("Module initialized");
-        update({type : "init"});
-      })
-      .catch(
-          (error) => { console.error("Failed to initialize module:", error); });
+    .then((Module) => {
+      AppState.module = Module;
+      AppState.module.print = customPrint;
+      AppState.module.printErr = customPrint;
+      AppState.isModuleReady = true;
+      console.log("Module initialized");
+      update({ type: "init" });
+    })
+    .catch((error) => {
+      console.error("Failed to initialize module:", error);
+    });
 }
 
 function setupEventListeners() {
-  AppState.editor.session.on("change", () => update({type : "edit"}));
+  AppState.editor.session.on("change", () => update({ type: "edit" }));
   window.addEventListener("resize", () => AppState.editor.resize());
-  /*
-  document.getElementById("workgroup_x")
-      .addEventListener("change", () => update({type : "wgUpdate"}));
-  document.getElementById("workgroup_y")
-      .addEventListener("change", () => update({type : "wgUpdate"}));
-  document.getElementById("workgroup_z")
-      .addEventListener("change", () => update({type : "wgUpdate"}));
-  document.getElementById("grid_x").addEventListener(
-      "change", () => update({type : "gridUpdate"}));
-  document.getElementById("grid_y").addEventListener(
-      "change", () => update({type : "gridUpdate"}));
-  document.getElementById("grid_z").addEventListener(
-      "change", () => update({type : "gridUpdate"}));
-  */
-  document.getElementById("prev").addEventListener(
-      "click", () => { update({type : "selectPuzzle", value : "prev"}); });
-  document.getElementById("next").addEventListener(
-      "click", () => { update({type : "selectPuzzle", value : "next"}); });
+
+  document.getElementById("prev").addEventListener("click", () => {
+    update({ type: "selectPuzzle", value: "prev" });
+  });
+  document.getElementById("next").addEventListener("click", () => {
+    update({ type: "selectPuzzle", value: "next" });
+  });
 }
 
 ////////////////////////////////////////
@@ -179,30 +167,6 @@ function customPrint(text) {
 // Update
 ////////////////////////////////////////
 
-/*
-function updateDispatchParams() {
-  wgSize = [
-    document.getElementById("workgroup_x").value,
-    document.getElementById("workgroup_y").value,
-    document.getElementById("workgroup_z").value,
-  ];
-  gridSize = [
-    document.getElementById("grid_x").value,
-    document.getElementById("grid_y").value,
-    document.getElementById("grid_z").value,
-  ];
-  wgSize = wgSize.map((x) => parseInt(x));
-  gridSize = gridSize.map((x) => parseInt(x));
-  AppState.wgSize = wgSize;
-  AppState.gridSize = gridSize;
-  AppState.preamble = AppState.preamble_template.replace(
-      /{{workgroupSize}}/g,
-      wgSize.join(", "),
-  );
-  console.log("New preamble:\n", AppState.preamble);
-}
-*/
-
 function waitForDispatchReady() {
   return new Promise((resolve) => {
     function checkReady() {
@@ -218,45 +182,39 @@ function waitForDispatchReady() {
 }
 
 async function updateEditor() {
-
   // Recover from errors TODO(avh): only do this if there's an error
-  createModule().then(
-      (Module) => { console.log("updateEditor() - Module ready"); });
+  createModule().then((Module) => {
+    console.log("updateEditor() - Module ready");
+  });
   if (AppState.module) {
     if (!AppState.isDispatchReady) {
       await waitForDispatchReady();
     }
     console.log("Executing kernel");
     AppState.terminal.clear();
-    // console.log("Code:\n", AppState.preamble + AppState.editor.getValue());
     code = AppState.editor.getValue();
     AppState.isDispatchReady = false;
     try {
       promise = AppState.module
-                    .evaluate(
-                        code,
-                        AppState.wgSize,
-                        AppState.gridSize,
-                        AppState.puzzleIndex,
-                        )
-                    .catch((error) => {
-                      console.error("execution failed", error);
-                      AppState.isDispatchReady = true;
-                      console.log("dispatch ready");
-                      render();
-                    })
-                    .then((result) => {
-                      console.log("check:", result);
-                      AppState.checkAnswer = result;
-                      AppState.isDispatchReady = true;
-                      console.log("dispatch ready");
-                      render();
-                    })
-                    .finally(() => {
-                      console.log("finally");
-                      AppState.isDispatchReady = true;
-                      console.log("dispatch ready");
-                    });
+        .evaluate(code, AppState.puzzleIndex)
+        .catch((error) => {
+          console.error("execution failed", error);
+          AppState.isDispatchReady = true;
+          console.log("dispatch ready");
+          render();
+        })
+        .then((result) => {
+          console.log("check:", result);
+          AppState.checkAnswer = result;
+          AppState.isDispatchReady = true;
+          console.log("dispatch ready");
+          render();
+        })
+        .finally(() => {
+          console.log("finally");
+          AppState.isDispatchReady = true;
+          console.log("dispatch ready");
+        });
     } catch (error) {
       console.error("execution failed 2", error);
       AppState.isDispatchReady = true;
@@ -294,14 +252,12 @@ function update(event) {
       AppState.puzzleIndex = 0;
     }
   }
-  if ((event.type === "init") || (event.type === "selectPuzzle")) {
+  if (event.type === "init" || event.type === "selectPuzzle") {
+    // Reset editor template code if we are either starting the app for the
+    // first time or picking a new puzzle
     AppState.editor.setValue(AppState.module.getTemplate(AppState.puzzleIndex));
   }
-  // AppState.wgSize = AppState.module.getWorkgroupSize(AppState.puzzleIndex);
-  // AppState.gridSize = AppState.module.getNumWorkgroups(AppState.puzzleIndex);
 
-  // updateDispatchParams(); // comment this out since it should be set by the
-  // wasm getters
   updateEditor();
   render();
 }
@@ -311,34 +267,22 @@ function update(event) {
 ////////////////////////////////////////
 
 function render() {
-  console.log("AppState.wgSize: ", AppState.wgSize);
-  /*
-  document.getElementById("workgroup_x").value = AppState.wgSize[0];
-  document.getElementById("workgroup_y").value = AppState.wgSize[1];
-  document.getElementById("workgroup_z").value = AppState.wgSize[2];
-  document.getElementById("grid_x").value = AppState.gridSize[0];
-  document.getElementById("grid_y").value = AppState.gridSize[1];
-  document.getElementById("grid_z").value = AppState.gridSize[2];
-  console.log("AppState.wgSize: ", AppState.wgSize);
-  console.log("AppState.gridSize: ", AppState.gridSize);
-  */
-
   console.log("AppState.checkAnswer: ", AppState.checkAnswer);
-  document.getElementById("correct").textContent =
-      AppState.checkAnswer ? "Tests passed!"
-                           : "Some tests failed.";
-  // make colors red if incorrect
+  document.getElementById("correct").textContent = AppState.checkAnswer
+    ? "Tests passed!"
+    : "Some tests failed.";
   if (AppState.checkAnswer) {
     document.getElementById("correct").style.color = "LimeGreen";
     document.getElementById("correct").style.fontWeight = "bold";
-
   } else {
     document.getElementById("correct").style.color = "red";
     document.getElementById("correct").style.fontWeight = "bold";
   }
   document.getElementById("puzzle_name").textContent =
-      "Puzzle " + (AppState.puzzleIndex + 1) + ": " +
-      PuzzleSpec[AppState.puzzleIndex].name;
+    "Puzzle " +
+    (AppState.puzzleIndex + 1) +
+    ": " +
+    PuzzleSpec[AppState.puzzleIndex].name;
   document.getElementById("puzzle_description").textContent =
-      PuzzleSpec[AppState.puzzleIndex].description;
+    PuzzleSpec[AppState.puzzleIndex].description;
 }
