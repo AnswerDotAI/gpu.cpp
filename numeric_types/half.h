@@ -11,6 +11,17 @@ struct half;
 static half halfFromFloat(float f);
 static float halfToFloat(half h);
 
+#ifdef _MSC_VER
+#include <intrin.h>
+static inline uint16_t __builtin_clz(uint16_t value) {
+    unsigned long leading_zero = 0;
+    if (_BitScanReverse(&leading_zero, static_cast<unsigned long>(value))) {
+        return 15 - leading_zero;
+    }
+    return 16;
+}
+#endif
+
 /**
  * Experimental implementation of half-precision 16-bit floating point numbers.
  */
