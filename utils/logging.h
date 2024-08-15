@@ -67,7 +67,7 @@ static Logger kDefLog = {stdout, "", kInfo};
  * @brief Set the log level of the default logger.
  * @param level The log level to set.
  */
-static void setLogLevel(int level) {
+static inline void setLogLevel(int level) {
   kDefLog.level = level;
 }
 
