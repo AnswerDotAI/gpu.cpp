@@ -6,23 +6,18 @@ import json
 
 TARGET = os.getenv("TARGET", "debug")
 
-PREAMBLE = """
-// Start editing here to see the results.
-// Warning: You are in vim mode.
-@group(0) @binding(0) var<storage, read_write> input : array<f32>;
-@group(0) @binding(1) var<storage, read_write> output : array<f32>;
-@compute @workgroup_size({{workgroupSize}})
-""".strip()
-
-INITIAL_CODE = """
-fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    let i: u32 = GlobalInvocationID.x;
-    output[i] = input[i];
-}
-""".strip()
-
-CORRECT = False
-
+body_style = """
+    background: linear-gradient(rgba(14, 14, 14, 0.78),
+                                rgba(0, 0, 0, 0.8),
+                                rgba(0, 0, 0, 1.0),
+                                rgba(0, 0, 0, 0.88),
+                                rgba(3, 3, 3, 0.8),
+                                rgba(28, 28, 28, 0.68)),
+                url('https://gpucpp.answer.ai/images/shadertui2-small-crop2-loop.gif');
+    background-size: cover;
+    background-position: center;
+    height: 100vh
+"""
 
 def controls():
     # left and right buttons
@@ -50,12 +45,12 @@ def controls():
                 # cls="flex justify-between space-x-2",
             ),
             # cls="mb-4",
-            style="text-align: center;",
+            style="text-align: center; margin-top: 5vh; margin-left: 2rem; margin-right: 2rem;",
         ),
         Div(
             "Puzzle description",
             id="puzzle_description",
-            style="font-size: 20vh; margin-top: 6vh; margin-bottom: 6vh; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
+            style="font-size: 20vh; margin-top: 5vh; margin-bottom: 5vh; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
         ),
     )
 
@@ -135,28 +130,14 @@ def dispatchInputs():
     )
 
 
-def CodeEditor(initial_code: str):
-    return (
-        Div(
-            Div(
-                Div(id="editor", style="height: 60vh; width: 100vw;"),
-                style="height: 60vh; overflow: hidden;",
-            ),
-            # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
-            style="height: 60vh; overflow: hidden;",
-        ),
-    )
 
-
-def init_app(initial_code: str) -> str:
+def init_app() -> str:
     return f"""
 document.addEventListener('DOMContentLoaded', () => {{
     window.AppState = Object.create(State);
     window.customPrint = customPrint;
     const AppState = window.AppState;
-    AppState.preamble = {json.dumps(PREAMBLE)};
-    AppState.preamble_template = {json.dumps(PREAMBLE)};
-    initializeApp({json.dumps(initial_code)});
+    initializeApp();
 }});
 """.strip()
 
@@ -174,7 +155,7 @@ HDRS = (
     Script(src="https://unpkg.com/@popperjs/core@2"),
     Script(src="https://unpkg.com/tippy.js@6"),
     Script(src="/client.js"),
-    Script(init_app(INITIAL_CODE)),
+    Script(init_app()),
     *Socials(
         title="gpu.cpp gpu puzzles",
         description="",
@@ -207,43 +188,51 @@ async def serve_wasm():
 
 
 def output():
+    correctHeight = 27;
+    outputHeight = 100 - correctHeight + 1;
     return (
         Div(
             "(Result Check)",
-            style="width: 50vw; height:14vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: 13vh;",
+            style=f"width: 49vw; height:{correctHeight / 3 * 2}vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: {correctHeight / 3}vh;",
             id="correct",
         ),
         Div(
             id="output",
-            style="width: 50vw; height:630vh; float: right;",
+            style=f"width: 49vw; height:{outputHeight}vh; float: right;"
         ),
 
     )
 
 
+def CodeEditor():
+    return (
+        Div(
+            Div(
+                Div(id="editor", style="height: 79vh; width: 100vw;"),
+                style="height: 79vh; overflow: hidden;",
+            ),
+            # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
+            style="height: 79vh; overflow: hidden;",
+        ),
+    )
+
 @app.get("/")
 def get():
     return (
-        Title("WGSL Editor"),
+        Title("GPU Puzzles"),
         Body(
             Div(
                 Div(
                     controls(),
-                    dispatchInputs(),
-                    "GPU Code (WGSL):",
-                    Div(
-                        Pre(
-                            PREAMBLE.replace("{{workgroupSize}}", "256, 1, 1"),
-                            style="font-family: monospace; font-size: 1.0rem;",
-                            id="preamble",
-                        )
-                    ),
-                    CodeEditor(initial_code=INITIAL_CODE),
-                    style="width: 50vw; height:100vh; float: left;",
+                    # no dispatch inputs since they are set by the puzle parameters
+                    #dispatchInputs(),
+                    CodeEditor(),
+                    style="width: 49vw; height:100vh; float: left;",
                 ),
                 output(),
             ),
-            style="height: 100vh; overflow: hidden;",
+            # style="height: 100vh; overflow: hidden;",
+            style = body_style,
         ),
     )
 

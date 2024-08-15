@@ -26,7 +26,7 @@ build/run.wasm: check-emsdk run.cpp
 
 watch:
 	@echo "Watching for changes..."
-	ls run.cpp | entr -c make debug
+	ls *.cpp *.h | entr -c make debug
 
 server: build/run.js
 	python3 run.py
