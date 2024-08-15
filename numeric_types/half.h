@@ -13,12 +13,37 @@ static float halfToFloat(half h);
 
 #ifdef _MSC_VER
 #include <intrin.h>
-static inline uint16_t __builtin_clz(uint16_t value) {
+
+static inline uint32_t __builtin_clz(uint32_t value) {
     unsigned long leading_zero = 0;
-    if (_BitScanReverse(&leading_zero, static_cast<unsigned long>(value))) {
-        return 15 - leading_zero;
+    if (value == 0) {
+        return 32;
     }
-    return 16;
+    _BitScanReverse(&leading_zero, value);
+    return 31 - leading_zero;
+}
+
+static inline uint16_t __builtin_clz(uint16_t value) {
+    return __builtin_clz(static_cast<uint32_t>(value)) - 16;
+}
+
+static inline uint64_t __builtin_clz(uint64_t value) {
+    unsigned long leading_zero = 0;
+    if (value == 0) {
+        return 64;
+    }
+#if defined(_WIN64)
+    _BitScanReverse64(&leading_zero, value);
+    return 63 - leading_zero;
+#else
+    uint32_t high = static_cast<uint32_t>(value >> 32);
+    uint32_t low = static_cast<uint32_t>(value);
+    if (high != 0) {
+        return __builtin_clz(high);
+    } else {
+        return 32 + __builtin_clz(low);
+    }
+#endif
 }
 #endif
 
