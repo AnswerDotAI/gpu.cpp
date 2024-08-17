@@ -647,7 +647,7 @@ inline TensorPool::~TensorPool() {
 
 /**
  * @brief Checks a condition and logs an error message if the condition is
- * false. In debug mode, it will also exit the program with an error code.
+ * false.
  * @param[in] condition The condition to check.
  * @param[in] message The error message to log if the condition is false.
  * @param[in] file The source file where the check is performed.
@@ -658,7 +658,6 @@ inline void check(bool condition, const char *message,
                   const char *file = "unkown", int line = -1) {
   if (!condition) {
     LOG(kDefLog, kError, "Error in file %s line %d:\n%s", file, line, message);
-    exit(1);
   } else {
     LOG(kDefLog, kTrace, "Success in file %s line %d:\n%s", file, line,
         message);
