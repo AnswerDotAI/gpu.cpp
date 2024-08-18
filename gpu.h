@@ -24,6 +24,12 @@
 #include "emscripten/emscripten.h"
 #endif
 
+#ifdef USE_DAWN_API
+#include "dawn/native/DawnNative.h"
+
+typedef WGPUBufferUsage WGPUBufferUsageFlags;
+#endif
+
 namespace gpu {
 
 /**
@@ -784,6 +790,117 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
   context.queue = wgpuDeviceGetQueue(context.device);
   return context;
 }
+
+
+#ifdef USE_DAWN_API
+/**
+ * @brief Factory function to create a GPU context, which aggregates WebGPU API
+ * handles to interact with the GPU including the instance, adapter, device, and
+ * queue.
+ *
+ * The function takes gpu index to support for multi GPUs.
+ * To activate this function, it needs not only webgpu's headers but also DAWN's headers.
+ *
+ * If dawn is used, it also sets up an error callback for device loss.
+ *
+ * @param[in] gpuIdx GPU index
+ * @param[in] desc Instance descriptor for the WebGPU instance (optional)
+ * @param[in] devDescriptor Device descriptor for the WebGPU device (optional)
+ * @return Context instance representing the created GPU context
+ *
+ * @code
+ * Context ctx = createContextByGpuIdx(1);
+ * @endcode
+ */
+inline Context createContextByGpuIdx(int gpuIdx,
+				     const WGPUInstanceDescriptor &desc = {},
+				     const WGPUDeviceDescriptor &devDescriptor = {}) {
+  Context context;
+  {
+#ifdef __EMSCRIPTEN__
+    // Emscripten does not support the instance descriptor
+    // and throws an assertion error if it is not nullptr.
+    context.instance = wgpuCreateInstance(nullptr);
+#else
+    context.instance = wgpuCreateInstance(&desc);
+#endif
+    // check status
+    check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
+  }
+
+  LOG(kDefLog, kInfo, "Requesting adapter");
+  {
+    std::vector<dawn::native::Adapter> adapters =
+      dawn::native::Instance(reinterpret_cast<dawn::native::InstanceBase*>(context.instance))
+      .EnumerateAdapters();
+    LOG(kDefLog, kInfo, "The number of GPUs=%d\n", adapters.size());
+    // Note: Second gpu is not available on Macos, but the number of GPUs is 2 on Macos.
+    //       Calling wgpuAdapterGetInfo function for the second gpu becomes segfault.
+    //       When you check all GPUs on linux, uncomment out following codes.
+    //
+    // for (size_t i = 0; i < adapters.size(); i++) {
+    //   WGPUAdapterInfo info {};
+    //   auto ptr = adapters[i].Get();
+    //   if (ptr && adapters[i]) {
+    //     wgpuAdapterGetInfo(ptr, &info);
+    //     LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", i, info.description);
+    //     wgpuAdapterInfoFreeMembers(info);
+    //   } 
+    // }
+
+    {
+      LOG(kDefLog, kInfo, "Use GPU(Adapter)[%d]\n", gpuIdx);
+      auto ptr = adapters[gpuIdx].Get();
+      if (ptr) {
+	WGPUAdapterInfo info {};
+	wgpuAdapterGetInfo(ptr, &info);
+	LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", gpuIdx, info.description);
+	wgpuAdapterInfoFreeMembers(info);
+      } 
+      context.adapter = adapters[gpuIdx].Get();
+      dawn::native::GetProcs().adapterAddRef(context.adapter);
+    }
+  }
+
+  LOG(kDefLog, kInfo, "Requesting device");
+  {
+    struct DeviceData {
+      WGPUDevice device = nullptr;
+      bool requestEnded = false;
+    };
+    DeviceData devData;
+    auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
+                                   WGPUDevice device, char const *message,
+                                   void *pUserData) {
+      DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
+      check(status == WGPURequestDeviceStatus_Success,
+            "Could not get WebGPU device.", __FILE__, __LINE__);
+      LOG(kDefLog, kTrace, "Device Request succeeded %x",
+          static_cast<void *>(device));
+      devData.device = device;
+      devData.requestEnded = true;
+    };
+    wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
+                             onDeviceRequestEnded, (void *)&devData);
+    LOG(kDefLog, kInfo, "Waiting for device request to end");
+    while (!devData.requestEnded) {
+      processEvents(context.instance);
+    }
+    LOG(kDefLog, kInfo, "Device request ended");
+    assert(devData.requestEnded);
+    context.device = devData.device;
+    wgpuDeviceSetUncapturedErrorCallback(
+        context.device,
+        [](WGPUErrorType type, char const *message, void *devData) {
+          LOG(kDefLog, kError, "Device uncaptured error: %s", message);
+          throw std::runtime_error("Device uncaptured exception.");
+        },
+        nullptr);
+  }
+  context.queue = wgpuDeviceGetQueue(context.device);
+  return context;
+}
+#endif
 
 inline void wait(Context &ctx, std::future<void> &future) {
   while (future.wait_for(std::chrono::seconds(0)) !=
