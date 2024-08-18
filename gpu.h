@@ -400,6 +400,18 @@ struct Kernel {
   WGPUCommandBuffer commandBuffer;     // destroyed upon submission
 };
 
+
+/**
+ * @brief A struct to package the result of a WGSL code compilation.
+ */
+struct CompilationInfo {
+  WGPUCompilationInfoRequestStatus status;
+  std::vector<std::string> messages;
+  std::vector<uint64_t> lineNums;
+  std::vector<uint64_t> linePos;
+  bool finished; // true if the compilation is finished
+};
+
 /**
  * @brief Operator implementation to make the Kernel type hashable.
  * @param[in] lhs First Kernel instance to compare
@@ -995,15 +1007,6 @@ inline Shape cdiv(Shape total, Shape group) {
 }
 
 /**
- * @brief A struct to package the result of a WGSL code compilation.
- */
-struct CompilationInfo {
-  WGPUCompilationInfoRequestStatus status;
-  std::vector<std::string> messages;
-  bool compilationFinished;
-};
-
-/**
  * @brief A factory function to create a kernel on the GPU. The kernel is
  * created with the given WGSL code, input tensors, output tensor, and
  * optional parameters.
@@ -1167,33 +1170,19 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
           for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
             printf("Message %d: %s\n", i, compilationInfo->messages[i].message);
             result->messages.push_back(compilationInfo->messages[i].message);
+            result->lineNums.push_back(compilationInfo->messages[i].lineNum);
+            result->linePos.push_back(compilationInfo->messages[i].linePos);
           }
-          result->compilationFinished = true;
+          result->finished = true;
         } else {
           LOG(kDefLog, kTrace, "No compilation info or result");
         }
       };
 
-  /*
-  WGPUCompilationInfoCallbackInfo cbInfo = {
-      .nextInChain = nullptr,
-      .mode = WGPUCallbackMode_AllowProcessEvents,
-      .callback = cb,
-      .userdata = compilationInfo,
-  };
-  */
-
   wgpuShaderModuleGetCompilationInfo(
       computePipelineDesc.compute.module, cb, static_cast<void *>(compilationInfo));
 
-  /*
-  WGPUFutureWaitInfo waitInfo = {.future = future, .completed = false};
-  uint64_t timeout = UINT64_MAX; // TODO(avh): make this a parameter
-  WGPUWaitStatus status =
-    wgpuInstanceWaitAny(ctx.instance, 1, &waitInfo, timeout);
-  */
-
-  while (compilationInfo && !compilationInfo->compilationFinished) {
+  while (compilationInfo && !compilationInfo->finished) {
     processEvents(ctx.instance);
   }
   return op;

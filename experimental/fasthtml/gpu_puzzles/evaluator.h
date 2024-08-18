@@ -181,22 +181,16 @@ void matmul_spec(const float *a, size_t N, float *result) {
 
 // Function to run Puzzle 1
 std::vector<float> runPuzzle1(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = testCase.input.size();
 
   Tensor a = createTensor(ctx, {N}, kf32, testCase.input.data());
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, N};
-  CompilationResult compilationResult;
-  Kernel op = createKernel(ctx, code, Bindings{a, output},
-                           testCase.gridSize, {}, &compilationResult);
-
-  wprintf("Compilation Messages %d:\n",compilationResult.messages.size());
-  for (const std::string& message : compilationResult.messages) {
-    wprintf("%s\n", message.c_str());
-  }
-
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
@@ -208,7 +202,8 @@ std::vector<float> runPuzzle1(Context &ctx, TestCase &testCase,
 
 // Function to run Puzzle 2
 std::vector<float> runPuzzle2(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = testCase.input.size() / 2;
 
   std::vector<float> aVec(testCase.input.begin(), testCase.input.begin() + N);
@@ -219,8 +214,8 @@ std::vector<float> runPuzzle2(Context &ctx, TestCase &testCase,
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, N};
-  Kernel op =
-      createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize);
+  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
@@ -232,14 +227,16 @@ std::vector<float> runPuzzle2(Context &ctx, TestCase &testCase,
 
 // Function to run Puzzle 3
 std::vector<float> runPuzzle3(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = testCase.input.size();
 
   Tensor a = createTensor(ctx, {N}, kf32, testCase.input.data());
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize);
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
@@ -251,7 +248,8 @@ std::vector<float> runPuzzle3(Context &ctx, TestCase &testCase,
 
 // Function to run Puzzle 4
 std::vector<float> runPuzzle4(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = std::sqrt(testCase.input.size());
 
   Tensor input = createTensor(ctx, {N, N}, kf32, testCase.input.data());
@@ -264,7 +262,7 @@ std::vector<float> runPuzzle4(Context &ctx, TestCase &testCase,
 
   KernelCode code = {kernelString, testCase.workgroupSize};
   Kernel op = createKernel(ctx, code, Bindings{input, output},
-                           testCase.gridSize, Params(N));
+                           testCase.gridSize, Params(N), &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
@@ -277,7 +275,8 @@ std::vector<float> runPuzzle4(Context &ctx, TestCase &testCase,
 // Function to run Puzzle 5
 
 std::vector<float> runPuzzle5(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = testCase.input.size() / 2;
 
   std::vector<float> aVec(testCase.input.begin(), testCase.input.begin() + N);
@@ -294,7 +293,7 @@ std::vector<float> runPuzzle5(Context &ctx, TestCase &testCase,
 
   KernelCode code = {kernelString, testCase.workgroupSize};
   Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
-                           Params{static_cast<uint32_t>(N)});
+                           Params{static_cast<uint32_t>(N)}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
@@ -307,14 +306,16 @@ std::vector<float> runPuzzle5(Context &ctx, TestCase &testCase,
 // Function to run Puzzle 6
 
 std::vector<float> runPuzzle6(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = testCase.input.size();
 
   Tensor a = createTensor(ctx, {N}, kf32, testCase.input.data());
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize);
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
@@ -325,7 +326,8 @@ std::vector<float> runPuzzle6(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle7(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = std::sqrt(testCase.input.size());
 
   Tensor a = createTensor(ctx, {N, N}, kf32, testCase.input.data());
@@ -338,7 +340,7 @@ std::vector<float> runPuzzle7(Context &ctx, TestCase &testCase,
 
   KernelCode code = {kernelString, testCase.workgroupSize};
   Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
-                           Params(N));
+                           Params(N), &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
@@ -349,13 +351,15 @@ std::vector<float> runPuzzle7(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle8(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
   size_t N = testCase.input.size();
 
   Tensor a = createTensor(ctx, {N}, kf32, testCase.input.data());
   Tensor output = createTensor(ctx, {N}, kf32);
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize);
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
@@ -366,7 +370,8 @@ std::vector<float> runPuzzle8(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle9(Context &ctx, TestCase &testCase,
-                              const std::string &kernelString) {
+                              const std::string &kernelString,
+                              CompilationInfo &compilationInfo) {
 
   size_t N = testCase.input.size();
 
@@ -379,7 +384,8 @@ std::vector<float> runPuzzle9(Context &ctx, TestCase &testCase,
 
   KernelCode code = createCustomSharedMemory(kernelString, shared_memory,
                                              testCase.workgroupSize);
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize);
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
@@ -390,7 +396,8 @@ std::vector<float> runPuzzle9(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle10(Context &ctx, TestCase &testCase,
-                               const std::string &kernelString) {
+                               const std::string &kernelString,
+                               CompilationInfo &compilationInfo) {
 
   size_t N = testCase.input.size() / 2;
 
@@ -407,8 +414,8 @@ std::vector<float> runPuzzle10(Context &ctx, TestCase &testCase,
 
   KernelCode code = createCustomSharedMemory(kernelString, shared_memory,
                                              testCase.workgroupSize);
-  Kernel op =
-      createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize);
+  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, 1);
 
@@ -419,7 +426,8 @@ std::vector<float> runPuzzle10(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle11(Context &ctx, TestCase &testCase,
-                               const std::string &kernelString) {
+                               const std::string &kernelString,
+                               CompilationInfo &compilationInfo) {
 
   size_t N = testCase.input.size() - 4;
 
@@ -441,9 +449,10 @@ std::vector<float> runPuzzle11(Context &ctx, TestCase &testCase,
 
   KernelCode code = createCustomSharedMemory(kernelString, sharedMemory,
                                              testCase.workgroupSize);
-  Kernel op = createKernel(
-      ctx, code, Bindings{a, b, output}, testCase.gridSize,
-      Params{static_cast<uint32_t>(testCase.workgroupSize[0])});
+  Kernel op =
+      createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+                   Params{static_cast<uint32_t>(testCase.workgroupSize[0])},
+                   &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
@@ -454,7 +463,8 @@ std::vector<float> runPuzzle11(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle12(Context &ctx, TestCase &testCase,
-                               const std::string &kernelString) {
+                               const std::string &kernelString,
+                               CompilationInfo &compilationInfo) {
 
   size_t N = testCase.input.size();
 
@@ -466,8 +476,9 @@ std::vector<float> runPuzzle12(Context &ctx, TestCase &testCase,
                         testCase.sharedMemorySize[2];
 
   KernelCode code = createCustomSharedMemory(kernelString, sharedMemory,
-                                              testCase.workgroupSize);
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize);
+                                             testCase.workgroupSize);
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+                           {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, 2);
 
@@ -478,7 +489,8 @@ std::vector<float> runPuzzle12(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle13(Context &ctx, TestCase &testCase,
-                               const std::string &kernelString) {
+                               const std::string &kernelString,
+                               CompilationInfo &compilationInfo) {
 
   size_t N = testCase.input.size() / 4;
 
@@ -500,7 +512,8 @@ std::vector<float> runPuzzle13(Context &ctx, TestCase &testCase,
   Kernel op =
       createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
                    Params{static_cast<uint32_t>(testCase.workgroupSize[0]),
-                          static_cast<uint32_t>(N)});
+                          static_cast<uint32_t>(N)},
+                   &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, 4);
 
@@ -511,7 +524,8 @@ std::vector<float> runPuzzle13(Context &ctx, TestCase &testCase,
 }
 
 std::vector<float> runPuzzle14(Context &ctx, TestCase &testCase,
-                               const std::string &kernelString) {
+                               const std::string &kernelString,
+                               CompilationInfo &compilationInfo) {
 
   size_t N = std::sqrt(testCase.input.size() / 2);
 
@@ -538,7 +552,8 @@ std::vector<float> runPuzzle14(Context &ctx, TestCase &testCase,
   Kernel op =
       createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
                    Params{static_cast<uint32_t>(testCase.workgroupSize[0]),
-                          static_cast<uint32_t>(N)});
+                          static_cast<uint32_t>(N)},
+                   &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
@@ -965,6 +980,8 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
 
   printf("dispatching puzzle with code:\n%s", kernelCode.c_str());
 
+  CompilationInfo compilationInfo;
+
   bool allPassed = true;
   for (int i = 0; i < testCases.size(); ++i) {
     auto testCase = testCases[i];
@@ -974,46 +991,46 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
     std::vector<float> output;
     switch (puzzleIndex) {
     case 0:
-      output = runPuzzle1(ctx, testCase, kernelCode);
+      output = runPuzzle1(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 1:
-      output = runPuzzle2(ctx, testCase, kernelCode);
+      output = runPuzzle2(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 2:
-      output = runPuzzle3(ctx, testCase, kernelCode);
+      output = runPuzzle3(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 3:
-      output = runPuzzle4(ctx, testCase, kernelCode);
+      output = runPuzzle4(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 4:
-      output = runPuzzle5(ctx, testCase, kernelCode);
+      output = runPuzzle5(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 5:
-      output = runPuzzle6(ctx, testCase, kernelCode);
+      output = runPuzzle6(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 6:
-      output = runPuzzle7(ctx, testCase, kernelCode);
+      output = runPuzzle7(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 7:
-      output = runPuzzle8(ctx, testCase, kernelCode);
+      output = runPuzzle8(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 8:
-      output = runPuzzle9(ctx, testCase, kernelCode);
+      output = runPuzzle9(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 9:
-      output = runPuzzle10(ctx, testCase, kernelCode);
+      output = runPuzzle10(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 10:
-      output = runPuzzle11(ctx, testCase, kernelCode);
+      output = runPuzzle11(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 11:
-      output = runPuzzle12(ctx, testCase, kernelCode);
+      output = runPuzzle12(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 12:
-      output = runPuzzle13(ctx, testCase, kernelCode);
+      output = runPuzzle13(ctx, testCase, kernelCode, compilationInfo);
       break;
     case 13:
-      output = runPuzzle14(ctx, testCase, kernelCode);
+      output = runPuzzle14(ctx, testCase, kernelCode, compilationInfo);
       break;
     // Add more cases for additional puzzles
     default:
@@ -1025,22 +1042,35 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
     std::chrono::duration<double> elapsed = end - start;
 
     // wprintf("Time taken: %f s\n", elapsed.count());
-
-    if (checkOutput(output, testCase.expectedOutput)) {
-      wprintf("Test case %d \033[1;32mPASSED\033[0m\n", i + 1);
-    } else {
-      wprintf("Test case %d \033[1;31mFAILED\033[0m\n", i + 1);
+    if (compilationInfo.messages.size() > 0) {
+      for (size_t idx = 0; idx < compilationInfo.messages.size(); ++idx) {
+        wprintf("\033[1;31mError\033[0m line %d, column %d:\n",
+            static_cast<int>(compilationInfo.lineNums[idx]),
+            static_cast<int>(compilationInfo.linePos[idx]));
+        wprintf("  %s\n",compilationInfo.messages[idx].c_str());
+            
+      }
       allPassed = false;
+      break; // don't iterate to other tests
+    } else {
+
+      if (checkOutput(output, testCase.expectedOutput)) {
+        wprintf("Test case %d \033[1;32mPASSED\033[0m\n", i + 1);
+      } else {
+        wprintf("Test case %d \033[1;31mFAILED\033[0m\n", i + 1);
+        allPassed = false;
+      }
+
+      // print workgrou psize and num workgroups
+      wprintf("Workgroup Size          ( %s )",
+              toString(testCase.workgroupSize).c_str());
+      wprintf("Number of Workgroups    ( %s )",
+              toString(testCase.gridSize).c_str());
+
+      printVec(testCase.input, "\nInput   ");
+      printVec(output, "Got     ");
+      printVec(testCase.expectedOutput, "Expected");
     }
-
-    // print workgrou psize and num workgroups
-    wprintf("Workgroup Size          ( %s )", toString(testCase.workgroupSize).c_str());
-    wprintf("Number of Workgroups    ( %s )", toString(testCase.gridSize).c_str());
-
-
-    printVec(testCase.input, "\nInput   ");
-    printVec(output, "Got     ");
-    printVec(testCase.expectedOutput, "Expected");
   }
 
   return allPassed;
