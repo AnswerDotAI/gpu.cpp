@@ -38,15 +38,15 @@ namespace gpu
     return oss.str();
   }
 
+/**
+ * @brief Log a message to the logger. If NO_LOG is defined in a source or as a
+ * compiler flag, this is a no-op.
+ *
+ * @param logger The logger to log to.
+ * @param level The log level of the message.
+ * @param message The message to log.
+ */
 #ifndef NO_LOG
-  /**
-   * @brief Log a message to the logger. If NDEBUG is defined in a source or as a
-   * compiler flag, this is a no-op.
-   *
-   * @param logger The logger to log to.
-   * @param level The log level of the message.
-   * @param message The message to log.
-   */
   template <typename... Args>
   inline void LOG(Logger &logger, int level, const char *message, ...)
   {
