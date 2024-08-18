@@ -33,7 +33,7 @@ def controls():
                 Div(
                     "Puzzle 1: Map",
                     id="puzzle_name",
-                    style="font-size: 1.5rem; width: 15vw; font-weight: bold;"
+                    style="font-size: 1.5rem; width: 25vw; font-weight: bold;"
                 ),
                 Button(
                     ">>",

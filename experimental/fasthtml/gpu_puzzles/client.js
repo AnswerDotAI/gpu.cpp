@@ -11,6 +11,8 @@ const State = {
   wgslStatus: "",
 };
 
+codeState = [];
+
 const PuzzleSpec = [
   {
     name: "Map",
@@ -234,8 +236,15 @@ async function updateEditor() {
   }
 }
 
-function update(event) {
+async function update(event) {
+
+  if (!AppState.isDispatchReady) {
+    await waitForDispatchReady();
+  }
   console.log("Updating");
+  if (event.type == "selectPuzzle") {
+    codeState[AppState.puzzleIndex] = AppState.editor.getValue();
+  }
   if ((event.type === "selectPuzzle") & (event.value === "prev")) {
     AppState.puzzleIndex = AppState.puzzleIndex - 1;
     if (AppState.puzzleIndex < 0) {
@@ -257,7 +266,11 @@ function update(event) {
   if (event.type === "init" || event.type === "selectPuzzle") {
     // Reset editor template code if we are either starting the app for the
     // first time or picking a new puzzle
-    AppState.editor.setValue(AppState.module.getTemplate(AppState.puzzleIndex));
+    if (codeState[AppState.puzzleIndex]) {
+      AppState.editor.setValue(codeState[AppState.puzzleIndex]);
+    } else {
+      AppState.editor.setValue(AppState.module.getTemplate(AppState.puzzleIndex));
+    }
   }
 
   updateEditor();
