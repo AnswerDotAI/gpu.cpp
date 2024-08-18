@@ -188,8 +188,15 @@ std::vector<float> runPuzzle1(Context &ctx, TestCase &testCase,
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, N};
+  CompilationResult compilationResult;
   Kernel op = createKernel(ctx, code, Bindings{a, output},
-                           testCase.gridSize);
+                           testCase.gridSize, {}, &compilationResult);
+
+  wprintf("Compilation Messages %d:\n",compilationResult.messages.size());
+  for (const std::string& message : compilationResult.messages) {
+    wprintf("%s\n", message.c_str());
+  }
+
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 

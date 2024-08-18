@@ -698,7 +698,6 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
 #else
     context.instance = wgpuCreateInstance(&desc);
 #endif
-    // check status
     check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
   }
 
@@ -996,6 +995,15 @@ inline Shape cdiv(Shape total, Shape group) {
 }
 
 /**
+ * @brief A struct to package the result of a WGSL code compilation.
+ */
+struct CompilationInfo {
+  WGPUCompilationInfoRequestStatus status;
+  std::vector<std::string> messages;
+  bool compilationFinished;
+};
+
+/**
  * @brief A factory function to create a kernel on the GPU. The kernel is
  * created with the given WGSL code, input tensors, output tensor, and
  * optional parameters.
@@ -1026,7 +1034,8 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
                            const Tensor *dataBindings, size_t numTensors,
                            const size_t *viewOffsets, const Shape &nWorkgroups,
                            const void *params = nullptr,
-                           size_t paramsSize = 0) {
+                           size_t paramsSize = 0,
+                           CompilationInfo* compilationInfo = nullptr) {
   assert(nWorkgroups.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
@@ -1122,38 +1131,73 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
       .entries = bindGroupEntries.data(),
   };
   op.bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
-  {
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
-        .bindGroupLayoutCount = 1,
-        .bindGroupLayouts = &bgLayout,
-    };
-    WGPUPipelineLayout pipelineLayout =
-        wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
-    WGPUShaderModuleWGSLDescriptor wgslDesc = {
-        .code = code.data.c_str(),
-    };
-    wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
-    WGPUShaderModuleDescriptor shaderModuleDesc = {};
-    shaderModuleDesc.nextInChain = &wgslDesc.chain;
-    shaderModuleDesc.label = code.label.c_str();
-    WGPUComputePipelineDescriptor computePipelineDesc = {};
-    computePipelineDesc.layout = pipelineLayout;
-    computePipelineDesc.compute.module =
-        wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
-    computePipelineDesc.compute.entryPoint = code.entryPoint.c_str();
-    computePipelineDesc.label = code.label.c_str();
-    op.computePipeline =
-        wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-  }
-  /*
-  op.nWorkgroups = {cdiv(nThreads[0], code.workgroupSize[0]),
-                    cdiv(nThreads[1], code.workgroupSize[1]),
-                    cdiv(nThreads[2], code.workgroupSize[2])};
-  */
+
+  WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
+      .bindGroupLayoutCount = 1,
+      .bindGroupLayouts = &bgLayout,
+  };
+  WGPUPipelineLayout pipelineLayout =
+      wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
+  WGPUShaderModuleWGSLDescriptor wgslDesc = {
+      .code = code.data.c_str(),
+  };
+  wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+  WGPUShaderModuleDescriptor shaderModuleDesc = {};
+  shaderModuleDesc.nextInChain = &wgslDesc.chain;
+  shaderModuleDesc.label = code.label.c_str();
+  WGPUComputePipelineDescriptor computePipelineDesc = {};
+  computePipelineDesc.layout = pipelineLayout;
+  computePipelineDesc.compute.module =
+      wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
+
+  computePipelineDesc.compute.entryPoint = code.entryPoint.c_str();
+  computePipelineDesc.label = code.label.c_str();
+  op.computePipeline =
+      wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
   op.nWorkgroups = {nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]};
   resetCommandBuffer(device, op);
   ctx.kernelPool.data.insert(&op);
+
+  WGPUCompilationInfoCallback cb =
+      [](WGPUCompilationInfoRequestStatus status,
+         WGPUCompilationInfo const *compilationInfo, void *userData) {
+        CompilationInfo *result = static_cast<CompilationInfo *>(userData);
+        if (compilationInfo && result) {
+          result->status = status;
+          for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
+            printf("Message %d: %s\n", i, compilationInfo->messages[i].message);
+            result->messages.push_back(compilationInfo->messages[i].message);
+          }
+          result->compilationFinished = true;
+        } else {
+          LOG(kDefLog, kTrace, "No compilation info or result");
+        }
+      };
+
+  /*
+  WGPUCompilationInfoCallbackInfo cbInfo = {
+      .nextInChain = nullptr,
+      .mode = WGPUCallbackMode_AllowProcessEvents,
+      .callback = cb,
+      .userdata = compilationInfo,
+  };
+  */
+
+  wgpuShaderModuleGetCompilationInfo(
+      computePipelineDesc.compute.module, cb, static_cast<void *>(compilationInfo));
+
+  /*
+  WGPUFutureWaitInfo waitInfo = {.future = future, .completed = false};
+  uint64_t timeout = UINT64_MAX; // TODO(avh): make this a parameter
+  WGPUWaitStatus status =
+    wgpuInstanceWaitAny(ctx.instance, 1, &waitInfo, timeout);
+  */
+
+  while (compilationInfo && !compilationInfo->compilationFinished) {
+    processEvents(ctx.instance);
+  }
   return op;
+
 }
 
 /**
@@ -1181,19 +1225,18 @@ template <typename ParamsType = NoParam, size_t numInputs>
 Kernel createKernel(Context &ctx, const KernelCode &code,
                     const Bindings<numInputs> &dataBindings,
                     const Shape &nWorkgroups,
-                    const ParamsType &params = ParamsType{}) {
+                    const ParamsType &params = ParamsType{},
+                    CompilationInfo* compilationInfo = nullptr 
+                    ) {
   if constexpr (!IsNoParam<ParamsType>) {
-    // LOG(kDefLog, kTrace, "Using params of size %d bytes",
-    // sizeof(ParamsType));
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), nWorkgroups,
                         reinterpret_cast<const void *>(&params),
-                        sizeof(ParamsType));
+                        sizeof(ParamsType), compilationInfo);
   } else {
-    // LOG(kDefLog, kTrace , "No params");
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), nWorkgroups, nullptr,
-                        0);
+                        0, compilationInfo);
   }
 }
 

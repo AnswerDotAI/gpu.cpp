@@ -8,6 +8,7 @@ const State = {
   checkAnswer: false,
   isDispatchReady: true, // don't allow multiple overlapping dispatches
   puzzleIndex: 0,
+  wgslStatus: "",
 };
 
 const PuzzleSpec = [
@@ -181,6 +182,52 @@ function waitForDispatchReady() {
   });
 }
 
+async function createDevice() {
+    if (!navigator.gpu) {
+        console.error("WebGPU is not supported in this browser.");
+        return null;
+    }
+
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) {
+        console.error("Failed to get GPU adapter.");
+        return null;
+    }
+
+    const device = await adapter.requestDevice();
+    if (!device) {
+        console.error("Failed to get GPU device.");
+        return null;
+    }
+
+    return device;
+}
+
+
+function compileShader(device, shaderCode) {
+    // Create the shader module
+    const shaderModule = device.createShaderModule({
+        code: shaderCode,
+    });
+
+    // Get the compilation info and handle it with a callback or then chain
+    shaderModule.getCompilationInfo().then(compilationInfo => {
+        const errors = compilationInfo.messages
+            .filter(message => message.type === 'error')
+            .map(message => `Error: ${message.message} (line ${message.lineNum}, col ${message.linePos})`)
+            .join('\n');
+        if (errors) {
+            console.error("Shader compilation errors:\n", errors);
+        } else {
+            console.log("Shader compiled successfully.");
+        }
+    }).catch(error => {
+        console.error("Failed to get compilation info:", error);
+    });
+
+    // The function itself is not async and returns immediately
+}
+
 async function updateEditor() {
   // Recover from errors TODO(avh): only do this if there's an error
   createModule().then((Module) => {
@@ -193,6 +240,14 @@ async function updateEditor() {
     console.log("Executing kernel");
     AppState.terminal.clear();
     code = AppState.editor.getValue();
+
+    /*
+    const device = await createDevice();
+    await compileShader(device, code);
+    await device.destroy();
+    */
+
+
     AppState.isDispatchReady = false;
     try {
       promise = AppState.module
@@ -267,6 +322,8 @@ function update(event) {
 ////////////////////////////////////////
 
 function render() {
+
+  AppState.terminal.writeln(AppState.wgslStatus);
   console.log("AppState.checkAnswer: ", AppState.checkAnswer);
   document.getElementById("correct").textContent = AppState.checkAnswer
     ? "Tests passed!"
