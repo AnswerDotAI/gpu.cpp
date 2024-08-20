@@ -943,7 +943,8 @@ std::string getTemplate(int puzzleIndex) {
   result +=
       R"(fn main(
   @builtin(global_invocation_id) gid: vec3<u32>,
-  @builtin(local_invocation_id) lid: vec3<u32>) {
+  @builtin(workgroup_id) wid: vec3<u32>,
+  @builtin(local_invocation_id) lid: vec3<u32>,) {
     let i: u32 = gid.x;
     out[i] = in0[i];
 }
@@ -983,8 +984,8 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
   CompilationInfo compilationInfo;
 
   bool allPassed = true;
-  for (int i = 0; i < testCases.size(); ++i) {
-    auto testCase = testCases[i];
+  for (int caseIdx = 0; caseIdx < testCases.size(); ++caseIdx) {
+    auto testCase = testCases[caseIdx];
 
     auto start = std::chrono::high_resolution_clock::now();
 
@@ -1041,36 +1042,78 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
 
+    const char *red = "\033[1;31m";
+    const char *green = "\033[1;32m";
+    const char *grey = "\033[1;30m";
+    const char *reset = "\033[0m";
+
     // wprintf("Time taken: %f s\n", elapsed.count());
+
+    bool compilePassed = true;
+    int ptr = 0;
+    constexpr size_t kBufSize = 1024 * 10;
+    char buf[kBufSize];
+
     if (compilationInfo.messages.size() > 0) {
-      for (size_t idx = 0; idx < compilationInfo.messages.size(); ++idx) {
-        wprintf("\033[1;31mError\033[0m line %d, column %d:\n",
-            static_cast<int>(compilationInfo.lineNums[idx]),
-            static_cast<int>(compilationInfo.linePos[idx]));
-        wprintf("  %s\n",compilationInfo.messages[idx].c_str());
-            
+      if (caseIdx == 0) {
+        // Don't print compilation errors more than once
+        for (size_t idx = 0; idx < compilationInfo.messages.size(); ++idx) {
+          ptr +=
+              snprintf(buf, kBufSize, "%sError%s line %d, column %d:\n\r", red,
+                       reset, static_cast<int>(compilationInfo.lineNums[idx]),
+                       static_cast<int>(compilationInfo.linePos[idx]));
+          ptr += snprintf(buf + ptr, kBufSize - ptr, "%s\n\n\r",
+                          compilationInfo.messages[idx].c_str());
+        }
+        ptr += snprintf(buf + ptr, kBufSize,
+                        "*   *   *   *   *   *   *   *\n\n\r");
       }
       allPassed = false;
-      break; // don't iterate to other tests
-    } else {
-
-      if (checkOutput(output, testCase.expectedOutput)) {
-        wprintf("Test case %d \033[1;32mPASSED\033[0m\n", i + 1);
-      } else {
-        wprintf("Test case %d \033[1;31mFAILED\033[0m\n", i + 1);
-        allPassed = false;
-      }
-
-      // print workgrou psize and num workgroups
-      wprintf("Workgroup Size          ( %s )",
-              toString(testCase.workgroupSize).c_str());
-      wprintf("Number of Workgroups    ( %s )",
-              toString(testCase.gridSize).c_str());
-
-      printVec(testCase.input, "\nInput   ");
-      printVec(output, "Got     ");
-      printVec(testCase.expectedOutput, "Expected");
+      compilePassed = false;
     }
+
+    // ptr = 0;
+    if (compilePassed && checkOutput(output, testCase.expectedOutput)) {
+      ptr += snprintf(buf + ptr, kBufSize, "Test case %d %sPASSED%s\n\n\r",
+                      caseIdx + 1, green, reset);
+    } else {
+      ptr += snprintf(buf + ptr, kBufSize, "Test case %d %sFAILED%s\n\n\r",
+                      caseIdx + 1, red, reset);
+      allPassed = false;
+    }
+
+    ptr += snprintf(buf + ptr, kBufSize,
+                    "\033[1;30mWorkgroup Size          ( %s )\n\r",
+                    toString(testCase.workgroupSize).c_str());
+    ptr += snprintf(buf + ptr, kBufSize,
+                    "Number of Workgroups    ( %s )\n\033[0m\n\r",
+                    toString(testCase.gridSize).c_str());
+
+    wprintf("%s", buf);
+
+    if (testCase.nInputs > 1) {
+      for (size_t inp = 0; inp < testCase.nInputs; ++inp) {
+        size_t sz = testCase.input.size() / testCase.nInputs;
+        size_t offset = inp * sz;
+        snprintf(buf, sizeof(buf), "%sInput  %zu%s", grey, inp, reset);
+        printVec({begin(testCase.input) + offset,
+                  begin(testCase.input) + offset + sz},
+                 buf);
+      }
+    } else {
+      snprintf(buf, sizeof(buf), "%sInput   %s", grey, reset);
+      printVec(testCase.input, buf);
+    }
+    if (compilePassed) {
+      wprintf("");
+      snprintf(buf, sizeof(buf), "%sGot     %s", grey, reset);
+      printVec(output, buf);
+      wprintf("");
+    }
+
+    snprintf(buf, sizeof(buf), "%sExpected%s", grey, reset);
+    printVec(testCase.expectedOutput, buf);
+    wprintf("");
   }
 
   return allPassed;

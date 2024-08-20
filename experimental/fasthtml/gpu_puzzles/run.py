@@ -19,27 +19,28 @@ body_style = """
     height: 100vh
 """
 
+
+def button(text, id):
+    return Button(
+        text,
+        cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
+        id=id,
+    )
+
+
 def controls():
     # left and right buttons
     return (
         Div(
             Div(
-                Button(
-                    "<<",
-                    cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
-                    id="prev",
-                ),
+                button("<<", "prev"),
                 # don't start a new row for div
                 Div(
                     "Puzzle 1: Map",
                     id="puzzle_name",
-                    style="font-size: 1.5rem; width: 25vw; font-weight: bold;"
+                    style="font-size: 1.5rem; width: 25vw; font-weight: bold;",
                 ),
-                Button(
-                    ">>",
-                    cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
-                    id="next",
-                ),
+                button(">>", "next"),
                 style="display: flex;  align-items: center; justify-content: center;",
             ),
             style="text-align: center; margin-top: 5vh; margin-left: 2rem; margin-right: 2rem;",
@@ -50,8 +51,6 @@ def controls():
             style="font-size: 20vh; margin-top: 5vh; margin-bottom: 5vh; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
         ),
     )
-
-
 
 
 def init_app() -> str:
@@ -111,19 +110,18 @@ async def serve_wasm():
 
 
 def output():
-    correctHeight = 27;
-    outputHeight = 100 - correctHeight + 1;
+    correctHeight = 27
+    outputHeight = 100 - correctHeight + 1
     return (
         Div(
-            "(Result Check)",
+            Div(
+                "(Result Check)",
+                id="correct",
+            ),
+            button("Solution", "solution"),
             style=f"width: 49vw; height:{correctHeight / 3 * 2}vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: {correctHeight / 3}vh;",
-            id="correct",
         ),
-        Div(
-            id="output",
-            style=f"width: 49vw; height:{outputHeight}vh; float: right;"
-        ),
-
+        Div(id="output", style=f"width: 49vw; height:{outputHeight}vh; float: right;"),
     )
 
 
@@ -138,6 +136,7 @@ def CodeEditor():
         ),
     )
 
+
 @app.get("/")
 def get():
     return (
@@ -151,7 +150,7 @@ def get():
                 ),
                 output(),
             ),
-            style = body_style,
+            style=body_style,
         ),
     )
 
