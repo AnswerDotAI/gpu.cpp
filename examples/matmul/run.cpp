@@ -15,6 +15,34 @@
 
 using namespace gpu;
 
+struct MatmulParameters {
+  size_t M;
+  size_t K;
+  size_t N;
+  NumType numtype;
+  size_t BM;
+  size_t BK;
+  size_t BN;
+  size_t TM;
+  size_t TN;
+  bool interactive;
+  bool transpose;
+};
+
+void show_parameters(const MatmulParameters &parameters, double duration) {
+  double tflops = 2 * parameters.M * parameters.N * parameters.K /
+    duration / 1000000.0;
+  LOG(kDefLog, kInfo,
+      "M: %4d, K: %4d, N: %4d, "
+      "BM: %3d, BK: %3d, BN: %3d, TM: %3d, TN: %3d, "
+      "TRANSPOSE: %d, "
+      "TFlops: %.2f",
+      parameters.M, parameters.K, parameters.N,
+      parameters.BM, parameters.BK, parameters.BN, parameters.TM, parameters.TN,
+      (int) parameters.transpose,
+      tflops);
+}
+
 const std::string versionToStr(int version);
 
 void matmulf16_forward_cpu(half* out,
@@ -677,8 +705,17 @@ void checkCPU(size_t M, size_t K, size_t N, std::unique_ptr<precision[]> &inputP
 
 Kernel selectMatmul(Context &ctx, int version,
                     const Bindings</* input, weights, output */ 3> &bindings,
-                    size_t M, size_t K, size_t N, NumType numtype) {
+                    const MatmulParameters &parameters) {
   Kernel kernel;
+  size_t M = parameters.M;
+  size_t K = parameters.K;
+  size_t N = parameters.N;
+  NumType numtype = parameters.numtype;
+  size_t BM = parameters.BM;
+  size_t BK = parameters.BK;
+  size_t BN = parameters.BN;
+  size_t TM = parameters.TM;
+  size_t TN = parameters.TN;
   if (version == 1) {
     Shape wgSize = {256, 1, 1};
     Shape nWorkgroups = cdiv({M, N, 1}, {16, 16, 1});
@@ -700,11 +737,10 @@ Kernel selectMatmul(Context &ctx, int version,
         createKernel(ctx, matmul, bindings,
                      /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
   } else if (version == 4 || version == 6) {
-    static constexpr size_t BM = 64;
-    static constexpr size_t BK = 4;
-    static constexpr size_t BN = BM;
-    static constexpr size_t TM =
-        BN / BK; //  BM * BN / TM == BM * BK, therefore TM == BN / BK
+    BM = 64;
+    BK = 4;
+    BN = BM;
+    TM = BN / BK; //  BM * BN / TM == BM * BK, therefore TM == BN / BK
     Shape wgSize = {BM * BN / TM, 1,
                     1}; // BM * BN values per workgroup, TM values per thread
     Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
@@ -719,11 +755,11 @@ Kernel selectMatmul(Context &ctx, int version,
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
   } else if (version == 5 || version == 7) {
-    static constexpr size_t BM = 64;
-    static constexpr size_t BK = 8;
-    static constexpr size_t BN = 64;
-    static constexpr size_t TM = BM / BK;
-    static constexpr size_t TN = BN / BK;
+    BM = 64;
+    BK = 8;
+    BN = 64;
+    TM = BM / BK;
+    TN = BN / BK;
     Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
     Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
     LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
@@ -737,11 +773,12 @@ Kernel selectMatmul(Context &ctx, int version,
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
   } else if (version == 8 || version == 10) {
-    static constexpr size_t BM = 64;
-    static constexpr size_t BK = 8;
-    static constexpr size_t BN = 64;
-    static constexpr size_t TM = BM / BK;
-    static constexpr size_t TN = BN / BK;
+    // These parameters are optimized for m2 pro.
+    BM = 128;
+    BK = 16;
+    BN = 64;
+    TM = 4;
+    TN = 8;
     Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
     Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
     LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
@@ -755,11 +792,11 @@ Kernel selectMatmul(Context &ctx, int version,
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
   } else if (version == 9 || version == 11) {
-    static constexpr size_t BM = 64;
-    static constexpr size_t BK = 8;
-    static constexpr size_t BN = 64;
-    static constexpr size_t TM = BM / BK;
-    static constexpr size_t TN = BN / BK;
+    BM = 64;
+    BK = 8;
+    BN = 64;
+    TM = BM / BK;
+    TN = BN / BK;
     Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
     Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
     LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
@@ -771,16 +808,39 @@ Kernel selectMatmul(Context &ctx, int version,
 						  numtype);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
+  } else if (version == 12) {
+    Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
+    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
+    LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
+    LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d, TN: %d", BM, BK, BN, TM, TN);
+    LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
+    LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
+    if (parameters.transpose) {
+      KernelCode matmul = createMatmulWithTranspose(kShaderMatmulWithTranspose, M, K, N, BM, BK, BN, TM, TN,
+						    /*wgSize*/ wgSize,
+						    numtype);
+      kernel = createKernel(ctx, matmul, bindings,nWorkgroups);
+    } else {
+      KernelCode matmul = createMatmulWithVectorization(kShaderMatmulWithVectorization, M, K, N, BM, BK, BN, TM, TN,
+							/*wgSize*/ wgSize,
+							numtype,
+							/*Loop unrolling*/ true);
+      kernel = createKernel(ctx, matmul, bindings, nWorkgroups);
+    }
   }
   return kernel;
 }
 
-template<class precision=float>
-void runTest(int version, size_t M, size_t K, size_t N,
-             std::unique_ptr<precision[]> &inputPtr,
-             std::unique_ptr<precision[]> &weightsPtr,
-             std::unique_ptr<precision[]> &outputPtr,
-	     NumType numtype) {
+template<class precision=float, size_t nIter=30>
+double runTest(int version,
+	       std::unique_ptr<precision[]> &inputPtr,
+	       std::unique_ptr<precision[]> &weightsPtr,
+	       std::unique_ptr<precision[]> &outputPtr,
+	       const MatmulParameters &parameters) {
+  size_t M = parameters.M;
+  size_t K = parameters.K;
+  size_t N = parameters.N;
+  NumType numtype = parameters.numtype;
   if constexpr (std::is_same<precision, float>::value) {
     assert(numtype == kf32);
   } else if constexpr (std::is_same<precision, half>::value) {
@@ -799,8 +859,6 @@ void runTest(int version, size_t M, size_t K, size_t N,
   Tensor input = createTensor(ctx, Shape{M, K}, numtype, inputPtr.get());
   Tensor weights = createTensor(ctx, Shape{N, K}, numtype, weightsPtr.get()); // column-major
 
-  constexpr size_t nIter = 30;
-
   // Initialize Kernel and bind GPU buffers
 
 
@@ -809,14 +867,19 @@ void runTest(int version, size_t M, size_t K, size_t N,
   std::array<std::future<void>, nIter> futures;
   std::array<Kernel, nIter> kernels;
   std::array<Tensor, nIter> outputs;
+  auto logLevel = kDefLog;
+  kDefLog = {stdout, "", kError};
   for (int i = 0; i < nIter; i++) {
     futures[i] = promises[i].get_future();
     outputs[i] = createTensor(ctx, Shape{M, N}, numtype);
-    kernels[i] = selectMatmul(ctx, version, {input, weights, outputs[i]}, M, K, N, numtype);
+    kernels[i] = selectMatmul(ctx, version, {input, weights, outputs[i]}, parameters);
   }
+  kDefLog = logLevel;
 
-  printf("[ Press enter to start tests ... ]\n");
-  getchar();
+  if (parameters.interactive){
+    printf("[ Press enter to start tests ... ]\n");
+    getchar();
+  }
   LOG(kDefLog, kInfo, "Dispatching Kernel version %d: %s, %d iterations ...",
       version, versionToStr(version).c_str(), nIter);
 
@@ -851,28 +914,103 @@ void runTest(int version, size_t M, size_t K, size_t N,
       "GFLOPS\n================================================================"
       "================\n\n",
       M, K, N, nIter, duration.count() / static_cast<double>(nIter) / 1000.0 /* us -> ms */, gflops);
+  return (duration.count() / static_cast<double>(nIter));
 }
 
-template<class precision=float>
-void runTestWithCheck(int version, size_t M, size_t K, size_t N,
-                      bool transposedInput, int kTestSize, NumType numtype) {
-    std::unique_ptr<precision[]> inputPtr = std::make_unique<precision[]>(M * K);
-    std::unique_ptr<precision[]> weightsPtr = std::make_unique<precision[]>(N * K);
-    std::unique_ptr<precision[]> outputPtr = std::make_unique<precision[]>(M * N);
+template<class precision=float, size_t nIter=30>
+double runTestWithCheck(int version,
+                        int kTestSize,
+			const MatmulParameters &parameters) {
+  bool transposedInput = parameters.transpose;
+  size_t M = parameters.M;
+  size_t K = parameters.K;
+  size_t N = parameters.N;
+  NumType numtype = parameters.numtype;
+  std::unique_ptr<precision[]> inputPtr = std::make_unique<precision[]>(M * K);
+  std::unique_ptr<precision[]> weightsPtr = std::make_unique<precision[]>(N * K);
+  std::unique_ptr<precision[]> outputPtr = std::make_unique<precision[]>(M * N);
+  double duration;
 
-    initData(M, K, N, inputPtr, weightsPtr);
-    if (transposedInput) {
-      std::unique_ptr<precision[]> transposedWeightPtr = std::make_unique<precision[]>(K * N);
-      transpose(weightsPtr.get(), transposedWeightPtr.get(), N, K);
-      runTest(version, M, K, N, inputPtr, transposedWeightPtr, outputPtr, numtype);
-    } else {
-      runTest(version, M, K, N, inputPtr, weightsPtr, outputPtr, numtype);
-    }
+  initData(M, K, N, inputPtr, weightsPtr);
+  if (transposedInput) {
+    std::unique_ptr<precision[]> transposedWeightPtr = std::make_unique<precision[]>(K * N);
+    transpose(weightsPtr.get(), transposedWeightPtr.get(), N, K);
+    duration = runTest<precision,nIter>(version, inputPtr, transposedWeightPtr, outputPtr, parameters);
+  } else {
+    duration = runTest<precision,nIter>(version, inputPtr, weightsPtr, outputPtr, parameters);
+  }
 
-    if (kTestSize <= 1) {
-      // Check result with CPU reference implementation for tiny/small tests
-      checkCPU(M, K, N, inputPtr, weightsPtr, outputPtr);
+  if (kTestSize <= 1) {
+    // Check result with CPU reference implementation for tiny/small tests
+    checkCPU(M, K, N, inputPtr, weightsPtr, outputPtr);
+  }
+  return duration;
+}
+
+template<class precision=half, size_t nIter=50>
+MatmulParameters runAutotune(int version, int kTestSize, const MatmulParameters& default_parameters) {
+  size_t  BM_VALUES[]={64, 128,  256};
+  size_t  BN_VALUES[]={64, 128,  256};
+  size_t  BK_VALUES[]={8,  16,   32,   64};
+  size_t  TM_VALUES[]={4,  8,    16,   32};
+  size_t  TN_VALUES[]={4,  8,    16,   32};
+  size_t  NUM_THREADS_VALUES[]={64, 128, 256};
+  bool    TRANSPOSE_VALUES[]={false, true};
+  
+  double min_duration = FLT_MAX;
+  MatmulParameters min_parameters;
+
+  for(auto TRANSPOSE: TRANSPOSE_VALUES){
+    for(auto BM: BM_VALUES){
+      for(auto BN: BN_VALUES){
+	for(auto BK: BK_VALUES){
+	  for(auto TM: TM_VALUES){
+	    for(auto TN: TN_VALUES){
+	      for(auto NUM_THREADS: NUM_THREADS_VALUES){
+		MatmulParameters parameters = {
+		  .M = default_parameters.M,
+		  .K = default_parameters.K,
+		  .N = default_parameters.N,
+		  .numtype = kf16,
+		  .BM = BM,
+		  .BK = BK,
+		  .BN = BN,
+		  .TM = TM,
+		  .TN = TN,
+		  .interactive = false,
+		  .transpose = TRANSPOSE,
+		};
+		if (BM % TM == 0 &&
+		    BN % TN == 0 &&
+		    (BM * BN) / (TM * TN) == NUM_THREADS &&
+		    (BM*BK+BN*BK)*2 <= 16384 //  The limit of workgroup storage
+		    ) {
+		  kDefLog = {stdout, "", kError};
+		  double duration;
+		  try {
+		    duration = runTestWithCheck<half>(version, kTestSize, parameters);
+		  } catch (const std::runtime_error& e) {
+		    LOG(kDefLog, kError, "Exception:\n%s", e.what());
+		    continue;
+		  } catch (const std::exception &e) {
+		    LOG(kDefLog, kError, "Exception:\n%s", e.what());
+		    continue;
+		  }
+		  kDefLog = {stdout, "", kInfo};
+		  show_parameters(parameters, duration);
+		  if (duration < min_duration) {
+		    min_duration = duration;
+		    min_parameters = parameters;
+		  }
+		}
+	      }
+	    }
+	  }
+	}
+      }
     }
+  }
+  return min_parameters;
 }
 
 const std::string versionToStr(int version){
@@ -888,52 +1026,59 @@ const std::string versionToStr(int version){
   case 9: return  "f32: 2D blocktiling with loop unrolling, vectorization and transpose";
   case 10: return "f16: 2D blocktiling with loop unrolling and vectorization";
   case 11: return "f16: 2D blocktiling with loop unrolling, vectorization and transpose";
+  case 12: return "f16: autotune";
   default: return "Not specified";
   }
 }
 
 int main() {
+  // The meaning of version is the same as versionToStr's one.
   char* version_str = getenv("MATMUL_VERSION");
   int version = version_str == NULL ? 10 : atoi(version_str);
-    // 1 == f32: No-Op
-    // 2 == f32: naive matmul
-    // 3 == f32: tiling
-    // 4 == f32: 1D blocktiling
-    // 5 == f32: 2D blocktiling
-    // 6 == f32: 1D blocktiling with loop unrolling
-    // 7 == f32: 2D blocktiling with loop unrolling
-    // 8 == f32: 2D blocktiling with loop unrolling and vectorization
-    // 9 == f32: 2D blocktiling with loop unrolling, vectorization and transpose
-    // 10 == f16: 2D blocktiling with loop unrolling and vectorization (default)
-    // 11 == f16: 2D blocktiling with loop unrolling, vectorization and transpose
+  
   bool enableF16 = version == 10 || version ==11;
   bool transposedInput = version == 9 || version == 11;
   NumType numtype = enableF16 ? kf16 : kf32;
+  bool autotune = version == 12;
 
   size_t M, K, N;  // Matrix dimensions
   char* kTestSize_str = getenv("MATMUL_SIZE");
   int kTestSize = kTestSize_str == NULL ? 2 : atoi(kTestSize_str);
+
+  MatmulParameters parameters;
+  double duration = FLT_MAX;
+  parameters.interactive = true;
+  parameters.transpose = transposedInput;
+  
   if (kTestSize == 0) {
     // Tiny test
-    M = 32;
-    K = 32;
-    N = 32;
+    parameters.M = 32;
+    parameters.K = 32;
+    parameters.N = 32;
   } else if (kTestSize == 1) {
     // Small test
-    M = 256;
-    K = 128;
-    N = 512;
+    parameters.M = 256;
+    parameters.K = 128;
+    parameters.N = 512;
   } else {
     // Large test
-    M = 4096;
-    K = 4096;
-    N = 2 * 4096;
+    parameters.M = 4096;
+    parameters.K = 4096;
+    parameters.N = 2 * 4096;
   }
 
-  if (enableF16) {
-    runTestWithCheck<half>(version, M, K, N, transposedInput, kTestSize, numtype);
+  if (autotune) {
+    MatmulParameters min_parameters = runAutotune<half,3>(version, kTestSize, parameters);
+    double min_duration = runTestWithCheck<half>(version, kTestSize, min_parameters);
+    show_parameters(min_parameters, min_duration);
   } else {
-    runTestWithCheck<float>(version, M, K, N, transposedInput, kTestSize, numtype);
+    if (enableF16) {
+      parameters.numtype = kf16;
+      runTestWithCheck<half>(version, kTestSize, parameters);
+    } else {
+      parameters.numtype = kf32;
+      runTestWithCheck<float>(version, kTestSize, parameters);
+    }
   }
 
   LOG(kDefLog, kInfo, "Done.");
