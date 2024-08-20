@@ -461,6 +461,11 @@ struct Context {
   WGPUQueue queue;
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
+
+  std::mutex* error_mtx;
+  std::vector<WGPUErrorType> error_types;
+  std::vector<std::string> error_messages;
+
   ~Context() {
     LOG(kDefLog, kTrace, "Destroying context");
     if (queue) {
@@ -484,6 +489,9 @@ struct Context {
       wgpuInstanceRelease(instance);
     } else {
       LOG(kDefLog, kWarn, "Instance is null");
+    }
+    if (error_mtx) {
+      delete error_mtx;
     }
     LOG(kDefLog, kInfo, "Context destroyed");
   }
@@ -702,6 +710,7 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
                              const WGPURequestAdapterOptions &adapterOpts = {},
                              const WGPUDeviceDescriptor &devDescriptor = {}) {
   Context context;
+  context.error_mtx = new std::mutex();
   {
 #ifdef __EMSCRIPTEN__
     // Emscripten does not support the instance descriptor
@@ -786,14 +795,30 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
     context.device = devData.device;
     wgpuDeviceSetUncapturedErrorCallback(
         context.device,
-        [](WGPUErrorType type, char const *message, void *devData) {
-          LOG(kDefLog, kError, "Device uncaptured error: %s", message);
-          throw std::runtime_error("Device uncaptured exception.");
+        [](WGPUErrorType type, char const *message, void *userData) {
+          Context* pctx = reinterpret_cast<Context*>(userData);
+          std::lock_guard<std::mutex> lock(*pctx->error_mtx);
+          pctx->error_types.push_back(type);
+          pctx->error_messages.push_back(std::string(message));
         },
-        nullptr);
+        &context);
   }
   context.queue = wgpuDeviceGetQueue(context.device);
   return context;
+}
+
+inline void throwDeviceUncapturedException(Context &ctx) {
+  std::lock_guard<std::mutex> lock(*ctx.error_mtx);
+  if (ctx.error_types.size() != 0) {
+    std::string errs;
+    errs += "Device uncaptured error:\n";
+    for(auto err: ctx.error_messages){
+      errs += err;
+    }
+    ctx.error_types.clear();
+    ctx.error_messages.clear();
+    throw std::runtime_error(errs.c_str());
+  }
 }
 
 inline void wait(Context &ctx, std::future<void> &future) {
@@ -801,6 +826,7 @@ inline void wait(Context &ctx, std::future<void> &future) {
          std::future_status::ready) {
     processEvents(ctx.instance);
   }
+  throwDeviceUncapturedException(ctx);
 }
 
 /**
@@ -1185,6 +1211,8 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   while (compilationInfo && !compilationInfo->finished) {
     processEvents(ctx.instance);
   }
+
+  throwDeviceUncapturedException(ctx);
   return op;
 
 }
