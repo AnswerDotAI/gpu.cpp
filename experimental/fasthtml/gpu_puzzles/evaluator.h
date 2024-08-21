@@ -206,8 +206,8 @@ std::vector<float> runPuzzle2(Context &ctx, TestCase &testCase,
                               CompilationInfo &compilationInfo) {
   size_t N = testCase.input.size() / 2;
 
-  std::vector<float> aVec(testCase.input.begin(), testCase.input.begin() + N);
-  std::vector<float> bVec(testCase.input.begin() + N, testCase.input.end());
+  std::vector<float> aVec(begin(testCase.input), begin(testCase.input) + N);
+  std::vector<float> bVec(begin(testCase.input) + N, end(testCase.input));
 
   Tensor a = createTensor(ctx, {N}, kf32, aVec.data());
   Tensor b = createTensor(ctx, {N}, kf32, bVec.data());
@@ -1050,7 +1050,7 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
     // wprintf("Time taken: %f s\n", elapsed.count());
 
     bool compilePassed = true;
-    int ptr = 0;
+    size_t ptr = 0;
     constexpr size_t kBufSize = 1024 * 10;
     char buf[kBufSize];
 
@@ -1073,6 +1073,7 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
     }
 
     // ptr = 0;
+    const char *successColor = compilePassed ? green : red;
     if (compilePassed && checkOutput(output, testCase.expectedOutput)) {
       ptr += snprintf(buf + ptr, kBufSize, "Test case %d %sPASSED%s\n\n\r",
                       caseIdx + 1, green, reset);
@@ -1080,40 +1081,46 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
       ptr += snprintf(buf + ptr, kBufSize, "Test case %d %sFAILED%s\n\n\r",
                       caseIdx + 1, red, reset);
       allPassed = false;
+      successColor = red;
     }
 
     ptr += snprintf(buf + ptr, kBufSize,
-                    "\033[1;30mWorkgroup Size          ( %s )\n\r",
-                    toString(testCase.workgroupSize).c_str());
+                    "\033[1;30mWorkgroup Size          (%s %s %s)\n\r",
+                    reset, toString(testCase.workgroupSize).c_str(), grey);
     ptr += snprintf(buf + ptr, kBufSize,
-                    "Number of Workgroups    ( %s )\n\033[0m\n\r",
-                    toString(testCase.gridSize).c_str());
+                    "Number of Workgroups    (%s %s %s)\n\033[0m\n\r",
+                    reset, toString(testCase.gridSize).c_str(), grey);
 
-    wprintf("%s", buf);
+    // wprintf("%s", buf);
 
+    char titleBuf[kBufSize];
     if (testCase.nInputs > 1) {
       for (size_t inp = 0; inp < testCase.nInputs; ++inp) {
         size_t sz = testCase.input.size() / testCase.nInputs;
         size_t offset = inp * sz;
-        snprintf(buf, sizeof(buf), "%sInput  %zu%s", grey, inp, reset);
-        printVec({begin(testCase.input) + offset,
+        snprintf(titleBuf, sizeof(titleBuf), "%sInput  %zu%s ", grey, inp, reset);
+        // Note this is using pointer initialization of a vector of floats
+        // by specifying start and end pointers
+        printVecBuf({begin(testCase.input) + offset,
                   begin(testCase.input) + offset + sz},
-                 buf);
+                 titleBuf, buf, ptr);
       }
     } else {
-      snprintf(buf, sizeof(buf), "%sInput   %s", grey, reset);
-      printVec(testCase.input, buf);
+      snprintf(titleBuf, sizeof(titleBuf), "%sInput    %s", grey, reset);
+      printVecBuf(testCase.input, titleBuf, buf, ptr);
     }
+    ptr += snprintf(buf + ptr, kBufSize, "\n");
     if (compilePassed) {
-      wprintf("");
-      snprintf(buf, sizeof(buf), "%sGot     %s", grey, reset);
-      printVec(output, buf);
-      wprintf("");
+      // wprintf("");
+      snprintf(titleBuf, sizeof(titleBuf), "%sGot      %s", successColor, reset);
+      printVecBuf(output, titleBuf, buf, ptr);
+      // wprintf("");
     }
 
-    snprintf(buf, sizeof(buf), "%sExpected%s", grey, reset);
-    printVec(testCase.expectedOutput, buf);
-    wprintf("");
+    snprintf(titleBuf, sizeof(titleBuf), "%sExpected %s", successColor, reset);
+    printVecBuf(testCase.expectedOutput, titleBuf, buf, ptr);
+    wprintf("%s", buf);
+    // wprintf("");
   }
 
   return allPassed;

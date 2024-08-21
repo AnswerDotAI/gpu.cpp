@@ -92,7 +92,7 @@ const PuzzleSpec = [
 
 function initializeApp() {
   initializeTerminal();
-  initializeEditor("[replace this with your code]");
+  initializeEditor();
   initializeModule();
   setupEventListeners();
   console.log("App initialized");
@@ -108,7 +108,7 @@ function initializeTerminal() {
   console.log("Terminal initialized");
 }
 
-function initializeEditor(initialContent) {
+function initializeEditor() {
   AppState.editor = ace.edit("editor");
   // AppState.editor.setTheme("ace/theme/monokai");
   AppState.editor.setTheme("ace/theme/dracula");
@@ -121,7 +121,7 @@ function initializeEditor(initialContent) {
     wrap: true,
   });
   AppState.editor.setKeyboardHandler("ace/keyboard/vim");
-  AppState.editor.setValue(initialContent || "");
+  // AppState.editor.setValue(initialContent || "");
   console.log("Initial content:\n", initialContent);
   console.log("Editor initialized");
 }
