@@ -1091,8 +1091,6 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
                     "Number of Workgroups    (%s %s %s)\n\033[0m\n\r",
                     reset, toString(testCase.gridSize).c_str(), grey);
 
-    // wprintf("%s", buf);
-
     char titleBuf[kBufSize];
     if (testCase.nInputs > 1) {
       for (size_t inp = 0; inp < testCase.nInputs; ++inp) {
@@ -1111,16 +1109,13 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
     }
     ptr += snprintf(buf + ptr, kBufSize, "\n");
     if (compilePassed) {
-      // wprintf("");
       snprintf(titleBuf, sizeof(titleBuf), "%sGot      %s", successColor, reset);
       printVecBuf(output, titleBuf, buf, ptr);
-      // wprintf("");
     }
 
     snprintf(titleBuf, sizeof(titleBuf), "%sExpected %s", successColor, reset);
     printVecBuf(testCase.expectedOutput, titleBuf, buf, ptr);
     wprintf("%s", buf);
-    // wprintf("");
   }
 
   return allPassed;

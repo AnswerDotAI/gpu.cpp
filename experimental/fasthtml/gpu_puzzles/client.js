@@ -9,6 +9,7 @@ const State = {
   isDispatchReady: true, // don't allow multiple overlapping dispatches
   puzzleIndex: 0,
   wgslStatus: "",
+  showSolution: false,
 };
 
 codeState = [];
@@ -122,7 +123,6 @@ function initializeEditor() {
   });
   AppState.editor.setKeyboardHandler("ace/keyboard/vim");
   // AppState.editor.setValue(initialContent || "");
-  console.log("Initial content:\n", initialContent);
   console.log("Editor initialized");
 }
 
@@ -150,6 +150,9 @@ function setupEventListeners() {
   });
   document.getElementById("next").addEventListener("click", () => {
     update({ type: "selectPuzzle", value: "next" });
+  });
+  document.getElementById("solution").addEventListener("click", () => {
+    update({ type: "clickedSolution" });
   });
 }
 
@@ -271,7 +274,14 @@ async function update(event) {
     } else {
       AppState.editor.setValue(AppState.module.getTemplate(AppState.puzzleIndex));
     }
+    // reset showSolution when starting a new puzzle
+    AppState.showSolution = false;
   }
+  if (event.type === "clickedSolution") {
+    AppState.showSolution = !AppState.showSolution;
+    console.log("showSolution: ", AppState.showSolution);
+  }
+
 
   updateEditor();
   render();
@@ -286,7 +296,7 @@ function render() {
   console.log("AppState.checkAnswer: ", AppState.checkAnswer);
   document.getElementById("correct").textContent = AppState.checkAnswer
     ? "Tests passed!"
-    : "Some tests failed.";
+    : "Some tests failed."
   if (AppState.checkAnswer) {
     document.getElementById("correct").style.color = "LimeGreen";
     document.getElementById("correct").style.fontWeight = "bold";
@@ -301,4 +311,14 @@ function render() {
     PuzzleSpec[AppState.puzzleIndex].name;
   document.getElementById("puzzle_description").textContent =
     PuzzleSpec[AppState.puzzleIndex].description;
+  if (AppState.showSolution) {
+    document.getElementById("output").style.display = "none";
+    // use puzzleIndex to get markdown
+    document.getElementById("writeup").innerHTML = "<zero-md src=\"/assets/markdown/puzzle" + (AppState.puzzleIndex + 1) + ".md\"></zero-md>";
+    console.log("writeup: ", document.getElementById("writeup").innerHTML);
+    document.getElementById("writeup").style.display = "block";
+  } else {
+    document.getElementById("output").style.display = "block";
+    document.getElementById("writeup").style.display = "none";
+  }
 }

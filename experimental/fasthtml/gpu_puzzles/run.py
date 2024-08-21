@@ -76,6 +76,7 @@ HDRS = (
     Link(rel="stylesheet", href="https://unpkg.com/tippy.js@6/dist/tippy.css"),
     Script(src="https://unpkg.com/@popperjs/core@2"),
     Script(src="https://unpkg.com/tippy.js@6"),
+    Script(src="https://cdn.jsdelivr.net/npm/zero-md@2.2", type="module"),
     Script(src="/client.js"),
     Script(init_app()),
     *Socials(
@@ -108,6 +109,13 @@ async def serve_js():
 async def serve_wasm():
     return FileResponse(f"build/run.wasm")
 
+@app.get("/assets/markdown/{fname:path}.md")
+async def serve_writeups(fname: str):
+    return FileResponse(f"assets/markdown/{fname}.md")
+
+@app.get("/assets/images/{fname:path}.png")
+async def serve_images(fname: str):
+    return FileResponse(f"assets/images/{fname}.png")
 
 def output():
     correctHeight = 27
@@ -121,7 +129,9 @@ def output():
             button("Solution", "solution"),
             style=f"width: 49vw; height:{correctHeight / 3 * 2}vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: {correctHeight / 3}vh;",
         ),
-        Div(id="output", style=f"width: 49vw; height:{outputHeight}vh; float: right;"),
+        Div(id="output", cls="overlay", style=f"width: 49vw; height:{outputHeight}vh; float: right;"),
+        Div("", id="writeup", cls="overlay hidden", style=f"width: 49vw; height: {outputHeight}vh; float: right; background-color: white; padding: 2rem; overflow-y: scroll;"),
+
     )
 
 
