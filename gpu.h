@@ -307,32 +307,25 @@ struct KernelCode {
   }
 
   /**
-   * @brief Overload of the constructor to create a code object from a
-   * template string and workgroup size. Unlike the main factory function,
-   * this overload takes a single size_t workgroupSize parameter instead of a
-   * 3D shape for the workgroup size and instantiates a 3D shape with the
-   * workgroupSize in the x dimension and 1 in the y and z dimensions.
+   * @brief Overload of the constructor to create a code object from a template
+   * string and workgroup size. This overload takes a single size_t
+   * workgroupSize parameter instead of a 3D shape for the workgroup size and
+   * instantiates a 3D shape with the workgroupSize in the x dimension and 1 in
+   * the y and z dimensions.
    *
-   * @param[in] pData Shader template string with placeholders
-   * @param[in] workgroupSize Workgroup size in the x dimension
+   * @param[in] pData Shader template string with placeholders @param[in]
+   * workgroupSize 3D Workgroup size 
    * @param[in] precision Data type precision for the shader
    *
-   * @code
-   * KernelCode code = {kPuzzle1, 256, kf32};
-   * @endcode
+   * @code KernelCode code = {kPuzzle1, 256, kf32}; @endcode
    */
-
-  inline KernelCode(const std::string &pData,
-                    const Shape &workgroupSize = {256, 1, 1},
-                    NumType precision = kf32)
-      : data(pData), workgroupSize(workgroupSize), precision(precision) {
-    if (precision == kf16) {
-      data = "enable f16;\n" + data;
-    }
-    replaceAll(data, "{{workgroupSize}}", toString(workgroupSize));
-    replaceAll(data, "{{precision}}", toString(precision));
-    LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
-  }
+  inline KernelCode(const std::string &pData, const Shape &workgroupSize =
+      {256, 1, 1}, NumType precision = kf32) : data(pData),
+  workgroupSize(workgroupSize), precision(precision) { if (precision == kf16) {
+    data = "enable f16;\n" + data; } replaceAll(data, "{{workgroupSize}}",
+        toString(workgroupSize)); replaceAll(data, "{{precision}}",
+        toString(precision)); LOG(kDefLog, kInfo, "Shader code:\n%s",
+        data.c_str()); }
 
 
   /**
@@ -341,7 +334,7 @@ struct KernelCode {
    * kernel code.
    *
    * @param[in] pData Shader template string with placeholders
-   * @param[in] workgroupSize Workgroup size in the x dimension
+   * @param[in] workgroupSize 3D Workgroup size
    * @param[in] precision Data type precision for the shader
    * @param[in] totalWorkgroups Total number of workgroups in the kernel
    *
@@ -358,6 +351,34 @@ struct KernelCode {
       data = "enable f16;\n" + data;
     }
     replaceAll(data, "{{workgroupSize}}", toString(workgroupSize));
+    replaceAll(data, "{{precision}}", toString(precision));
+    replaceAll(data, "{{totalWorkgroups}}", toString(totalWorkgroups));
+    LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
+  }
+
+
+  /**
+   * @brief Overload of the constructor, adding totalWorkgroups parameter as
+   * well as the size_t 1D workgroupSize parameter.
+   *
+   * @param[in] pData Shader template string with placeholders
+   * @param[in] workgroupSize Workgroup size in the x dimension
+   * @param[in] precision Data type precision for the shader
+   * @param[in] totalWorkgroups Total number of workgroups in the kernel
+   *
+   * @code
+   * KernelCode code = {kPuzzle1, {256, 1, 1}, kf32, {2, 2, 1}};
+   * @endcode
+   */
+  inline KernelCode(const std::string &pData,
+                    const size_t &workgroupSize,
+                    NumType precision,
+                    const Shape &totalWorkgroups)
+      : data(pData), workgroupSize({workgroupSize, 1, 1}), precision(precision) {
+    if (precision == kf16) {
+      data = "enable f16;\n" + data;
+    }
+    replaceAll(data, "{{workgroupSize}}", toString({workgroupSize, 1, 1}));
     replaceAll(data, "{{precision}}", toString(precision));
     replaceAll(data, "{{totalWorkgroups}}", toString(totalWorkgroups));
     LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
