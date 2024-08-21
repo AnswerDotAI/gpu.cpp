@@ -21,7 +21,7 @@ struct TestCase {
   int nInputs;
   std::vector<float> expectedOutput;
   Shape workgroupSize = {1, 1, 1};
-  Shape gridSize = {1, 1, 1};
+  Shape totalWorkgroups = {1, 1, 1};
   Shape sharedMemorySize = {1, 1, 1};
 };
 
@@ -189,13 +189,13 @@ std::vector<float> runPuzzle1(Context &ctx, TestCase &testCase,
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, N};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -214,13 +214,13 @@ std::vector<float> runPuzzle2(Context &ctx, TestCase &testCase,
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, N};
-  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -235,13 +235,13 @@ std::vector<float> runPuzzle3(Context &ctx, TestCase &testCase,
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -262,12 +262,12 @@ std::vector<float> runPuzzle4(Context &ctx, TestCase &testCase,
 
   KernelCode code = {kernelString, testCase.workgroupSize};
   Kernel op = createKernel(ctx, code, Bindings{input, output},
-                           testCase.gridSize, Params(N), &compilationInfo);
+                           testCase.totalWorkgroups, Params(N), &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -292,13 +292,13 @@ std::vector<float> runPuzzle5(Context &ctx, TestCase &testCase,
   };
 
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.totalWorkgroups,
                            Params{static_cast<uint32_t>(N)}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -314,13 +314,13 @@ std::vector<float> runPuzzle6(Context &ctx, TestCase &testCase,
   Tensor output = createTensor(ctx, {N}, kf32);
 
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -339,13 +339,13 @@ std::vector<float> runPuzzle7(Context &ctx, TestCase &testCase,
   };
 
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                            Params(N), &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -358,13 +358,13 @@ std::vector<float> runPuzzle8(Context &ctx, TestCase &testCase,
   Tensor a = createTensor(ctx, {N}, kf32, testCase.input.data());
   Tensor output = createTensor(ctx, {N}, kf32);
   KernelCode code = {kernelString, testCase.workgroupSize};
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -384,13 +384,13 @@ std::vector<float> runPuzzle9(Context &ctx, TestCase &testCase,
 
   KernelCode code = createCustomSharedMemory(kernelString, shared_memory,
                                              testCase.workgroupSize);
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -414,13 +414,13 @@ std::vector<float> runPuzzle10(Context &ctx, TestCase &testCase,
 
   KernelCode code = createCustomSharedMemory(kernelString, shared_memory,
                                              testCase.workgroupSize);
-  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, b, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, 1);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -450,14 +450,14 @@ std::vector<float> runPuzzle11(Context &ctx, TestCase &testCase,
   KernelCode code = createCustomSharedMemory(kernelString, sharedMemory,
                                              testCase.workgroupSize);
   Kernel op =
-      createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+      createKernel(ctx, code, Bindings{a, b, output}, testCase.totalWorkgroups,
                    Params{static_cast<uint32_t>(testCase.workgroupSize[0])},
                    &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -477,13 +477,13 @@ std::vector<float> runPuzzle12(Context &ctx, TestCase &testCase,
 
   KernelCode code = createCustomSharedMemory(kernelString, sharedMemory,
                                              testCase.workgroupSize);
-  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+  Kernel op = createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                            {}, &compilationInfo);
 
   std::vector outputArr = getOutput(ctx, op, output, 2);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -510,7 +510,7 @@ std::vector<float> runPuzzle13(Context &ctx, TestCase &testCase,
   KernelCode code = createCustomSharedMemory(kernelString, sharedMemory,
                                              testCase.workgroupSize);
   Kernel op =
-      createKernel(ctx, code, Bindings{a, output}, testCase.gridSize,
+      createKernel(ctx, code, Bindings{a, output}, testCase.totalWorkgroups,
                    Params{static_cast<uint32_t>(testCase.workgroupSize[0]),
                           static_cast<uint32_t>(N)},
                    &compilationInfo);
@@ -518,7 +518,7 @@ std::vector<float> runPuzzle13(Context &ctx, TestCase &testCase,
   std::vector outputArr = getOutput(ctx, op, output, 4);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -550,7 +550,7 @@ std::vector<float> runPuzzle14(Context &ctx, TestCase &testCase,
   KernelCode code = createCustomSharedMemory(kernelString, sharedMemory,
                                              testCase.workgroupSize);
   Kernel op =
-      createKernel(ctx, code, Bindings{a, b, output}, testCase.gridSize,
+      createKernel(ctx, code, Bindings{a, b, output}, testCase.totalWorkgroups,
                    Params{static_cast<uint32_t>(testCase.workgroupSize[0]),
                           static_cast<uint32_t>(N)},
                    &compilationInfo);
@@ -558,7 +558,7 @@ std::vector<float> runPuzzle14(Context &ctx, TestCase &testCase,
   std::vector outputArr = getOutput(ctx, op, output, N * N);
 
   testCase.workgroupSize = code.workgroupSize;
-  testCase.gridSize = op.nWorkgroups;
+  testCase.totalWorkgroups = op.totalWorkgroups;
 
   return outputArr;
 }
@@ -679,12 +679,12 @@ TestCases createTestCases() {
        .nInputs = 1,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {2, 1, 1},
-       .gridSize = {3, 1, 1}}, // Test case 1
+       .totalWorkgroups = {3, 1, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 1,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {4, 1, 1},
-       .gridSize = {3, 1, 1}} // Test case 2
+       .totalWorkgroups = {3, 1, 1}} // Test case 2
   };
 
   // Initialize test cases for Puzzle 7
@@ -704,12 +704,12 @@ TestCases createTestCases() {
        .nInputs = 1,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {2, 2, 1},
-       .gridSize = {2, 2, 1}}, // Test case 1
+       .totalWorkgroups = {2, 2, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 1,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {2, 2, 1},
-       .gridSize = {3, 3, 1}} // Test case 2
+       .totalWorkgroups = {3, 3, 1}} // Test case 2
   };
 
   // Initialize test cases for Puzzle 8
@@ -728,12 +728,12 @@ TestCases createTestCases() {
        .nInputs = 1,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {4, 1, 1},
-       .gridSize = {2, 1, 1}}, // Test case 1
+       .totalWorkgroups = {2, 1, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 1,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {2, 1, 1}} // Test case 2
+       .totalWorkgroups = {2, 1, 1}} // Test case 2
   };
 
   // Initialize test cases for Puzzle 9
@@ -751,13 +751,13 @@ TestCases createTestCases() {
        .nInputs = 1,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {1, 1, 1},
+       .totalWorkgroups = {1, 1, 1},
        .sharedMemorySize = {8, 1, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 1,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {10, 1, 1},
-       .gridSize = {1, 1, 1},
+       .totalWorkgroups = {1, 1, 1},
        .sharedMemorySize = {10, 1, 1}} // Test case 2
   };
 
@@ -775,13 +775,13 @@ TestCases createTestCases() {
        .nInputs = 2,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {4, 1, 1},
-       .gridSize = {1, 1, 1},
+       .totalWorkgroups = {1, 1, 1},
        .sharedMemorySize = {4, 1, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 2,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {5, 1, 1},
-       .gridSize = {1, 1, 1},
+       .totalWorkgroups = {1, 1, 1},
        .sharedMemorySize = {5, 1, 1}} // Test case 2
   };
 
@@ -801,13 +801,13 @@ TestCases createTestCases() {
        .nInputs = 2,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {2, 1, 1},
+       .totalWorkgroups = {2, 1, 1},
        .sharedMemorySize = {12, 1, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 2,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {3, 1, 1},
+       .totalWorkgroups = {3, 1, 1},
        .sharedMemorySize = {12, 1, 1}} // Test case 2
   };
 
@@ -825,13 +825,13 @@ TestCases createTestCases() {
        .nInputs = 1,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {1, 1, 1},
+       .totalWorkgroups = {1, 1, 1},
        .sharedMemorySize = {8, 1, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 1,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {2, 1, 1},
+       .totalWorkgroups = {2, 1, 1},
        .sharedMemorySize = {8, 1, 1}} // Test case 2
   };
 
@@ -852,13 +852,13 @@ TestCases createTestCases() {
        .nInputs = 1,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {1, 4, 1},
+       .totalWorkgroups = {1, 4, 1},
        .sharedMemorySize = {8, 1, 1}}, // Test case 1
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 1,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {8, 1, 1},
-       .gridSize = {1, 4, 1},
+       .totalWorkgroups = {1, 4, 1},
        .sharedMemorySize = {8, 1, 1}} // Test case 2
   };
 
@@ -889,37 +889,37 @@ TestCases createTestCases() {
        .nInputs = 2,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {3, 3, 1},
-       .gridSize = {1, 1, 1},
+       .totalWorkgroups = {1, 1, 1},
        .sharedMemorySize = {3, 3, 1}},
       {.input = {inputs[0].begin(), inputs[0].end()},
        .nInputs = 2,
        .expectedOutput = {outputs[0].begin(), outputs[0].end()},
        .workgroupSize = {1, 1, 1},
-       .gridSize = {2, 2, 1},
+       .totalWorkgroups = {2, 2, 1},
        .sharedMemorySize = {3, 3, 1}},
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 2,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {4, 4, 1},
-       .gridSize = {1, 1, 1},
+       .totalWorkgroups = {1, 1, 1},
        .sharedMemorySize = {4, 4, 1}},
       {.input = {inputs[1].begin(), inputs[1].end()},
        .nInputs = 2,
        .expectedOutput = {outputs[1].begin(), outputs[1].end()},
        .workgroupSize = {2, 2, 1},
-       .gridSize = {2, 2, 1},
+       .totalWorkgroups = {2, 2, 1},
        .sharedMemorySize = {2, 2, 1}},
       {.input = {inputs[2].begin(), inputs[2].end()},
        .nInputs = 2,
        .expectedOutput = {outputs[2].begin(), outputs[2].end()},
        .workgroupSize = {2, 2, 1},
-       .gridSize = {2, 2, 1},
+       .totalWorkgroups = {2, 2, 1},
        .sharedMemorySize = {2, 2, 1}},
       {.input = {inputs[3].begin(), inputs[3].end()},
        .nInputs = 2,
        .expectedOutput = {outputs[3].begin(), outputs[3].end()},
        .workgroupSize = {2, 2, 1},
-       .gridSize = {4, 4, 1},
+       .totalWorkgroups = {4, 4, 1},
        .sharedMemorySize = {2, 2, 1}},
   };
 
@@ -930,9 +930,11 @@ std::string getTemplate(int puzzleIndex) {
   const auto allTestCases = createTestCases();
   int nInputs = allTestCases[puzzleIndex][0].nInputs;
   std::string result = "";
+  assert(nInputs == 1 || nInputs == 2);
+
   for (size_t i = 0; i < nInputs; ++i) {
     result += "@group(0) @binding(" + std::to_string(i) +
-              ") var<storage, read_write> in" + std::to_string(i) +
+              ") var<storage, read_write> in" + std::to_string(i + 1) +
               " : array<f32>;\n";
   }
   result += "@group(0) @binding(" + std::to_string(nInputs) +
@@ -945,8 +947,7 @@ std::string getTemplate(int puzzleIndex) {
   @builtin(global_invocation_id) gid: vec3<u32>,
   @builtin(workgroup_id) wid: vec3<u32>,
   @builtin(local_invocation_id) lid: vec3<u32>,) {
-    let i: u32 = gid.x;
-    out[i] = in0[i];
+    out[lid.x] = 1.0;
 }
 )";
   return result;
@@ -1089,7 +1090,7 @@ bool evaluate(Context &ctx, const std::string &kernelCode, int puzzleIndex) {
                     reset, toString(testCase.workgroupSize).c_str(), grey);
     ptr += snprintf(buf + ptr, kBufSize,
                     "Number of Workgroups    (%s %s %s)\n\033[0m\n\r",
-                    reset, toString(testCase.gridSize).c_str(), grey);
+                    reset, toString(testCase.totalWorkgroups).c_str(), grey);
 
     char titleBuf[kBufSize];
     if (testCase.nInputs > 1) {

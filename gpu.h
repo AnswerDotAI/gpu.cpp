@@ -333,6 +333,36 @@ struct KernelCode {
     replaceAll(data, "{{precision}}", toString(precision));
     LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
   }
+
+
+  /**
+   * @brief Overload of the constructor, adding totalWorkgroups parameter to
+   * perform a string replacement for the total number of workgroups in the
+   * kernel code.
+   *
+   * @param[in] pData Shader template string with placeholders
+   * @param[in] workgroupSize Workgroup size in the x dimension
+   * @param[in] precision Data type precision for the shader
+   * @param[in] totalWorkgroups Total number of workgroups in the kernel
+   *
+   * @code
+   * KernelCode code = {kPuzzle1, {256, 1, 1}, kf32, {2, 2, 1}};
+   * @endcode
+   */
+  inline KernelCode(const std::string &pData,
+                    const Shape &workgroupSize,
+                    NumType precision,
+                    const Shape &totalWorkgroups)
+      : data(pData), workgroupSize(workgroupSize), precision(precision) {
+    if (precision == kf16) {
+      data = "enable f16;\n" + data;
+    }
+    replaceAll(data, "{{workgroupSize}}", toString(workgroupSize));
+    replaceAll(data, "{{precision}}", toString(precision));
+    replaceAll(data, "{{totalWorkgroups}}", toString(totalWorkgroups));
+    LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
+  }
+
   std::string data;
   Shape workgroupSize;
   NumType precision = kf32;
@@ -394,7 +424,7 @@ struct Kernel {
   std::unique_ptr<WGPUBuffer[]> buffers; // non-owning
   std::unique_ptr<size_t[]> bufferSizes;
   size_t numBindings;
-  Shape nWorkgroups;
+  Shape totalWorkgroups;
   WGPUBindGroup bindGroup;             // persists between submission
   WGPUComputePipeline computePipeline; // persists between submission
   WGPUCommandBuffer commandBuffer;     // destroyed upon submission
@@ -973,8 +1003,8 @@ inline void resetCommandBuffer(WGPUDevice &device, Kernel &op) {
     wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
                                        nullptr);
     wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder, op.nWorkgroups[0], op.nWorkgroups[1],
-        op.nWorkgroups[2]);
+        computePassEncoder, op.totalWorkgroups[0], op.totalWorkgroups[1],
+        op.totalWorkgroups[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
   }
@@ -1021,7 +1051,7 @@ inline Shape cdiv(Shape total, Shape group) {
  * @param[in] numTensors Number of tensors in the dataBindings span
  * @param[in] viewOffsets Pointer to an array of view offsets for the input
  * tensors
- * @param[in] nWorkgroups Shape of the workgroup
+ * @param[in] totalWorkgroups Shape of the workgroup
  * @param[in] params Optional parameters for the kernel. If the kernel does
  * not have any parameters, use NoParam. This is cast as void* to allow for
  * arbitrary types to be passed as parameters.
@@ -1035,11 +1065,11 @@ inline Shape cdiv(Shape total, Shape group) {
  */
 inline Kernel createKernel(Context &ctx, const KernelCode &code,
                            const Tensor *dataBindings, size_t numTensors,
-                           const size_t *viewOffsets, const Shape &nWorkgroups,
+                           const size_t *viewOffsets, const Shape &totalWorkgroups,
                            const void *params = nullptr,
                            size_t paramsSize = 0,
                            CompilationInfo* compilationInfo = nullptr) {
-  assert(nWorkgroups.rank == 3);
+  assert(totalWorkgroups.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op;
@@ -1157,7 +1187,7 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   computePipelineDesc.label = code.label.c_str();
   op.computePipeline =
       wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-  op.nWorkgroups = {nWorkgroups[0], nWorkgroups[1], nWorkgroups[2]};
+  op.totalWorkgroups = {totalWorkgroups[0], totalWorkgroups[1], totalWorkgroups[2]};
   resetCommandBuffer(device, op);
   ctx.kernelPool.data.insert(&op);
 
@@ -1199,7 +1229,7 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
  * @param[in] code WGSL code for the kernel
  * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
  * to the kernel as inputs and outputs.
- * @param[in] nWorkgroups Number of workgroups in the x, y, z grid, must be a
+ * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be a
  * Shape of rank == 3.
  * @param[in] params Optional parameters for the kernel. If the kernel does
  * not have any parameters, use NoParam.
@@ -1208,23 +1238,23 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
  * @code
  * Kernel kernel = createKernel(ctx, code, tensorData, output,
  * @endcode
- * nWorkgroups, params);
+ * totalWorkgroups, params);
  */
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel createKernel(Context &ctx, const KernelCode &code,
                     const Bindings<numInputs> &dataBindings,
-                    const Shape &nWorkgroups,
+                    const Shape &totalWorkgroups,
                     const ParamsType &params = ParamsType{},
                     CompilationInfo* compilationInfo = nullptr 
                     ) {
   if constexpr (!IsNoParam<ParamsType>) {
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), nWorkgroups,
+                        dataBindings.viewOffsets.data(), totalWorkgroups,
                         reinterpret_cast<const void *>(&params),
                         sizeof(ParamsType), compilationInfo);
   } else {
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), nWorkgroups, nullptr,
+                        dataBindings.viewOffsets.data(), totalWorkgroups, nullptr,
                         0, compilationInfo);
   }
 }

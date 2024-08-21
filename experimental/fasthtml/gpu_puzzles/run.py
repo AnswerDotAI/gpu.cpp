@@ -126,7 +126,7 @@ def output():
                 "(Result Check)",
                 id="correct",
             ),
-            button("Solution", "solution"),
+            button("Show Solution", id="solution"),
             style=f"width: 49vw; height:{correctHeight / 3 * 2}vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: {correctHeight / 3}vh;",
         ),
         Div(id="output", cls="overlay", style=f"width: 49vw; height:{outputHeight}vh; float: right;"),

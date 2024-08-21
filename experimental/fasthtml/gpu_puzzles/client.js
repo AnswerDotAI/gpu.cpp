@@ -18,72 +18,72 @@ const PuzzleSpec = [
   {
     name: "Map",
     description:
-      'Implement a "kernel" (GPU function) that adds 10 to each position of vector `a` and stores it in vector `out`. You have 1 thread per position.',
+      'Implement a "kernel" (GPU function) that adds 10 to each position of vector `in1` and stores it in vector `out`. You have 1 thread per position.',
   },
   {
     name: "Zip",
     description:
-      "Implement a kernel that adds together each position of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+      "Implement a kernel that adds together each position of `in1` and `in2` and stores it in `out`. You have 1 thread per position.",
   },
   {
     name: "Guards",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have more threads than positions.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. You have more threads than positions.",
   },
   {
     name: "Map 2D",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. Input `a` is 2D and square. You have more threads than positions.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. Input `in1` is 2D and square. You have more threads than positions.",
   },
   {
     name: "Broadcast",
     description:
-      "Implement a kernel that adds `a` and `b` and stores it in `out`. Inputs `a` and `b` are vectors. You have more threads than positions.",
+      "Implement a kernel that adds `in1` and `in2` and stores it in `out`. Inputs `in1` and `in2` are vectors. You have more threads than positions.",
   },
   {
     name: "Blocks",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. You have fewer threads per block than the size of `in1`.",
   },
   {
     name: "Blocks 2D",
     description:
-      "Implement the same kernel in 2D. You have fewer threads per block than the size of `a` in both directions.",
+      "Implement the same kernel in 2D. You have fewer threads per block than the size of `in1` in both directions.",
   },
   {
     name: "Shared",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`. Use shared memory and `cuda.syncthreads` to ensure threads do not cross.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. You have fewer threads per block than the size of `in1`. Use shared memory and `cuda.syncthreads` to ensure threads do not cross.",
   },
   {
     name: "Pooling",
     description:
-      "Implement a kernel that sums together the last 3 positions of `a` and stores it in `out`. You have 1 thread per position.",
+      "Implement a kernel that sums together the last 3 positions of `in1` and stores it in `out`. You have 1 thread per position.",
   },
   {
     name: "Dot Product",
     description:
-      "Implement a kernel that computes the dot-product of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+      "Implement a kernel that computes the dot-product of `in1` and `in2` and stores it in `out`. You have 1 thread per position.",
   },
   {
     name: "1D Convolution",
     description:
-      "Implement a kernel that computes a 1D convolution between `a` and `b` and stores it in `out`. Handle the general case.",
+      "Implement a kernel that computes a 1D convolution between `in1` and `in2` and stores it in `out`. Handle the general case.",
   },
   {
     name: "Prefix Sum",
     description:
-      "Implement a kernel that computes a sum over `a` and stores it in `out`. If the size of `a` is greater than the block size, only store the sum of each block using parallel prefix sum.",
+      "Implement a kernel that computes a sum over `in1` and stores it in `out`. If the size of `in1` is greater than the block size, only store the sum of each block using parallel prefix sum.",
   },
   {
     name: "Axis Sum",
     description:
-      "Implement a kernel that computes a sum over each column of `a` and stores it in `out`.",
+      "Implement a kernel that computes a sum over each column of `in1` and stores it in `out`.",
   },
   {
     name: "Matrix Multiply",
     description:
-      "Implement a kernel that multiplies square matrices `a` and `b` and stores the result in `out`. Optimize by using shared memory for partial dot-products.",
+      "Implement a kernel that multiplies square matrices `in1` and `in2` and stores the result in `out`. Optimize by using shared memory for partial dot-products.",
   },
 ];
 
@@ -315,10 +315,11 @@ function render() {
     document.getElementById("output").style.display = "none";
     // use puzzleIndex to get markdown
     document.getElementById("writeup").innerHTML = "<zero-md src=\"/assets/markdown/puzzle" + (AppState.puzzleIndex + 1) + ".md\"></zero-md>";
-    console.log("writeup: ", document.getElementById("writeup").innerHTML);
+    document.getElementById("solution").textContent = "Hide Solution";
     document.getElementById("writeup").style.display = "block";
   } else {
     document.getElementById("output").style.display = "block";
     document.getElementById("writeup").style.display = "none";
+    document.getElementById("solution").textContent = "Show Solution";
   }
 }
