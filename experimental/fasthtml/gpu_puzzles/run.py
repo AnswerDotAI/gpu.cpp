@@ -6,22 +6,26 @@ import json
 
 TARGET = os.getenv("TARGET", "debug")
 
-PREAMBLE = """
-// Start editing here to see the results.
-// Warning: You are in vim mode.
-@group(0) @binding(0) var<storage, read_write> input : array<f32>;
-@group(0) @binding(1) var<storage, read_write> output : array<f32>;
-@compute @workgroup_size({{workgroupSize}})
-""".strip()
+body_style = """
+    background: linear-gradient(rgba(14, 14, 14, 0.75),
+                                rgba(0, 0, 0, 0.85),
+                                rgba(0, 0, 0, 1.0),
+                                rgba(0, 0, 0, 0.88),
+                                rgba(3, 3, 3, 0.8),
+                                rgba(28, 28, 28, 0.68)),
+                url('https://gpucpp.answer.ai/images/shadertui2-small-crop2-loop.gif');
+    background-size: cover;
+    background-position: center;
+    height: 100vh
+"""
 
-INITIAL_CODE = """
-fn main(@builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-    let i: u32 = GlobalInvocationID.x;
-    output[i] = input[i];
-}
-""".strip()
 
-CORRECT = False
+def button(text, id):
+    return Button(
+        text,
+        cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
+        id=id,
+    )
 
 
 def controls():
@@ -29,134 +33,33 @@ def controls():
     return (
         Div(
             Div(
-                Button(
-                    "<<",
-                    cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
-                    id="prev",
-                ),
+                button("<<", "prev"),
                 # don't start a new row for div
                 Div(
                     "Puzzle 1: Map",
                     id="puzzle_name",
-                    style="font-size: 1.5rem; width: 15vw; font-weight: bold;"
+                    style="font-size: 1.5rem; width: 25vw; font-weight: bold;",
                 ),
-                Button(
-                    ">>",
-                    cls="bg-blue-300 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded",
-                    id="next",
-                ),
-                # no space between buttons
+                button(">>", "next"),
                 style="display: flex;  align-items: center; justify-content: center;",
-                # cls="flex justify-between space-x-2",
             ),
-            # cls="mb-4",
-            style="text-align: center;",
+            style="text-align: center; margin-top: 5vh; margin-left: 2rem; margin-right: 2rem;",
         ),
         Div(
             "Puzzle description",
             id="puzzle_description",
-            style="font-size: 20vh; margin-top: 6vh; margin-bottom: 6vh; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
+            style="font-size: 20vh; margin-top: 5vh; margin-bottom: 5vh; margin-left: 2rem; margin-right: 2rem; height: 6vh; font-size: 1.0rem;",
         ),
     )
 
 
-def dispatchInputs():
-    return Div(
-        Div(
-            Div("Workgroup Size", cls="font-bold mb-1 text-center"),
-            Div(
-                Div(
-                    Input(
-                        type="number",
-                        id="workgroup_x",
-                        cls="w-1/3 p-2 border rounded",
-                        value="256",
-                        placeholder="X",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="workgroup_y",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Y",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="workgroup_z",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Z",
-                        style="width: 5vw",
-                    ),
-                    cls="flex justify-between space-x-2",
-                ),
-                cls="flex justify-between space-x-2",
-            ),
-            cls="mb-4",
-            style="margin-right: 2rem; margin-left: 2rem;",
-        ),
-        Div(
-            Div("Grid Size", cls="font-bold mb-1 text-center"),
-            Div(
-                Div(
-                    Input(
-                        type="number",
-                        id="grid_x",
-                        cls="w-1/3 p-2 border rounded",
-                        value="256",
-                        placeholder="X",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="grid_y",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Y",
-                        style="width: 5vw",
-                    ),
-                    Input(
-                        type="number",
-                        id="grid_z",
-                        cls="w-1/3 p-2 border rounded",
-                        value="1",
-                        placeholder="Z",
-                        style="width: 5vw",
-                    ),
-                    cls="flex justify-between space-x-2",
-                ),
-                cls="flex justify-between space-x-2",
-            ),
-        ),
-        cls="w-full max-w-md",
-        style="display: flex; justify-content: center; margin-top: 2rem; margin-left: 2rem; margin-right: 2rem;",
-    )
-
-
-def CodeEditor(initial_code: str):
-    return (
-        Div(
-            Div(
-                Div(id="editor", style="height: 60vh; width: 100vw;"),
-                style="height: 60vh; overflow: hidden;",
-            ),
-            # cls="flex flex-col h-screen w-full", style="height: 100vh; overflow: hidden;"
-            style="height: 60vh; overflow: hidden;",
-        ),
-    )
-
-
-def init_app(initial_code: str) -> str:
+def init_app() -> str:
     return f"""
 document.addEventListener('DOMContentLoaded', () => {{
     window.AppState = Object.create(State);
     window.customPrint = customPrint;
     const AppState = window.AppState;
-    AppState.preamble = {json.dumps(PREAMBLE)};
-    AppState.preamble_template = {json.dumps(PREAMBLE)};
-    initializeApp({json.dumps(initial_code)});
+    initializeApp();
 }});
 """.strip()
 
@@ -173,8 +76,9 @@ HDRS = (
     Link(rel="stylesheet", href="https://unpkg.com/tippy.js@6/dist/tippy.css"),
     Script(src="https://unpkg.com/@popperjs/core@2"),
     Script(src="https://unpkg.com/tippy.js@6"),
+    Script(src="https://cdn.jsdelivr.net/npm/zero-md@2.2", type="module"),
     Script(src="/client.js"),
-    Script(init_app(INITIAL_CODE)),
+    Script(init_app()),
     *Socials(
         title="gpu.cpp gpu puzzles",
         description="",
@@ -205,45 +109,58 @@ async def serve_js():
 async def serve_wasm():
     return FileResponse(f"build/run.wasm")
 
+@app.get("/assets/markdown/{fname:path}.md")
+async def serve_writeups(fname: str):
+    return FileResponse(f"assets/markdown/{fname}.md")
+
+@app.get("/assets/images/{fname:path}.png")
+async def serve_images(fname: str):
+    return FileResponse(f"assets/images/{fname}.png")
 
 def output():
+    correctHeight = 27
+    outputHeight = 100 - correctHeight + 1
     return (
         Div(
-            "(Result Check)",
-            style="width: 50vw; height:14vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: 13vh;",
-            id="correct",
+            Div(
+                "(Result Check)",
+                id="correct",
+            ),
+            button("Show Solution", id="solution"),
+            style=f"width: 49vw; height:{correctHeight / 3 * 2}vh; float: right; font-size: 2rem; text-align: center; align-items: center; justify-content: center; margin-top: {correctHeight / 3}vh;",
         ),
-        Div(
-            id="output",
-            style="width: 50vw; height:630vh; float: right;",
-        ),
+        Div(id="output", cls="overlay", style=f"width: 49vw; height:{outputHeight}vh; float: right;"),
+        Div("", id="writeup", cls="overlay hidden", style=f"width: 49vw; height: {outputHeight}vh; float: right; background-color: white; padding: 2rem; overflow-y: scroll;"),
 
+    )
+
+
+def CodeEditor():
+    return (
+        Div(
+            Div(
+                Div(id="editor", style="height: 79vh; width: 100vw;"),
+                style="height: 79vh; overflow: hidden;",
+            ),
+            style="height: 79vh; overflow: hidden;",
+        ),
     )
 
 
 @app.get("/")
 def get():
     return (
-        Title("WGSL Editor"),
+        Title("GPU Puzzles"),
         Body(
             Div(
                 Div(
                     controls(),
-                    dispatchInputs(),
-                    "GPU Code (WGSL):",
-                    Div(
-                        Pre(
-                            PREAMBLE.replace("{{workgroupSize}}", "256, 1, 1"),
-                            style="font-family: monospace; font-size: 1.0rem;",
-                            id="preamble",
-                        )
-                    ),
-                    CodeEditor(initial_code=INITIAL_CODE),
-                    style="width: 50vw; height:100vh; float: left;",
+                    CodeEditor(),
+                    style="width: 49vw; height:100vh; float: left;",
                 ),
                 output(),
             ),
-            style="height: 100vh; overflow: hidden;",
+            style=body_style,
         ),
     )
 

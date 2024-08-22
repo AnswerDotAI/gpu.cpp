@@ -54,7 +54,7 @@ void puzzle1(Context &ctx) {
   Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
   Tensor output = createTensor(ctx, {N}, kf32);
   Kernel op = createKernel(ctx, {kPuzzle1, N}, Bindings{a, output},
-                           /*nWorkgroups */ {1, 1, 1});
+                           /*totalWorkgroups */ {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -146,7 +146,7 @@ void puzzle4(Context &ctx) {
   };
   Kernel op =
       createKernel(ctx, {kPuzzle4, /*workgroup size*/ {Wx, Wy, 1}},
-                   Bindings{input, output}, /* nWorkgroups */ {1, 1, 1}, Params{N});
+                   Bindings{input, output}, /* totalWorkgroups */ {1, 1, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 

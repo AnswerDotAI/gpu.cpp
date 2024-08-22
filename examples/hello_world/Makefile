@@ -22,6 +22,9 @@ run_setup: check-python
 build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o ./build/$(TARGET)
 
+debug: run.cpp
+	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET)
+
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
 

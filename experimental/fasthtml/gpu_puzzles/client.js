@@ -1,8 +1,6 @@
 const State = {
   preamble_template: "",
   preamble: "",
-  wgSize: [],
-  gridSize: [],
   editor: null,
   terminal: null,
   module: null,
@@ -10,78 +8,82 @@ const State = {
   checkAnswer: false,
   isDispatchReady: true, // don't allow multiple overlapping dispatches
   puzzleIndex: 0,
+  wgslStatus: "",
+  showSolution: false,
 };
+
+codeState = [];
 
 const PuzzleSpec = [
   {
     name: "Map",
     description:
-      'Implement a "kernel" (GPU function) that adds 10 to each position of vector `a` and stores it in vector `out`. You have 1 thread per position.',
+      'Implement a "kernel" (GPU function) that adds 10 to each position of vector `in1` and stores it in vector `out`. You have 1 thread per position.',
   },
   {
     name: "Zip",
     description:
-      "Implement a kernel that adds together each position of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+      "Implement a kernel that adds together each position of `in1` and `in2` and stores it in `out`. You have 1 thread per position.",
   },
   {
     name: "Guards",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have more threads than positions.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. You have more threads than positions.",
   },
   {
     name: "Map 2D",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. Input `a` is 2D and square. You have more threads than positions.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. Input `in1` is 2D and square. You have more threads than positions.",
   },
   {
     name: "Broadcast",
     description:
-      "Implement a kernel that adds `a` and `b` and stores it in `out`. Inputs `a` and `b` are vectors. You have more threads than positions.",
+      "Implement a kernel that adds `in1` and `in2` and stores it in `out`. Inputs `in1` and `in2` are vectors. You have more threads than positions.",
   },
   {
     name: "Blocks",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. You have fewer threads per block than the size of `in1`.",
   },
   {
     name: "Blocks 2D",
     description:
-      "Implement the same kernel in 2D. You have fewer threads per block than the size of `a` in both directions.",
+      "Implement the same kernel in 2D. You have fewer threads per block than the size of `in1` in both directions.",
   },
   {
     name: "Shared",
     description:
-      "Implement a kernel that adds 10 to each position of `a` and stores it in `out`. You have fewer threads per block than the size of `a`. Use shared memory and `cuda.syncthreads` to ensure threads do not cross.",
+      "Implement a kernel that adds 10 to each position of `in1` and stores it in `out`. You have fewer threads per block than the size of `in1`. Use shared memory and `cuda.syncthreads` to ensure threads do not cross.",
   },
   {
     name: "Pooling",
     description:
-      "Implement a kernel that sums together the last 3 positions of `a` and stores it in `out`. You have 1 thread per position.",
+      "Implement a kernel that sums together the last 3 positions of `in1` and stores it in `out`. You have 1 thread per position.",
   },
   {
     name: "Dot Product",
     description:
-      "Implement a kernel that computes the dot-product of `a` and `b` and stores it in `out`. You have 1 thread per position.",
+      "Implement a kernel that computes the dot-product of `in1` and `in2` and stores it in `out`. You have 1 thread per position.",
   },
   {
     name: "1D Convolution",
     description:
-      "Implement a kernel that computes a 1D convolution between `a` and `b` and stores it in `out`. Handle the general case.",
+      "Implement a kernel that computes a 1D convolution between `in1` and `in2` and stores it in `out`. Handle the general case.",
   },
   {
     name: "Prefix Sum",
     description:
-      "Implement a kernel that computes a sum over `a` and stores it in `out`. If the size of `a` is greater than the block size, only store the sum of each block using parallel prefix sum.",
+      "Implement a kernel that computes a sum over `in1` and stores it in `out`. If the size of `in1` is greater than the block size, only store the sum of each block using parallel prefix sum.",
   },
   {
     name: "Axis Sum",
     description:
-      "Implement a kernel that computes a sum over each column of `a` and stores it in `out`.",
+      "Implement a kernel that computes a sum over each column of `in1` and stores it in `out`.",
   },
   {
     name: "Matrix Multiply",
     description:
-      "Implement a kernel that multiplies square matrices `a` and `b` and stores the result in `out`. Optimize by using shared memory for partial dot-products.",
+      "Implement a kernel that multiplies square matrices `in1` and `in2` and stores the result in `out`. Optimize by using shared memory for partial dot-products.",
   },
 ];
 
@@ -89,9 +91,9 @@ const PuzzleSpec = [
 // Initialization
 ////////////////////////////////////////
 
-function initializeApp(initial_content) {
+function initializeApp() {
   initializeTerminal();
-  initializeEditor(initial_content);
+  initializeEditor();
   initializeModule();
   setupEventListeners();
   console.log("App initialized");
@@ -107,7 +109,7 @@ function initializeTerminal() {
   console.log("Terminal initialized");
 }
 
-function initializeEditor(initialContent) {
+function initializeEditor() {
   AppState.editor = ace.edit("editor");
   // AppState.editor.setTheme("ace/theme/monokai");
   AppState.editor.setTheme("ace/theme/dracula");
@@ -120,8 +122,7 @@ function initializeEditor(initialContent) {
     wrap: true,
   });
   AppState.editor.setKeyboardHandler("ace/keyboard/vim");
-  AppState.editor.setValue(initialContent || "");
-  console.log("Initial content:\n", initialContent);
+  // AppState.editor.setValue(initialContent || "");
   console.log("Editor initialized");
 }
 
@@ -143,29 +144,15 @@ function initializeModule() {
 function setupEventListeners() {
   AppState.editor.session.on("change", () => update({ type: "edit" }));
   window.addEventListener("resize", () => AppState.editor.resize());
-  document
-    .getElementById("workgroup_x")
-    .addEventListener("change", () => update({ type: "wgUpdate" }));
-  document
-    .getElementById("workgroup_y")
-    .addEventListener("change", () => update({ type: "wgUpdate" }));
-  document
-    .getElementById("workgroup_z")
-    .addEventListener("change", () => update({ type: "wgUpdate" }));
-  document
-    .getElementById("grid_x")
-    .addEventListener("change", () => update({ type: "gridUpdate" }));
-  document
-    .getElementById("grid_y")
-    .addEventListener("change", () => update({ type: "gridUpdate" }));
-  document
-    .getElementById("grid_z")
-    .addEventListener("change", () => update({ type: "gridUpdate" }));
+
   document.getElementById("prev").addEventListener("click", () => {
     update({ type: "selectPuzzle", value: "prev" });
   });
   document.getElementById("next").addEventListener("click", () => {
     update({ type: "selectPuzzle", value: "next" });
+  });
+  document.getElementById("solution").addEventListener("click", () => {
+    update({ type: "clickedSolution" });
   });
 }
 
@@ -186,43 +173,21 @@ function customPrint(text) {
 // Update
 ////////////////////////////////////////
 
-function updateDispatchParams() {
-  wgSize = [
-    document.getElementById("workgroup_x").value,
-    document.getElementById("workgroup_y").value,
-    document.getElementById("workgroup_z").value,
-  ];
-  gridSize = [
-    document.getElementById("grid_x").value,
-    document.getElementById("grid_y").value,
-    document.getElementById("grid_z").value,
-  ];
-  wgSize = wgSize.map((x) => parseInt(x));
-  gridSize = gridSize.map((x) => parseInt(x));
-  AppState.wgSize = wgSize;
-  AppState.gridSize = gridSize;
-  AppState.preamble = AppState.preamble_template.replace(
-    /{{workgroupSize}}/g,
-    wgSize.join(", "),
-  );
-  console.log("New preamble:\n", AppState.preamble);
+function waitForDispatchReady() {
+  return new Promise((resolve) => {
+    function checkReady() {
+      if (AppState.isDispatchReady) {
+        resolve();
+      } else {
+        console.log("Waiting for dispatch to be ready");
+        setTimeout(checkReady, 100); // Check every 100ms
+      }
+    }
+    checkReady();
+  });
 }
 
 async function updateEditor() {
-  function waitForDispatchReady() {
-    return new Promise((resolve) => {
-      function checkReady() {
-        if (AppState.isDispatchReady) {
-          resolve();
-        } else {
-          console.log("Waiting for dispatch to be ready");
-          setTimeout(checkReady, 100); // Check every 100ms
-        }
-      }
-      checkReady();
-    });
-  }
-
   // Recover from errors TODO(avh): only do this if there's an error
   createModule().then((Module) => {
     console.log("updateEditor() - Module ready");
@@ -233,33 +198,30 @@ async function updateEditor() {
     }
     console.log("Executing kernel");
     AppState.terminal.clear();
-    console.log("Code:\n", AppState.preamble + AppState.editor.getValue());
+    code = AppState.editor.getValue();
+
     AppState.isDispatchReady = false;
     try {
-    promise = AppState.module.evaluate(
-        AppState.preamble + AppState.editor.getValue(),
-        AppState.wgSize,
-        AppState.gridSize,
-      )
-      .catch((error) => {
-        console.error("execution failed", error);
-        AppState.isDispatchReady = true;
-        console.log("dispatch ready");
-        render();
-      })
-      .then((result) => {
-        console.log("check:", result);
-        AppState.checkAnswer = result;
-        AppState.isDispatchReady = true;
-        console.log("dispatch ready");
-        render();
-      })
-      .finally(() => {
-        console.log("finally");
-        AppState.isDispatchReady = true;
-        console.log("dispatch ready");
-      })
-      ;
+      promise = AppState.module
+        .evaluate(code, AppState.puzzleIndex)
+        .catch((error) => {
+          console.error("execution failed", error);
+          AppState.isDispatchReady = true;
+          console.log("dispatch ready");
+          render();
+        })
+        .then((result) => {
+          console.log("check:", result);
+          AppState.checkAnswer = result;
+          AppState.isDispatchReady = true;
+          console.log("dispatch ready");
+          render();
+        })
+        .finally(() => {
+          console.log("finally");
+          AppState.isDispatchReady = true;
+          console.log("dispatch ready");
+        });
     } catch (error) {
       console.error("execution failed 2", error);
       AppState.isDispatchReady = true;
@@ -277,21 +239,50 @@ async function updateEditor() {
   }
 }
 
-function update(event) {
+async function update(event) {
+
+  if (!AppState.isDispatchReady) {
+    await waitForDispatchReady();
+  }
   console.log("Updating");
+  if (event.type == "selectPuzzle") {
+    codeState[AppState.puzzleIndex] = AppState.editor.getValue();
+  }
   if ((event.type === "selectPuzzle") & (event.value === "prev")) {
     AppState.puzzleIndex = AppState.puzzleIndex - 1;
+    if (AppState.puzzleIndex < 0) {
+      AppState.puzzleIndex = PuzzleSpec.length - 1;
+    }
+    if (AppState.puzzleIndex >= PuzzleSpec.length) {
+      AppState.puzzleIndex = 0;
+    }
   }
   if ((event.type === "selectPuzzle") & (event.value === "next")) {
     AppState.puzzleIndex = AppState.puzzleIndex + 1;
+    if (AppState.puzzleIndex < 0) {
+      AppState.puzzleIndex = PuzzleSpec.length - 1;
+    }
+    if (AppState.puzzleIndex >= PuzzleSpec.length) {
+      AppState.puzzleIndex = 0;
+    }
   }
-  if (AppState.puzzleIndex < 0) {
-    AppState.puzzleIndex = PuzzleSpec.length - 1;
+  if (event.type === "init" || event.type === "selectPuzzle") {
+    // Reset editor template code if we are either starting the app for the
+    // first time or picking a new puzzle
+    if (codeState[AppState.puzzleIndex]) {
+      AppState.editor.setValue(codeState[AppState.puzzleIndex]);
+    } else {
+      AppState.editor.setValue(AppState.module.getTemplate(AppState.puzzleIndex));
+    }
+    // reset showSolution when starting a new puzzle
+    AppState.showSolution = false;
   }
-  if (AppState.puzzleIndex >= PuzzleSpec.length) {
-    AppState.puzzleIndex = 0;
+  if (event.type === "clickedSolution") {
+    AppState.showSolution = !AppState.showSolution;
+    console.log("showSolution: ", AppState.showSolution);
   }
-  updateDispatchParams();
+
+
   updateEditor();
   render();
 }
@@ -301,12 +292,18 @@ function update(event) {
 ////////////////////////////////////////
 
 function render() {
-  document.getElementById("preamble").innerHTML = AppState.preamble;
-  // update DIV
+  AppState.terminal.writeln(AppState.wgslStatus);
   console.log("AppState.checkAnswer: ", AppState.checkAnswer);
   document.getElementById("correct").textContent = AppState.checkAnswer
-    ? "Your answer is adequate."
-    : "You are WRONG.";
+    ? "Tests passed!"
+    : "Some tests failed."
+  if (AppState.checkAnswer) {
+    document.getElementById("correct").style.color = "LimeGreen";
+    document.getElementById("correct").style.fontWeight = "bold";
+  } else {
+    document.getElementById("correct").style.color = "red";
+    document.getElementById("correct").style.fontWeight = "bold";
+  }
   document.getElementById("puzzle_name").textContent =
     "Puzzle " +
     (AppState.puzzleIndex + 1) +
@@ -314,4 +311,15 @@ function render() {
     PuzzleSpec[AppState.puzzleIndex].name;
   document.getElementById("puzzle_description").textContent =
     PuzzleSpec[AppState.puzzleIndex].description;
+  if (AppState.showSolution) {
+    document.getElementById("output").style.display = "none";
+    // use puzzleIndex to get markdown
+    document.getElementById("writeup").innerHTML = "<zero-md src=\"/assets/markdown/puzzle" + (AppState.puzzleIndex + 1) + ".md\"></zero-md>";
+    document.getElementById("solution").textContent = "Hide Solution";
+    document.getElementById("writeup").style.display = "block";
+  } else {
+    document.getElementById("output").style.display = "block";
+    document.getElementById("writeup").style.display = "none";
+    document.getElementById("solution").textContent = "Show Solution";
+  }
 }
