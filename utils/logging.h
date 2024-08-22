@@ -97,14 +97,13 @@ namespace gpu
    */
   static Logger kDefLog = {std::cout, kInfo};
 
-  /**
-   * @brief Set the log level of the default logger.
-   * @param level The log level to set.
-   */
-  static inline void setLogLevel(int level)
-  {
-    kDefLog.level = level;
-  }
+/**
+ * @brief Set the log level of the default logger.
+ * @param level The log level to set.
+ */
+static inline void setLogLevel(int level) {
+  kDefLog.level = level;
+}
 
 } // namespace gpu
 
