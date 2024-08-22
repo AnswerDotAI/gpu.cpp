@@ -1,9 +1,9 @@
 CXX=clang++
-GPUCPP ?= $(PWD)/../../..
+GPUCPP ?= $(PWD)/../..
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
-TARGET=tanh
+TARGET=test_kernels
 ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
     STDLIB :=
 else
@@ -21,6 +21,9 @@ run_setup: check-python
 
 build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o ./build/$(TARGET)
+
+debug: run.cpp
+	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET)
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
