@@ -10,15 +10,15 @@ ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/nu
 else
     STDLIB := -stdlib=libc++
 endif
-FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn
+FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldl -ldawn -fexceptions
 
 run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)
 
 # Use clang -v to see the include paths
 # Note in this example optimization is turned on
-build/$(TARGET): run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -o ./build/$(TARGET)
+build/$(TARGET): run.cpp ../../gpu.h
+	mkdir -p build && $(CXX) $(FLAGS) -o $@ $<
 
 watch: 
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }
