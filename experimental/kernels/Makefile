@@ -1,4 +1,5 @@
 CXX=clang++
+CC=clang++
 GPUCPP ?= $(PWD)/../..
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
@@ -9,10 +10,42 @@ ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/nu
 else
     STDLIB := -stdlib=libc++
 endif
-FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn
+
+CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers
+CFLAGS=-Ofast -march=native -I.
+
+LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn
+FLAGS=$(CXXFLAGS) $(LDFLAGS)
+
+ifeq ($(shell [ -d /opt/homebrew/opt/libomp/lib ] && echo "exists"), exists)
+  CFLAGS += -Xclang -fopenmp -DOMP -I/opt/homebrew/opt/libomp/include
+  LDFLAGS += -L/opt/homebrew/opt/libomp/lib -lomp
+  $(info ✓ OpenMP found)
+else
+  $(info ✗ OpenMP not found)
+endif
 
 run: ./build/$(TARGET) dawnlib
 	$(LIBSPEC) && ./build/$(TARGET)
+
+run_llm.c: ./build/test_gpt2 dawnlib
+	$(LIBSPEC) && $<
+
+llm.c:
+	if [ ! -d llm.c ]; then git clone git@github.com:karpathy/llm.c.git ; fi
+
+gpt2_124M.bin: llm.c
+	if [ ! -f $@ ]; then ./llm.c/dev/download_starter_pack.sh ; ln -s ./llm.c/gpt2_124M.bin ; fi
+
+build/test_gpt2: llm.c build/kernels_c.o gpt2_124M.bin
+	mkdir -p build
+	sed -i -e 's/void gelu_forward/void gelu_forward_cpu/g' llm.c/train_gpt2.c
+	sed -i -e 's/void softmax_forward/void softmax_forward_cpu/g' llm.c/train_gpt2.c
+	grep -q "^#include \"kernels_c.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"kernels_c.h\"' llm.c/train_gpt2.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/kernels_c.o
+
+build/kernels_c.o: kernels_c.cpp kernels_c.h kernels.h
+	mkdir -p build && $(CXX) $(CXXFLAGS) -DNDEBUG -c -o $@ $<
 
 dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
 
@@ -20,10 +53,10 @@ run_setup: check-python
 	cd $(GPUCPP) && python3 setup.py
 
 build/$(TARGET): run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o ./build/$(TARGET)
+	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o $@ $<
 
 debug: run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET)
+	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET) $<
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
