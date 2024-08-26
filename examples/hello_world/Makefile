@@ -20,7 +20,7 @@ run_setup: check-python
 	cd $(GPUCPP) && python3 setup.py
 
 build/$(TARGET): run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o ./build/$(TARGET)
+	mkdir -p build && $(CXX) $(FLAGS) -DNO_LOG -o ./build/$(TARGET)
 
 debug: run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET)
