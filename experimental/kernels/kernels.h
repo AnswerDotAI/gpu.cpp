@@ -45,7 +45,6 @@ fn main(
 }
 )";
 
-
 static const char *kTanh = R"(
 @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
@@ -88,6 +87,21 @@ fn main(
 }
 )";
 
+static const char *kShaderResidualBackward = R"(
+@group(0) @binding(0) var<storage, read_write> dout: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> dinp1: array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> dinp2: array<{{precision}}>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+    @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let i: u32 = GlobalInvocationID.x;
+    if (i < arrayLength(&dout)) {
+        dinp1[i] += dout[i];
+        dinp2[i] += dout[i];
+    }
+}
+)";
+  
 /* LayerNorm
  * v1:
  * - No caching mean/std for backwards

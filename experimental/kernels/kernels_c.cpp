@@ -68,27 +68,56 @@ void GELU_FORWARD_GPU(float* out, float* inp, int n) {
   toCPU(ctx, output, out, N * sizeof(float));
 }
 
-void GELU_BACKWARD_GPU(float* dinp, float* inp, float* dout, int n){
-  unsigned long N = static_cast<unsigned long>(n);
+void GELU_BACKWARD_GPU(float* dinp, float* inp, float* dout, int N){
+  unsigned long n = static_cast<unsigned long>(N);
   setLogLevel(kError);
   Context ctx = createContext();
-  Tensor inp_i = createTensor(ctx, Shape{N}, kf32, inp);
-  Tensor dout_i = createTensor(ctx, Shape{N}, kf32, dout);
-  Tensor dinp_o = createTensor(ctx, Shape{N}, kf32);
+  Tensor inp_i = createTensor(ctx, Shape{n}, kf32, inp);
+  Tensor dout_i = createTensor(ctx, Shape{n}, kf32, dout);
+  Tensor dinp_o = createTensor(ctx, Shape{n}, kf32, dinp);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(ctx, {kShaderGeluBackward, 256, kf32},
                            Bindings{inp_i, dout_i, dinp_o},
-                           /* nWorkgroups */ {cdiv(N, 256), 1, 1});
+                           /* nWorkgroups */ {cdiv(n, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
-  toCPU(ctx, dinp_o, dinp, N * sizeof(float));
+  toCPU(ctx, dinp_o, dinp, n * sizeof(float));
 }
 
 void RESIDUAL_FORWARD_GPU(float* out, float* inp1, float* inp2, int N){
+  unsigned long n = static_cast<unsigned long>(N);
+  setLogLevel(kError);
+  Context ctx = createContext();
+  Tensor inp1_i = createTensor(ctx, Shape{n}, kf32, inp1);
+  Tensor inp2_i = createTensor(ctx, Shape{n}, kf32, inp2);
+  Tensor out_o = createTensor(ctx, Shape{n}, kf32);
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = createKernel(ctx, {kShaderResidual, 256, kf32},
+                           Bindings{inp1_i, inp2_i, out_o},
+                           /* nWorkgroups */ {cdiv(n, 256), 1, 1});
+  dispatchKernel(ctx, op, promise);
+  wait(ctx, future);
+  toCPU(ctx, out_o, out, n * sizeof(float));
 }
 
 void RESIDUAL_BACKWARD_GPU(float* dinp1, float* dinp2, float* dout, int N){
+  unsigned long n = static_cast<unsigned long>(N);
+  setLogLevel(kError);
+  Context ctx = createContext();
+  Tensor dout_i = createTensor(ctx, Shape{n}, kf32, dout);
+  Tensor dinp1_o = createTensor(ctx, Shape{n}, kf32, dinp1);
+  Tensor dinp2_o = createTensor(ctx, Shape{n}, kf32, dinp2);
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = createKernel(ctx, {kShaderResidualBackward, 256, kf32},
+                           Bindings{dout_i, dinp1_o, dinp2_o},
+                           /* nWorkgroups */ {cdiv(n, 256), 1, 1});
+  dispatchKernel(ctx, op, promise);
+  wait(ctx, future);
+  toCPU(ctx, dinp1_o, dinp1, n * sizeof(float));
+  toCPU(ctx, dinp2_o, dinp2, n * sizeof(float));
 }
 
 void SOFTMAX_FORWARD_GPU(float* probs, float* logits, int b, int t, int v, int vp) {
