@@ -30,17 +30,32 @@ run: ./build/$(TARGET) dawnlib
 
 run_llm.c: ./build/test_gpt2 dawnlib
 	$(LIBSPEC) && $<
-
 llm.c:
 	if [ ! -d llm.c ]; then git clone git@github.com:karpathy/llm.c.git ; fi
 
 gpt2_124M.bin: llm.c
-	if [ ! -f $@ ]; then ./llm.c/dev/download_starter_pack.sh ; ln -s ./llm.c/gpt2_124M.bin ; fi
+	if [ ! -f $@ ]; then ./llm.c/dev/download_starter_pack.sh ; \
+          ln -s ./llm.c/gpt2_124M.bin ; \
+          ln -s ./llm.c/gpt2_124M_debug_state.bin ; \
+        fi
 
 build/test_gpt2: llm.c build/kernels_c.o gpt2_124M.bin
 	mkdir -p build
-	sed -i -e 's/void gelu_forward/void gelu_forward_cpu/g' llm.c/train_gpt2.c
-	sed -i -e 's/void softmax_forward/void softmax_forward_cpu/g' llm.c/train_gpt2.c
+	sed -i -e 's/void encoder_forward(/void ENCODER_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void layernorm_forward(/void LAYERNORM_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void matmul_forward(/void MATMUL_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void attention_forward(/void ATTENTION_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void gelu_forward(/void GELU_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void residual_forward(/void RESIDUAL_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void softmax_forward(/void SOFTMAX_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void crossentropy_forward(/void CROSSENTROPY_FORWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void encoder_backward(/void ENCODER_BACKWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void layernorm_backward(/void LAYERNORM_BACKWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void matmul_backward(/void MATMUL_BACKWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void attention_backward(/void ATTENTION_BACKWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void gelu_backward(/void GELU_BACKWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void residual_backward(/void RESIDUAL_BACKWARD_CPU(/g' llm.c/train_gpt2.c
+	sed -i -e 's/void crossentropy_softmax_backward(/void CROSSENTROPY_SOFTMAX_BACKWARD_CPU(/g' llm.c/train_gpt2.c
 	grep -q "^#include \"kernels_c.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"kernels_c.h\"' llm.c/train_gpt2.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/kernels_c.o
 

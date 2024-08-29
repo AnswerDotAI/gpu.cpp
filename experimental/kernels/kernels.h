@@ -15,10 +15,32 @@ fn main(
     @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
     let i: u32 = GlobalInvocationID.x;
     if (i < arrayLength(&inp)) {
-        let x: f32 = inp[i];
+        let x: {{precision}} = inp[i];
         // select is more stable for larger values of x
         out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
                   * (x + .044715 * x * x * x))), x, x > 10.0);
+    }
+}
+)";
+
+static const char *kShaderGeluBackward = R"(
+const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
+@group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> dout: array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> dinp: array<{{precision}}>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+    @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
+    let i: u32 = GlobalInvocationID.x;
+    if (i < arrayLength(&inp)) {
+        let x: {{precision}} = inp[i];
+        let cube: {{precision}} = 0.044715f * x * x * x;
+        let tanh_arg: {{precision}} = GELU_SCALING_FACTOR * (x + cube);
+        let tanh_out: {{precision}} = tanh(tanh_arg);
+        let cosh_out: {{precision}} = cosh(tanh_arg);
+        let sech_out: {{precision}} = 1.0f / (cosh_out * cosh_out);
+        let local_grad: {{precision}} = 0.5f * (1.0f + tanh_out) + x * 0.5f * sech_out * GELU_SCALING_FACTOR * (1.0f + 3.0f * 0.044715f * x * x);
+        dinp[i] += local_grad * dout[i];
     }
 }
 )";
