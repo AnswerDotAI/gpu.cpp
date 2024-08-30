@@ -282,17 +282,31 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
     let T : u32 = params.T;
     let C : u32 = params.C;
     let OC : u32 = params.OC;
+    // N == B*T == global_id.x
     let b : u32 = global_id.x / T;
     let t : u32 = global_id.x % T;
-    if (b < B && t < T) {
-        let bt : u32 = b * T + t;
-        for (var o : u32 = 0u; o < OC; o++) {
-            var val : {{precision}} = bias[o];
-            for (var i : u32 = 0u; i < C; i++) {
-                val += inp[bt * C + i] * weight[o * C + i];
-            }
-            out[bt * OC + o] = val;
-        }
+    if (arrayLength(&bias) == 1) {
+      if (b < B && t < T) {
+          let bt : u32 = global_id.x;
+          for (var o : u32 = 0u; o < OC; o++) {
+              var val : {{precision}} = 0;
+              for (var i : u32 = 0u; i < C; i++) {
+                  val += inp[bt * C + i] * weight[o * C + i];
+              }
+              out[bt * OC + o] = val;
+          }
+      }
+    } else {
+      if (b < B && t < T) {
+          let bt : u32 = global_id.x;
+          for (var o : u32 = 0u; o < OC; o++) {
+              var val : {{precision}} = bias[o];
+              for (var i : u32 = 0u; i < C; i++) {
+                  val += inp[bt * C + i] * weight[o * C + i];
+              }
+              out[bt * OC + o] = val;
+          }
+      }
     }
 }
 )";

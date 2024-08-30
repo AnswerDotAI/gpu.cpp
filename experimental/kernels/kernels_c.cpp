@@ -171,15 +171,57 @@ void MATMUL_FORWARD_GPU(float* out,
   unsigned long c = static_cast<unsigned long>(C);
   unsigned long oc = static_cast<unsigned long>(OC);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor inp_t = createTensor(ctx, Shape{b * t * c}, kf32, inp);
-  Tensor weight_t = createTensor(ctx, Shape{oc * c}, kf32, weight);
-  Tensor bias_t = createTensor(ctx, Shape{oc}, kf32, bias);
-  Tensor out_t = createTensor(ctx, Shape{b * t * oc}, kf32);
+  // See https://github.com/google/dawn/blob/a8fbe981a86cb59536e2de423d2013a82d9b54a0/src/dawn/native/Limits.cpp
+  WGPURequiredLimits requiredLimits = {
+    .limits = {
+      .maxTextureDimension1D=8192,
+      .maxTextureDimension2D=8192,
+      .maxTextureDimension3D=2048,
+      .maxTextureArrayLayers=256,
+      .maxBindGroups=4,
+      .maxBindGroupsPlusVertexBuffers=24,
+      .maxBindingsPerBindGroup=1000,
+      .maxDynamicUniformBuffersPerPipelineLayout=8,
+      .maxDynamicStorageBuffersPerPipelineLayout=4,
+      .maxSampledTexturesPerShaderStage=16,
+      .maxSamplersPerShaderStage=16,
+      .maxStorageBuffersPerShaderStage=8,
+      .maxStorageTexturesPerShaderStage=4,
+      .maxUniformBuffersPerShaderStage=12,
+      .maxUniformBufferBindingSize=65536,
+      .maxStorageBufferBindingSize=1073741824,
+      .minUniformBufferOffsetAlignment=256,
+      .minStorageBufferOffsetAlignment=256,
+      .maxVertexBuffers=8,
+      .maxBufferSize=0x80000000,
+      .maxVertexAttributes=16,
+      .maxVertexBufferArrayStride=2048,
+      .maxInterStageShaderComponents=64,
+      .maxInterStageShaderVariables=16,
+      .maxColorAttachments=8,
+      .maxColorAttachmentBytesPerSample=32,
+      .maxComputeWorkgroupStorageSize=16384,
+      .maxComputeInvocationsPerWorkgroup=256,
+      .maxComputeWorkgroupSizeX=256,
+      .maxComputeWorkgroupSizeY=256,
+      .maxComputeWorkgroupSizeZ=64,
+      .maxComputeWorkgroupsPerDimension=65535
+    },
+    .nextInChain = nullptr
+  };
+  Context ctx = createContext({},{},{
+      .requiredLimits = &requiredLimits
+    });
+
+  Tensor inp_i = createTensor(ctx, Shape{b * t * c}, kf32, inp);
+  Tensor weight_i = createTensor(ctx, Shape{oc * c}, kf32, weight);
+  Tensor bias_i = bias == NULL ? createTensor(ctx, Shape{1}, kf32) : createTensor(ctx, Shape{oc}, kf32, bias);
+  Tensor out_o = createTensor(ctx, Shape{b * t * oc}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
+  assert ( (b*t) % 256 == 0 );
   Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
-                           Bindings{inp_t, weight_t, bias_t, out_t},
+                           Bindings{inp_i, weight_i, bias_i, out_o},
                            /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
                            /* params */
                            MatmulParams{
@@ -190,7 +232,7 @@ void MATMUL_FORWARD_GPU(float* out,
                            });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
-  toCPU(ctx, out_t, out, b * t * oc * sizeof(float));
+  toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
 }
 
 void MATMUL_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
