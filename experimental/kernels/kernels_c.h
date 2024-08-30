@@ -4,8 +4,7 @@ extern "C" {
 
 // --  USE_GPU_FOR_* are the GPU/CPU switching flags for the kernels in llm.c. --
 
-// --  Note: Binding size (154389504) of encoder-Buffer is larger than the maximum binding size (134217728).
-// #define USE_GPU_FOR_ENCODER_FORWARD 1
+#define USE_GPU_FOR_ENCODER_FORWARD 1
 // #define USE_GPU_FOR_ENCODER_BACKWARD 1
 #define USE_GPU_FOR_LAYERNORM_FORWARD 1
 // --  Note: atomicAdd should be used with i32 or u32 not f32.

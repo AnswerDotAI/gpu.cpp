@@ -12,6 +12,45 @@ using namespace gpu; // createContext, createTensor, createKernel,
 
 #define VOCAB_SIZE 50257
 
+// See https://github.com/google/dawn/blob/a8fbe981a86cb59536e2de423d2013a82d9b54a0/src/dawn/native/Limits.cpp
+#define LIMITS_BUFFER_SIZE_1GB { \
+    .limits = { \
+      .maxTextureDimension1D=8192, \
+      .maxTextureDimension2D=8192, \
+      .maxTextureDimension3D=2048, \
+      .maxTextureArrayLayers=256, \
+      .maxBindGroups=4, \
+      .maxBindGroupsPlusVertexBuffers=24, \
+      .maxBindingsPerBindGroup=1000, \
+      .maxDynamicUniformBuffersPerPipelineLayout=8, \
+      .maxDynamicStorageBuffersPerPipelineLayout=4, \
+      .maxSampledTexturesPerShaderStage=16, \
+      .maxSamplersPerShaderStage=16, \
+      .maxStorageBuffersPerShaderStage=8, \
+      .maxStorageTexturesPerShaderStage=4, \
+      .maxUniformBuffersPerShaderStage=12, \
+      .maxUniformBufferBindingSize=65536, \
+      .maxStorageBufferBindingSize=1073741824, \
+      .minUniformBufferOffsetAlignment=256, \
+      .minStorageBufferOffsetAlignment=256, \
+      .maxVertexBuffers=8, \
+      .maxBufferSize=0x80000000, \
+      .maxVertexAttributes=16, \
+      .maxVertexBufferArrayStride=2048, \
+      .maxInterStageShaderComponents=64, \
+      .maxInterStageShaderVariables=16, \
+      .maxColorAttachments=8, \
+      .maxColorAttachmentBytesPerSample=32, \
+      .maxComputeWorkgroupStorageSize=16384, \
+      .maxComputeInvocationsPerWorkgroup=256, \
+      .maxComputeWorkgroupSizeX=256, \
+      .maxComputeWorkgroupSizeY=256, \
+      .maxComputeWorkgroupSizeZ=64, \
+      .maxComputeWorkgroupsPerDimension=65535 \
+    }, \
+    .nextInChain = nullptr \
+  }
+
 void ENCODER_FORWARD_GPU(float* out,
                          int* inp, float* wte, float* wpe,
                          int B, int T, int C){
@@ -25,7 +64,10 @@ void ENCODER_FORWARD_GPU(float* out,
     uint32_t C;
   };
   setLogLevel(kError);
-  Context ctx = createContext();
+  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
+  Context ctx = createContext({},{},{
+      .requiredLimits = &requiredLimits
+    });
   Tensor input = createTensor(ctx, Shape{b * t}, ki32, inp);
   Tensor wte_t = createTensor(ctx, Shape{v, c}, kf32, wte);
   Tensor wpe_t = createTensor(ctx, Shape{t, c}, kf32, wpe);
@@ -59,7 +101,10 @@ void ENCODER_BACKWARD_GPU(float* dwte, float* dwpe,
     uint32_t C;
   };
   setLogLevel(kError);
-  Context ctx = createContext();
+  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
+  Context ctx = createContext({},{},{
+      .requiredLimits = &requiredLimits
+    });
   Tensor dwte_t = createTensor(ctx, Shape{v, c}, kf32, dwte);
   Tensor dwpe_t = createTensor(ctx, Shape{t, c}, kf32, dwpe);
   Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32, dout);
@@ -171,44 +216,7 @@ void MATMUL_FORWARD_GPU(float* out,
   unsigned long c = static_cast<unsigned long>(C);
   unsigned long oc = static_cast<unsigned long>(OC);
   setLogLevel(kError);
-  // See https://github.com/google/dawn/blob/a8fbe981a86cb59536e2de423d2013a82d9b54a0/src/dawn/native/Limits.cpp
-  WGPURequiredLimits requiredLimits = {
-    .limits = {
-      .maxTextureDimension1D=8192,
-      .maxTextureDimension2D=8192,
-      .maxTextureDimension3D=2048,
-      .maxTextureArrayLayers=256,
-      .maxBindGroups=4,
-      .maxBindGroupsPlusVertexBuffers=24,
-      .maxBindingsPerBindGroup=1000,
-      .maxDynamicUniformBuffersPerPipelineLayout=8,
-      .maxDynamicStorageBuffersPerPipelineLayout=4,
-      .maxSampledTexturesPerShaderStage=16,
-      .maxSamplersPerShaderStage=16,
-      .maxStorageBuffersPerShaderStage=8,
-      .maxStorageTexturesPerShaderStage=4,
-      .maxUniformBuffersPerShaderStage=12,
-      .maxUniformBufferBindingSize=65536,
-      .maxStorageBufferBindingSize=1073741824,
-      .minUniformBufferOffsetAlignment=256,
-      .minStorageBufferOffsetAlignment=256,
-      .maxVertexBuffers=8,
-      .maxBufferSize=0x80000000,
-      .maxVertexAttributes=16,
-      .maxVertexBufferArrayStride=2048,
-      .maxInterStageShaderComponents=64,
-      .maxInterStageShaderVariables=16,
-      .maxColorAttachments=8,
-      .maxColorAttachmentBytesPerSample=32,
-      .maxComputeWorkgroupStorageSize=16384,
-      .maxComputeInvocationsPerWorkgroup=256,
-      .maxComputeWorkgroupSizeX=256,
-      .maxComputeWorkgroupSizeY=256,
-      .maxComputeWorkgroupSizeZ=64,
-      .maxComputeWorkgroupsPerDimension=65535
-    },
-    .nextInChain = nullptr
-  };
+  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
   Context ctx = createContext({},{},{
       .requiredLimits = &requiredLimits
     });
@@ -249,7 +257,10 @@ void MATMUL_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
   unsigned long c = static_cast<unsigned long>(C);
   unsigned long oc = static_cast<unsigned long>(OC);
   setLogLevel(kError);
-  Context ctx = createContext();
+  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
+  Context ctx = createContext({},{},{
+      .requiredLimits = &requiredLimits
+    });
   Tensor dinp_t = createTensor(ctx, Shape{b * t * c}, kf32, dinp);
   Tensor dweight_t = createTensor(ctx, Shape{oc * c}, kf32, dweight);
   Tensor dbias_t = createTensor(ctx, Shape{oc}, kf32, dbias);
