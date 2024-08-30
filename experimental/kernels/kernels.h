@@ -39,7 +39,7 @@ fn main(
         let tanh_out: {{precision}} = tanh(tanh_arg);
         let cosh_out: {{precision}} = cosh(tanh_arg);
         let sech_out: {{precision}} = 1.0f / (cosh_out * cosh_out);
-        let local_grad: {{precision}} = 0.5f * (1.0f + tanh_out) + x * 0.5f * sech_out * GELU_SCALING_FACTOR * (1.0f + 3.0f * 0.044715f * x * x);
+        let local_grad: {{precision}} = select(0.5f * (1.0f + tanh_out), 1, x > 10.0) + x * 0.5f * sech_out * GELU_SCALING_FACTOR * (1.0f + 3.0f * 0.044715f * x * x);
         dinp[i] += local_grad * dout[i];
     }
 }
