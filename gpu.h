@@ -190,7 +190,8 @@ struct TensorPool {
 
 enum NumType {
   kf16, // (experimental)
-  kf32
+  kf32,
+  ki32
 };
 
 /**
@@ -202,6 +203,8 @@ inline size_t sizeBytes(const NumType &type) {
     return sizeof(uint16_t);
   case kf32:
     return sizeof(float);
+  case ki32:
+    return sizeof(int32_t);
   default:
     LOG(kDefLog, kError, "Invalid NumType in size calculation.");
     return 0;
@@ -217,6 +220,8 @@ inline std::string toString(NumType type) {
     return "f16";
   case kf32:
     return "f32";
+  case ki32:
+    return "i32";
   default:
     LOG(kDefLog, kError, "Invalid NumType in string conversion.");
     return "unknown";
@@ -626,6 +631,18 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype) {
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
                            const float *data) {
   assert(dtype == kf32);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const int32_t *data) {
+  assert(dtype == ki32);
   Tensor tensor =
       createTensor(ctx.pool, ctx.device, shape, dtype,
                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
