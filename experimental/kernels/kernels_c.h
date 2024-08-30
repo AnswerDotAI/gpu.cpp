@@ -4,13 +4,15 @@ extern "C" {
 
 // --  USE_GPU_FOR_* are the GPU/CPU switching flags for the kernels in llm.c. --
 
+// --  Note: Binding size (154389504) of encoder-Buffer is larger than the maximum binding size (134217728).
 // #define USE_GPU_FOR_ENCODER_FORWARD 1
 // #define USE_GPU_FOR_ENCODER_BACKWARD 1
-// #define USE_GPU_FOR_LAYERNORM_FORWARD 1
+#define USE_GPU_FOR_LAYERNORM_FORWARD 1
+// --  Note: atomicAdd should be used with i32 or u32 not f32.
 // #define USE_GPU_FOR_LAYERNORM_BACKWARD 1
 // #define USE_GPU_FOR_MATMUL_FORWARD 1
 // #define USE_GPU_FOR_MATMUL_BACKWARD 1
-// #define USE_GPU_FOR_ATTENTION_FORWARD 1
+#define USE_GPU_FOR_ATTENTION_FORWARD 1
 // #define USE_GPU_FOR_ATTENTION_BACKWARD 1
 #define USE_GPU_FOR_GELU_FORWARD 1
 #define USE_GPU_FOR_GELU_BACKWARD 1
@@ -18,7 +20,7 @@ extern "C" {
 #define USE_GPU_FOR_RESIDUAL_BACKWARD 1
 // --  Note: softmax_forward_gpu is implemented, but there are some mismatches when enabled. --
 // #define USE_GPU_FOR_SOFTMAX_FORWARD 1
-// #define USE_GPU_FOR_CROSSENTROPY_FORWARD 1
+#define USE_GPU_FOR_CROSSENTROPY_FORWARD 1
 // #define USE_GPU_FOR_CROSSENTROPY_SOFTMAX_BACKWARD 1
 
 
