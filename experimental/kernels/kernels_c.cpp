@@ -379,25 +379,28 @@ void RESIDUAL_BACKWARD_GPU(float* dinp1, float* dinp2, float* dout, int N){
   toCPU(ctx, dinp2_o, dinp2, n * sizeof(float));
 }
 
-void SOFTMAX_FORWARD_GPU(float* probs, float* logits, int b, int t, int v, int vp) {
+void SOFTMAX_FORWARD_GPU(float* probs, float* logits, int B, int T, int V, int Vp) {
   struct SoftmaxParam {
     uint32_t N;
     uint32_t C;
+    uint32_t Cp;
   };
-  uint32_t B = static_cast<uint32_t>(b);
-  uint32_t T = static_cast<uint32_t>(t);
-  uint32_t C = static_cast<uint32_t>(v);
+  uint32_t b = static_cast<uint32_t>(B);
+  uint32_t t = static_cast<uint32_t>(T);
+  uint32_t c = static_cast<uint32_t>(V);
+  uint32_t cp = static_cast<uint32_t>(Vp);
   Context ctx = createContext();
-  Tensor input = createTensor(ctx, {B * T, C}, kf32, logits);
-  Tensor output = createTensor(ctx, {B * T, C}, kf32);
+  Tensor input = createTensor(ctx, {b * t, cp}, kf32, logits);
+  Tensor output = createTensor(ctx, {b * t, cp}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
+  assert( (B*T) % 256 == 0);
   Kernel op = createKernel(
       ctx, {kShaderSoftmax1, 256, kf32}, Bindings{input, output},
-      Shape{cdiv(B * T, 256), 1, 1}, SoftmaxParam{B * T, C});
+      Shape{cdiv(B * T, 256), 1, 1}, SoftmaxParam{b * t, c, cp});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
-  toCPU(ctx, output, probs, sizeof(float)*B*T*C);
+  toCPU(ctx, output, probs, sizeof(float)*b*t*cp);
 }
 
 void CROSSENTROPY_FORWARD_GPU(float* losses,

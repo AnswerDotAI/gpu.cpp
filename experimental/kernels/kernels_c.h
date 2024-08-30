@@ -18,8 +18,7 @@ extern "C" {
 #define USE_GPU_FOR_GELU_BACKWARD 1
 #define USE_GPU_FOR_RESIDUAL_FORWARD 1
 #define USE_GPU_FOR_RESIDUAL_BACKWARD 1
-// --  Note: softmax_forward_gpu is implemented, but there are some mismatches when enabled. --
-// #define USE_GPU_FOR_SOFTMAX_FORWARD 1
+#define USE_GPU_FOR_SOFTMAX_FORWARD 1
 #define USE_GPU_FOR_CROSSENTROPY_FORWARD 1
 // #define USE_GPU_FOR_CROSSENTROPY_SOFTMAX_BACKWARD 1
 

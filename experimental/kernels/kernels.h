@@ -165,15 +165,17 @@ static const char *kShaderSoftmax1 = R"(
 struct Params {
     N: u32,
     C: u32,
+    Cp: u32,
 };
 const NEG_INFINITY: f32 = -3.0e38; // WGSL has problem representing -3.4028235e+38
 @compute @workgroup_size({{workgroupSize}})
 fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
     let N : u32 = params.N;
     let C : u32 = params.C;
+    let Cp : u32 = params.Cp;
     let i : u32 = global_id.x;
     if (i < N) {
-        let inp_row_start : u32 = i * C;
+        let inp_row_start : u32 = i * Cp;
         var maxval : f32 = NEG_INFINITY;
         // Find the maximum value in the row
         for (var j : u32 = 0u; j < C; j++) {
@@ -193,6 +195,9 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
         let norm : f32 = 1.0f / sum;
         for (var j : u32 = 0u; j < C; j++) {
             out[inp_row_start + j] /= sum;
+        }
+        for (var j : u32 = C; j < Cp; j++) {
+            out[inp_row_start + j] = 0;
         }
     }
 }
