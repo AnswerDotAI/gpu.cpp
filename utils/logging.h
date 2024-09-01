@@ -59,15 +59,17 @@ namespace gpu
     if (level <= logger.level)
     {
       va_list args;
+      va_list args2;
       va_start(args, message);
+      va_copy(args2, args);
 
       int size = vsnprintf(nullptr, 0, message, args) + 1;
       std::unique_ptr<char[]> buffer(new char[size]);
 
 #ifdef _WIN32
-      _vsnprintf_s(buffer.get(), size, _TRUNCATE, message, args);
+      _vsnprintf_s(buffer.get(), size, _TRUNCATE, message, args2);
 #else
-      vsnprintf(buffer.get(), size, message, args);
+      vsnprintf(buffer.get(), size, message, args2);
 #endif
 
       // Brackets and messages are white.
@@ -77,6 +79,7 @@ namespace gpu
       logger.stream << buffer.get();
       logger.stream << reset << std::endl;
       va_end(args);
+      va_end(args2);
     }
   }
 #else
