@@ -1,5 +1,5 @@
 # Specify the filename to search for
-set(FILENAME "gpu.h")
+set(FILENAME "gpu.hpp")
 
 get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
 get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)

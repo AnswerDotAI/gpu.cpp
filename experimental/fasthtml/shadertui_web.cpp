@@ -1,4 +1,3 @@
-#include "gpu.h"
 #include <array>
 #include <cstdio>
 #include <emscripten/emscripten.h>
@@ -7,6 +6,7 @@
 #include <string>
 #include <algorithm>
 
+#include "gpu.hpp"
 using namespace gpu;
 
 static constexpr size_t kRows = 64;

@@ -1,6 +1,6 @@
-#include "gpu.h"
-#include "utils/array_utils.h"
-#include "utils/logging.h"
+#include "gpu.hpp"
+#include "utils/array_utils.hpp"
+#include "utils/logging.hpp"
 #include <array>
 
 #include "llmc/reference_impls.h"

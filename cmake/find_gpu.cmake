@@ -1,5 +1,5 @@
 # file name to find
-set(FILENAME "gpu.h")
+set(FILENAME "gpu.hpp")
 
 # Function to check for file existence up the directory hierarchy
 function(find_project_root current_dir filename result_var)

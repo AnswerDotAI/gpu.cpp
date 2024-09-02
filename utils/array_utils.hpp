@@ -1,5 +1,5 @@
 /*
- * array_utils.h
+ * array_utils.hpp
  *
  * This file contains utility functions for working with arrays. These are
  * mostly convenience functions for setting up and inspecting data for testing.
@@ -19,8 +19,8 @@
 #include <string>
 #include <utility>
 
-#include "utils/logging.h"
-#include "numeric_types/half.h"
+#include "utils/logging.hpp"
+#include "numeric_types/half.hpp"
 
 namespace gpu {
 

@@ -1,4 +1,3 @@
-#include "gpu.h"
 #include <array>
 #include <cstdio>
 #include <fstream>
@@ -7,8 +6,9 @@
 #include <string>
 #include <thread>
 
-#include "utils/array_utils.h"
-#include "utils/logging.h"
+#include "gpu.hpp"
+#include "utils/array_utils.hpp"
+#include "utils/logging.hpp"
 
 using namespace gpu;
 

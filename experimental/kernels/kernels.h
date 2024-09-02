@@ -1,7 +1,7 @@
 #ifndef KERNELS_H
 #define KERNELS_H
 
-#include "gpu.h"
+#include "gpu.hpp"
 
 namespace gpu {
 

@@ -2,8 +2,8 @@
 #include <cstdio>
 #include <future>
 #include <memory>
-#include "gpu.h"
 
+#include "gpu.hpp"
 #include "emscripten/emscripten.h"
 
 using namespace gpu; // createContext, createTensor, createKernel,

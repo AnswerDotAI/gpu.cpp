@@ -3,8 +3,8 @@
  * https://github.com/srush/GPU-Puzzles
  */
 
-#include "gpu.h"
-#include "utils/array_utils.h"
+#include "gpu.hpp"
+#include "utils/array_utils.hpp"
 #include <array>
 #include <cstdio>
 #include <future>

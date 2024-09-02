@@ -98,7 +98,7 @@ Here's a GELU kernel implemented (based on the CUDA implementation in [llm.c](ht
 #include <cstdio>
 #include <future>
 
-#include "gpu.h"
+#include "gpu.hpp"
 
 using namespace gpu; // createContext, createTensor, createKernel,
                      // dispatchKernel, wait, toCPU Bindings,

@@ -2,7 +2,7 @@
 #include <cmath>
 #include <cstdio>
 
-#include "gpu.h"
+#include "gpu.hpp"
 #include "portaudio.h"
 
 #define SAMPLE_RATE (44100)
