@@ -4,7 +4,7 @@
 #include <future>
 
 #include "kernels.h"
-#include "kernels_c.h"
+#include "unittest_llmc/unittest_kernels.h"
 
 using namespace gpu; // createContext, createTensor, createKernel,
                      // createShader, dispatchKernel, wait, toCPU

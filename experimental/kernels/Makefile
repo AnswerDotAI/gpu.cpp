@@ -11,8 +11,8 @@ else
     STDLIB := -stdlib=libc++
 endif
 
-CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers
-CFLAGS=-Ofast -march=native -I.
+CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
+CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
 
 LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn
 FLAGS=$(CXXFLAGS) $(LDFLAGS)
@@ -39,7 +39,7 @@ gpt2_124M.bin: llm.c
           ln -s ./llm.c/gpt2_124M_debug_state.bin ; \
         fi
 
-build/test_gpt2: llm.c build/kernels_c.o gpt2_124M.bin
+build/test_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	mkdir -p build
 	sed -i -e 's/void encoder_forward(/void ENCODER_FORWARD_CPU(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void layernorm_forward(/void LAYERNORM_FORWARD_CPU(/g' llm.c/train_gpt2.c
@@ -56,10 +56,10 @@ build/test_gpt2: llm.c build/kernels_c.o gpt2_124M.bin
 	sed -i -e 's/void gelu_backward(/void GELU_BACKWARD_CPU(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void residual_backward(/void RESIDUAL_BACKWARD_CPU(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void crossentropy_softmax_backward(/void CROSSENTROPY_SOFTMAX_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	grep -q "^#include \"kernels_c.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"kernels_c.h\"' llm.c/train_gpt2.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/kernels_c.o
+	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"unittest_kernels.h\"' llm.c/train_gpt2.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/unittest_kernels.o
 
-build/kernels_c.o: kernels_c.cpp kernels_c.h kernels.h
+build/unittest_kernels.o: unittest_llmc/unittest_kernels.cpp unittest_llmc/unittest_kernels.h kernels.h
 	mkdir -p build && $(CXX) $(CXXFLAGS) -DNDEBUG -c -o $@ $<
 
 dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
