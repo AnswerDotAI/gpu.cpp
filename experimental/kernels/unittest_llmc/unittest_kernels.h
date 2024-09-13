@@ -10,7 +10,7 @@ extern "C" {
 // --  Note: atomicAdd should be used with i32 or u32 not f32.
 // #define USE_GPU_FOR_LAYERNORM_BACKWARD 1
 // --  Note: matmul_forward kernel works, but it is too slow.
-#define USE_GPU_FOR_MATMUL_FORWARD 1
+// #define USE_GPU_FOR_MATMUL_FORWARD 1
 // #define USE_GPU_FOR_MATMUL_BACKWARD 1
 #define USE_GPU_FOR_ATTENTION_FORWARD 1
 // #define USE_GPU_FOR_ATTENTION_BACKWARD 1
@@ -20,7 +20,7 @@ extern "C" {
 #define USE_GPU_FOR_RESIDUAL_BACKWARD 1
 #define USE_GPU_FOR_SOFTMAX_FORWARD 1
 #define USE_GPU_FOR_CROSSENTROPY_FORWARD 1
-// #define USE_GPU_FOR_CROSSENTROPY_SOFTMAX_BACKWARD 1
+#define USE_GPU_FOR_CROSSENTROPY_SOFTMAX_BACKWARD 1
 
 
 #ifdef USE_GPU_FOR_ENCODER_FORWARD

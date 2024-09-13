@@ -243,6 +243,7 @@ struct Params {
     T: u32,
     C: u32,
 };
+
 @compute @workgroup_size({{workgroupSize}})
 fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
     let B : u32 = params.B;
@@ -257,6 +258,34 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
             let d : {{precision}} = dout[dout_bt + i];
             atomicAdd(&dwte[ix * C + i], d);
             atomicAdd(&dwpe[t * C + i], d);
+        }
+    }
+}
+)";
+
+static const char *kShaderEncoderBackwardDwpe = R"(
+@group(0) @binding(0) var<storage, read_write> dwte : array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> dwpe : array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> dout : array<{{precision}}>;
+@group(0) @binding(3) var<storage, read_write> inp : array<i32>;
+@group(0) @binding(4) var<uniform> params : Params;
+struct Params {
+    B: u32,
+    T: u32,
+    C: u32,
+};
+
+@compute @workgroup_size({{workgroupSize}})
+fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+    let B : u32 = params.B;
+    let T : u32 = params.T;
+    let C : u32 = params.C;
+    let t : u32 = global_id.x / C;
+    let c : u32 = global_id.x % C;
+    if (t < T && c < C) {
+        for (var b : u32 = 0u; b < B; b++) {
+            let dout_bt : u32 = b * T * C + t * C;
+            dwpe[t * C + i] += dout[dout_bt + i];
         }
     }
 }
@@ -677,7 +706,7 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
         for (var i : u32 = 0u; i < V; i++) {
             let p : {{precision}} = probs[probs_bt + i];
             let indicator : {{precision}} = select(0.0, 1.0, i == ix);
-            atomicAdd(&dlogits[dlogits_bt + i], (p - indicator) * dloss);
+            dlogits[dlogits_bt + i] += (p - indicator) * dloss;
         }
     }
 }

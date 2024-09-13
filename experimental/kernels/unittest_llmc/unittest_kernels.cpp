@@ -126,6 +126,44 @@ void ENCODER_BACKWARD_GPU(float* dwte, float* dwpe,
   toCPU(ctx, dwpe_t, dwpe, t * c * sizeof(float));
 }
 
+void encoder_backward_dwpe_gpu(float* dwte, float* dwpe,
+                               float* dout, int* inp,
+                               int B, int T, int C){
+  unsigned long b = static_cast<unsigned long>(B);
+  unsigned long t = static_cast<unsigned long>(T);
+  unsigned long c = static_cast<unsigned long>(C);
+  unsigned long v = VOCAB_SIZE;
+  struct EncoderParams {
+    uint32_t B;
+    uint32_t T;
+    uint32_t C;
+  };
+  setLogLevel(kError);
+  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
+  Context ctx = createContext({},{},{
+      .requiredLimits = &requiredLimits
+    });
+  Tensor dwte_t = createTensor(ctx, Shape{v, c}, kf32, dwte);
+  Tensor dwpe_t = createTensor(ctx, Shape{t, c}, kf32, dwpe);
+  Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32, dout);
+  Tensor input = createTensor(ctx, Shape{b * t}, ki32, inp);
+  std::promise<void> promise;
+  std::future<void> future = promise.get_future();
+  Kernel op = createKernel(ctx, {kShaderEncoderBackwardDwpe, 256, kf32},
+                           Bindings{dwte_t, dwpe_t, dout_t, input},
+                           /* nWorkgroups */ {cdiv(t * c, 256), 1, 1},
+                           /* params */
+                           EncoderParams{
+                             static_cast<uint32_t>(b),
+                             static_cast<uint32_t>(t),
+                             static_cast<uint32_t>(c)
+                           });
+  dispatchKernel(ctx, op, promise);
+  wait(ctx, future);
+  toCPU(ctx, dwte_t, dwte, v * c * sizeof(float));
+  toCPU(ctx, dwpe_t, dwpe, t * c * sizeof(float));
+}
+
 void LAYERNORM_FORWARD_GPU(float* out, float* mean, float* rstd,
                            float* inp, float* weight, float* bias,
                            int B, int T, int C){
