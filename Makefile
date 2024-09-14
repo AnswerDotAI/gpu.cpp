@@ -16,7 +16,7 @@ endif
 default: examples/hello_world/build/hello_world
 
 pch:
-	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -x c++-header gpu.h -o build/gpu.h.pch
+	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -x c++-header gpu.hpp -o build/gpu.hpp.pch
 
 # TODO(avh): change extension based on platform
 lib:
@@ -85,7 +85,7 @@ clean:
 	rm -rf examples/render/build/*
 	rm -rf examples/shadertui/build/*
 	rm -rf examples/transpose/build/transpose
-	rm -f build/gpu.h.pch
+	rm -f build/gpu.hpp.pch
 	rm -f build/libgpucpp.so
 	rm -f build/half
 

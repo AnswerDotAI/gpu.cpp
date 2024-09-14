@@ -2,8 +2,8 @@
 #include <cstdio>
 #include <future>
 
-#include "gpu.h"
-#include "numeric_types/half.h"
+#include "gpu.hpp"
+#include "numeric_types/half.hpp"
 
 using namespace gpu; // createContext, createTensor, createKernel,
                      // createShader, dispatchKernel, wait, toCPU

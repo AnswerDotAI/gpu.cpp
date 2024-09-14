@@ -1,4 +1,4 @@
-#include "gpu.h"
+#include "gpu.hpp"
 #include <array>
 #include <cstdio>
 #include <future>

@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "gpu.h"
-#include "numeric_types/half.h"
+#include "gpu.hpp"
+#include "numeric_types/half.hpp"
 
 using namespace gpu;
 using std::isinf;

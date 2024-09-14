@@ -1,5 +1,5 @@
-#ifndef GPU_H
-#define GPU_H
+#ifndef GPU_HPP
+#define GPU_HPP
 
 #include <array>
 #include <cassert>
@@ -17,8 +17,8 @@
 
 #include "webgpu/webgpu.h"
 
-#include "numeric_types/half.h"
-#include "utils/logging.h"
+#include "numeric_types/half.hpp"
+#include "utils/logging.hpp"
 
 #ifdef __EMSCRIPTEN__
 #include "emscripten/emscripten.h"

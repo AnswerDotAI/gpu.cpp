@@ -3,7 +3,7 @@
 
 #include <string>
 #include <regex>
-#include "utils/logging.h"        // LOG
+#include "utils/logging.hpp"        // LOG
 
 namespace gpu {
 

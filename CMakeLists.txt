@@ -42,7 +42,7 @@ message(
         "Include directories for wgpu: ${CMAKE_CURRENT_SOURCE_DIR}/third_party/headers"
 )
 
-add_library(gpud SHARED gpu.h)
+add_library(gpud SHARED gpu.hpp)
 set_target_properties(gpud PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(gpud PRIVATE wgpu)
 target_link_libraries(gpud PRIVATE webgpu)

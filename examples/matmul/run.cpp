@@ -4,14 +4,14 @@
 #include <random>
 #include <cstdlib>
 
-#include "gpu.h" // createContext, createTensor, createKernel, dispatchKernel,
-                 // wait, resetCommandBuffer, toCPU
+#include "gpu.hpp" // createContext, createTensor, createKernel, dispatchKernel,
+                   // wait, resetCommandBuffer, toCPU
 
-#include "llmc/reference_impls.h" // for CPU reference implementation
-#include "utils/array_utils.h"    // show, isclose, randn, randint
-#include "utils/logging.h"        // LOG
-#include "experimental/wgsl.h"    // loopUnrolling
-#include "numeric_types/half.h"
+#include "llmc/reference_impls.h"   // for CPU reference implementation
+#include "utils/array_utils.hpp"    // show, isclose, randn, randint
+#include "utils/logging.hpp"        // LOG
+#include "experimental/wgsl.h"      // loopUnrolling
+#include "numeric_types/half.hpp"
 
 using namespace gpu;
 

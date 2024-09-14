@@ -1,10 +1,11 @@
-#include "gpu.h"
 #include <array>
 #include <cstdio>
 #include <emscripten/emscripten.h>
 #include <future>
 #include <memory>
 #include <string>
+
+#include "gpu.hpp"
 
 using namespace gpu;
 

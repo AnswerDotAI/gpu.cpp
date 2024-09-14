@@ -5,7 +5,7 @@
 #include <thread>
 
 #include "experimental/tui.h" // rasterize
-#include "gpu.h"
+#include "gpu.hpp"
 
 using namespace gpu;
 

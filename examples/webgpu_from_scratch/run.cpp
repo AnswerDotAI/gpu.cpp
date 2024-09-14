@@ -1,8 +1,8 @@
-#include "spdlog/spdlog.h"
-#include "webgpu/webgpu.h"
 #include <array>
 #include <future>
 
+#include "webgpu/webgpu.h"
+#include "spdlog/spdlog.h"
 /*
  * Approximate GELU kernel definition, implemented as a WGSL.
  * In general GPU device code for WEBGPU is written in the WGSL domain specific
@@ -50,7 +50,7 @@ inline void check(bool condition, const char *message,
 
 /*
  * Convenience function to display the first few elements of an array. A more
- * robust/extensive version of this is in array_utils.h this is minimal to keep
+ * robust/extensive version of this is in array_utils.hpp this is minimal to keep
  * this example self-contained.
  *
  * @param a: The array to show.

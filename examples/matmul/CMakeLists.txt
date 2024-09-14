@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(matmul)
 
-set(FILENAME "gpu.h")
+set(FILENAME "gpu.hpp")
 
 get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
 get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
