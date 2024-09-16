@@ -65,10 +65,12 @@ void testSoftmax(Context &ctx) {
   struct SoftmaxParam {
     uint32_t N;
     uint32_t C;
+    uint32_t Cp;
   };
   static constexpr size_t B = 6;    // batch size
   static constexpr size_t T = 8;    // token index
   static constexpr size_t C = 3072; // input channels
+  static constexpr size_t Cp = 3072; // input channels with padding
   std::array<float, B * T * C> inputArr;
   std::array<float, B * T * C> outputArr;
   std::mt19937 gen(31415);
@@ -79,7 +81,7 @@ void testSoftmax(Context &ctx) {
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(
       ctx, {kShaderSoftmax1, 256, kf32}, Bindings{input, output},
-      Shape{cdiv(B * T, 256), 1, 1}, SoftmaxParam{B * T, C});
+      Shape{cdiv(B * T, 256), 1, 1}, SoftmaxParam{B * T, C, Cp});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
