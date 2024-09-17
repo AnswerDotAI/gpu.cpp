@@ -2,3 +2,6 @@
 	path = third_party/local/WebGPU-distribution
 	url = https://github.com/eliemichel/WebGPU-distribution.git
 	branch = dawn
+[submodule "third_party/llm.c"]
+	path = third_party/llm.c
+	url = https://github.com/karpathy/llm.c
