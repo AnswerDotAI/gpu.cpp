@@ -43,7 +43,8 @@ gpt2_124M.bin: llm.c
 	if [ ! -f $@ ]; then ./llm.c/dev/download_starter_pack.sh ; \
           ln -s ./llm.c/gpt2_124M.bin ; \
           ln -s ./llm.c/gpt2_124M_debug_state.bin ; \
-        fi
+					ln -s ./llm.c/gpt2_tokenizer.bin ; \
+	fi
 
 build/test_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	mkdir -p build
@@ -62,7 +63,8 @@ build/test_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	sed -i -e 's/void gelu_backward(/void GELU_BACKWARD_CPU(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void residual_backward(/void RESIDUAL_BACKWARD_CPU(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void crossentropy_softmax_backward(/void CROSSENTROPY_SOFTMAX_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"unittest_kernels.h\"' llm.c/train_gpt2.c
+	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || \
+		printf '1i\n#include "unittest_kernels.h"\n.\nw\nq\n' | ed -s llm.c/train_gpt2.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/unittest_kernels.o
 
 build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
