@@ -677,7 +677,7 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
         for (var i : u32 = 0u; i < V; i++) {
             let p : {{precision}} = probs[probs_bt + i];
             let indicator : {{precision}} = select(0.0, 1.0, i == ix);
-            atomicAdd(&dlogits[dlogits_bt + i], (p - indicator) * dloss);
+            dlogits[dlogits_bt + i] += (p - indicator) * dloss;
         }
     }
 }
