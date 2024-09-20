@@ -11,6 +11,7 @@ else
     STDLIB := -stdlib=libc++
 endif
 
+EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s ASYNCIFY=1 -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
 CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
 
@@ -87,6 +88,47 @@ build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"unittest_kernels.h\"' llm.c/train_gpt2.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o
 
+build/test_gpt2.html: check-emsdk run.cpp term.html build/test_gpt2
+	em++ llm.c/test_gpt2.c unittest_llmc/unittest_kernels.cpp \
+		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
+		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
+		--preload-file gpt2_124M_debug_state.bin@/gpt2_124M_debug_state.bin \
+		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_train.bin@dev/data/tinyshakespeare/tiny_shakespeare_train.bin \
+		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_val.bin@dev/data/tinyshakespeare/tiny_shakespeare_val.bin \
+		-o build/test_gpt2.html \
+		$(EMFLAGS) \
+		--shell-file term.html \
+
+build/train_gpt2.html: check-emsdk run.cpp term.html build/train_gpt2
+	em++ llm.c/train_gpt2.c unittest_llmc/unittest_kernels.cpp \
+		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
+		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
+		--preload-file gpt2_124M_debug_state.bin@/gpt2_124M_debug_state.bin \
+		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_train.bin@dev/data/tinyshakespeare/tiny_shakespeare_train.bin \
+		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_val.bin@dev/data/tinyshakespeare/tiny_shakespeare_val.bin \
+		-o build/train_gpt2.html \
+		$(EMFLAGS) \
+		--shell-file term.html \
+
+build/gpt2_gpucpp.html: check-emsdk run.cpp term.html build/train_gpt2
+	em++ gpt2_wasm.c unittest_llmc/unittest_kernels.cpp \
+		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
+		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
+		--preload-file gpt2_124M_debug_state.bin@/gpt2_124M_debug_state.bin \
+		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_train.bin@dev/data/tinyshakespeare/tiny_shakespeare_train.bin \
+		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_val.bin@dev/data/tinyshakespeare/tiny_shakespeare_val.bin \
+		-o build/gpt2_gpucpp.html \
+		$(EMFLAGS) \
+		--shell-file term.html \
+
+server: build/train_gpt2.html build/test_gpt2.html
+	@echo "\n┌───────────────────────────────────────────────────────────────────────────────────┐"
+	@echo   "│  Open http://localhost:8000/build/run.html in your browser to see the output.     │"
+	@echo	  "│                                                                                   │"
+	@echo	  "│  Press Ctrl+C to stop the server.                                                 │"
+	@echo   "└───────────────────────────────────────────────────────────────────────────────────┘\n\n"
+	python3 -m http.server --directory .
+
 build/unittest_kernels.o: unittest_llmc/unittest_kernels.cpp unittest_llmc/unittest_kernels.h kernels.h
 	mkdir -p build && $(CXX) $(CXXFLAGS) -DNDEBUG -c -o $@ $<
 
@@ -106,3 +148,6 @@ clean:
 
 check-python:
 	@command -v python3 >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 
+
+check-emsdk:
+	@which em++ > /dev/null || (echo "emsdk not found. Please install emsdk and run 'source emsdk_env.sh' in the emsdk directory." && exit 1)
