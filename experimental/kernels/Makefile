@@ -11,7 +11,10 @@ else
     STDLIB := -stdlib=libc++
 endif
 
+# ASYNCIFY allows emscripten to sleep
+# EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s ASYNCIFY=1 -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
+CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
 CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
 CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
 
@@ -121,7 +124,10 @@ build/gpt2_gpucpp.html: check-emsdk run.cpp term.html build/train_gpt2
 		$(EMFLAGS) \
 		--shell-file term.html \
 
-server: build/train_gpt2.html build/test_gpt2.html
+watch:
+	ls *.cpp *.c *.hpp *.h | entr -c make build/gpt2_gpucpp.html
+
+server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
 	@echo "\n┌───────────────────────────────────────────────────────────────────────────────────┐"
 	@echo   "│  Open http://localhost:8000/build/run.html in your browser to see the output.     │"
 	@echo	  "│                                                                                   │"

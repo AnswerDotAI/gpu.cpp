@@ -5,7 +5,51 @@
 extern "C" {
 #endif
 
-void initRuntime();
+// See https://github.com/google/dawn/blob/a8fbe981a86cb59536e2de423d2013a82d9b54a0/src/dawn/native/Limits.cpp
+#define LIMITS_BUFFER_SIZE_1GB { \
+    .limits = { \
+      .maxTextureDimension1D=8192, \
+      .maxTextureDimension2D=8192, \
+      .maxTextureDimension3D=2048, \
+      .maxTextureArrayLayers=256, \
+      .maxBindGroups=4, \
+      .maxBindGroupsPlusVertexBuffers=24, \
+      .maxBindingsPerBindGroup=1000, \
+      .maxDynamicUniformBuffersPerPipelineLayout=8, \
+      .maxDynamicStorageBuffersPerPipelineLayout=4, \
+      .maxSampledTexturesPerShaderStage=16, \
+      .maxSamplersPerShaderStage=16, \
+      .maxStorageBuffersPerShaderStage=8, \
+      .maxStorageTexturesPerShaderStage=4, \
+      .maxUniformBuffersPerShaderStage=12, \
+      .maxUniformBufferBindingSize=65536, \
+      .maxStorageBufferBindingSize=1073741824, \
+      .minUniformBufferOffsetAlignment=256, \
+      .minStorageBufferOffsetAlignment=256, \
+      .maxVertexBuffers=8, \
+      .maxBufferSize=0x80000000, \
+      .maxVertexAttributes=16, \
+      .maxVertexBufferArrayStride=2048, \
+      .maxInterStageShaderComponents=64, \
+      .maxInterStageShaderVariables=16, \
+      .maxColorAttachments=8, \
+      .maxColorAttachmentBytesPerSample=32, \
+      .maxComputeWorkgroupStorageSize=16384, \
+      .maxComputeInvocationsPerWorkgroup=256, \
+      .maxComputeWorkgroupSizeX=256, \
+      .maxComputeWorkgroupSizeY=256, \
+      .maxComputeWorkgroupSizeZ=64, \
+      .maxComputeWorkgroupsPerDimension=65535 \
+    }, \
+    .nextInChain = nullptr \
+  }
+
+// static std::unique_ptr<gpu::Context> kCtx;
+#ifdef __EMSCRIPTEN__
+  EMSCRIPTEN_KEEPALIVE inline static gpu::Context* kCtx;
+#else  
+  inline static gpu::Context* kCtx;
+#endif
 
 // --  USE_GPU_FOR_* are the GPU/CPU switching flags for the kernels in llm.c. --
 

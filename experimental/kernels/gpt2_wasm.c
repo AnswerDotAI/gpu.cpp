@@ -1,4 +1,9 @@
+#include "gpu.hpp"
+#ifdef __EMSCRIPTEN__
+#include "unittest_kernels.h" // replace once we figure out how to get context to persist
+#else
 #include "ops.hpp"
+#endif
 /*
 This file trains the GPT-2 model.
 This version is the clean, minimal, reference. As such:
@@ -18,6 +23,7 @@ There will be other versions of this code that specialize it and make it fast.
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
+#include <memory>
 #ifdef OMP
 #include <omp.h>
 #endif
@@ -722,8 +728,11 @@ void gpt2_build_from_checkpoint(GPT2 *model, const char* checkpoint_path) {
     size_t maxT, V, Vp, L, NH, C; // size_t to prevent int overflow
     model->config.max_seq_len = maxT = model_header[2];
     model->config.vocab_size = V = model_header[3];
-    // model->config.num_layers = L = model_header[4];
-    model->config.num_layers = L = 3; // TODO(avh): Debugging only hack - revert this
+#ifdef __EMSCRIPTEN__
+    model->config.num_layers = L = 12; // TODO(avh): Debugging only hack - revert this
+#else
+    model->config.num_layers = L = model_header[4];
+#endif
     model->config.num_heads = NH = model_header[5];
     model->config.channels = C = model_header[6];
     model->config.padded_vocab_size = Vp = model_header[7];
@@ -827,6 +836,7 @@ void gpt2_forward(GPT2 *model, int* inputs, int* targets, size_t B, size_t T) {
     ParameterTensors params = model->params; // for brevity
     ActivationTensors acts = model->acts;
     float* residual;
+    printf("Encoding\n");
     encoder_forward(acts.encoded, inputs, params.wte, params.wpe, B, T, C); // encoding goes into residual[0]
     for (int l = 0; l < L; l++) {
       printf("Forward Pass Layer %d\n", l);
@@ -1106,7 +1116,6 @@ int sample_mult(float* probabilities, int n, float coin) {
 // ----------------------------------------------------------------------------
 // main training loop
 int main() {
-    initRuntime();
 
     // build the GPT-2 model from a checkpoint
     GPT2 model;
@@ -1137,9 +1146,22 @@ int main() {
     int* gen_tokens = (int*)mallocCheck(B * T * sizeof(int));
     const int genT = 64; // number of steps of inference we will do
 
+#ifdef __EMSCRIPTEN__
+#else
+    printf("Creating GPU context\n");
+    WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
+    kCtx = static_cast<gpu::Context*>(mallocCheck(sizeof(gpu::Context) * 32));
+    *kCtx = gpu::createContext({}, {}, {
+        .requiredLimits = &requiredLimits
+    });
+    printf("GPU context created\n");
+#endif
+
     // train
     struct timespec start, end;
+    printf("Starting training\n");
     for (int step = 0; step <= 40; step++) {
+      printf("Step %d\n", step);
 
         // once in a while estimate the validation loss
         if (step % 10 == 0) {

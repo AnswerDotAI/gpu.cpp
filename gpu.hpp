@@ -797,11 +797,6 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
                                     WGPUAdapter adapter, char const *message,
                                     void *pUserData) {
       AdapterData &adapterData = *reinterpret_cast<AdapterData *>(pUserData);
-      LOG(kDefLog, kInfo, "WGPURequestAdapterStatus_Success: %d",
-          WGPURequestAdapterStatus_Success);
-      LOG(kDefLog, kInfo, "WGPURequestAdapterStatus_Unavailable: %d",
-          WGPURequestAdapterStatus_Unavailable);
-      LOG(kDefLog, kInfo, "Status: %d", status);
 #ifdef __EMSCRIPTEN__
       if (status != WGPURequestAdapterStatus_Success) {
         LOG(kDefLog, kError, "Could not get WebGPU adapter: %s", message);
