@@ -14,6 +14,7 @@ using namespace gpu; // createContext, createTensor, createKernel,
 
 // See https://github.com/google/dawn/blob/a8fbe981a86cb59536e2de423d2013a82d9b54a0/src/dawn/native/Limits.cpp
 #define LIMITS_BUFFER_SIZE_1GB { \
+    .nextInChain = nullptr, \
     .limits = { \
       .maxTextureDimension1D=8192, \
       .maxTextureDimension2D=8192, \
@@ -47,8 +48,7 @@ using namespace gpu; // createContext, createTensor, createKernel,
       .maxComputeWorkgroupSizeY=256, \
       .maxComputeWorkgroupSizeZ=64, \
       .maxComputeWorkgroupsPerDimension=65535 \
-    }, \
-    .nextInChain = nullptr \
+    } \
   }
 
 void ENCODER_FORWARD_GPU(float* out,

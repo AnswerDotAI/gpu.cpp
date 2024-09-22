@@ -15,7 +15,6 @@ endif
 # EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s ASYNCIFY=1 -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
-CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
 CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
 
 LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn
@@ -91,6 +90,13 @@ build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"unittest_kernels.h\"' llm.c/train_gpt2.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o
 
+build/ops.o: ops.cpp ops.hpp kernels.h
+	mkdir -p build && $(CXX) $(CXXFLAGS) -DNDEBUG -c -o $@ $<
+
+build/gpt2_webgpu: llm.c build/ops.o gpt2_124M.bin
+	mkdir -p build
+	$(CC) -g $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp build/ops.o
+
 build/test_gpt2.html: check-emsdk run.cpp term.html build/test_gpt2
 	em++ llm.c/test_gpt2.c unittest_llmc/unittest_kernels.cpp \
 		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
@@ -114,7 +120,7 @@ build/train_gpt2.html: check-emsdk run.cpp term.html build/train_gpt2
 		--shell-file term.html \
 
 build/gpt2_gpucpp.html: check-emsdk run.cpp term.html build/train_gpt2
-	em++ gpt2_wasm.c unittest_llmc/unittest_kernels.cpp \
+	em++ gpt2_webgpu.cpp unittest_llmc/unittest_kernels.cpp \
 		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
 		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
 		--preload-file gpt2_124M_debug_state.bin@/gpt2_124M_debug_state.bin \
@@ -124,8 +130,11 @@ build/gpt2_gpucpp.html: check-emsdk run.cpp term.html build/train_gpt2
 		$(EMFLAGS) \
 		--shell-file term.html \
 
-watch:
+watch-web:
 	ls *.cpp *.c *.hpp *.h | entr -c make build/gpt2_gpucpp.html
+
+watch-native:
+	ls *.cpp *.c *.hpp *.h | entr -c make build/train_gpt2
 
 server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
 	@echo "\n┌───────────────────────────────────────────────────────────────────────────────────┐"
