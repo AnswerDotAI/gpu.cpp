@@ -4,7 +4,6 @@ GPUCPP ?= $(PWD)/../..
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
 NUM_JOBS?=$(shell nproc)
-TARGET=test_kernels
 ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
     STDLIB :=
 else
@@ -28,8 +27,7 @@ else
   $(info ✗ OpenMP not found)
 endif
 
-run: ./build/$(TARGET) dawnlib
-	$(LIBSPEC) && ./build/$(TARGET)
+default: run-native
 
 run_llm.c: ./build/test_gpt2 dawnlib
 	$(LIBSPEC) && $<
