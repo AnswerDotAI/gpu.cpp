@@ -12,7 +12,7 @@ else
 endif
 
 # ASYNCIFY allows emscripten to sleep
-EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s ASYNCIFY=1 -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
+EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -I$(GPUCPP)/third_party/llm.c -s USE_WEBGPU=1 -s ASYNCIFY=1 -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
 CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
 # CFLAGS=-O2 -march=native -I. -Iunittest_llmc
@@ -35,12 +35,13 @@ run_llm.c: ./build/test_gpt2 dawnlib
 	$(LIBSPEC) && $<
 
 run_llm.c_train: ./build/train_gpt2 dawnlib
-	if [ ! -d dev ] ; then ln -s ./llm.c/dev ; fi
-	if [ ! -f gpt2_tokenizer.bin ] ; then ln -s ./llm.c/gpt2_tokenizer.bin ; fi
+	if [ ! -d dev ] ; then ln -s $(GPUCPP)/third_party/llm.c/dev ; fi
+	if [ ! -f gpt2_tokenizer.bin ] ; then ln -s $(GPUCPP)/third_party/llm.c/gpt2_tokenizer.bin ; fi
 	$(LIBSPEC) && $<
 
 llm.c:
-	if [ ! -d llm.c ]; then git clone git@github.com:karpathy/llm.c.git ; fi
+	# if [ ! -d llm.c ]; then git clone git@github.com:karpathy/llm.c.git ; fi
+	ln -s $(GPUCPP)/third_party/llm.c
 
 gpt2_124M.bin: llm.c
 	if [ ! -f $@ ]; then ./llm.c/dev/download_starter_pack.sh ; \
@@ -90,14 +91,14 @@ build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"unittest_kernels.h\"' llm.c/train_gpt2.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o
 
-build/ops.o: ops.cpp ops.hpp kernels.h
+build/ops.o: ops.cpp ops.hpp kernels.h llm.c
 	mkdir -p build && $(CXX) $(CXXFLAGS) -c -o $@ $<
 
-build/gpt2_webgpu: llm.c gpt2_124M.bin
+build/gpt2_webgpu: llm.c gpt2_124M.bin llm.c
 	mkdir -p build
 	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
 
-build/gpt2_webgpu.html: check-emsdk gpt2_webgpu.cpp term.html
+build/gpt2_webgpu.html: check-emsdk gpt2_webgpu.cpp term.html llm.c
 	em++ gpt2_webgpu.cpp ops.cpp \
 		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
 		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
@@ -133,12 +134,6 @@ dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_pa
 
 run_setup: check-python
 	cd $(GPUCPP) && python3 setup.py
-
-#build/$(TARGET): run.cpp
-#	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o $@ $<
-
-#debug: run.cpp
-#	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET) $<
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*

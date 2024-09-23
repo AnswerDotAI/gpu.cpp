@@ -31,10 +31,6 @@ There will be other versions of this code that specialize it and make it fast.
 // defines: dataloader_init, dataloader_reset, dataloader_next_batch, dataloader_free
 #include "llmc/dataloader.h"
 
-// CPU reference implementations
-#include <iostream>
-// #include "gpt2_cpu.hpp"
-
 using namespace gpu;
 
 // ----------------------------------------------------------------------------
@@ -69,26 +65,6 @@ typedef struct {
     float* lnfw; // (C)
     float* lnfb; // (C)
 } ParameterTensors;
-
-
-typedef struct {
-    Tensor wte; // (V, C)
-    Tensor wpe; // (maxT, C)
-    Tensor ln1w; // (L, C)
-    Tensor ln1b; // (L, C)
-    Tensor qkvw; // (L, 3*C, C)
-    Tensor qkvb; // (L, 3*C)
-    Tensor attprojw; // (L, C, C)
-    Tensor attprojb; // (L, C)
-    Tensor ln2w; // (L, C)
-    Tensor ln2b; // (L, C)
-    Tensor fcw; // (L, 4*C, C)
-    Tensor fcb; // (L, 4*C)
-    Tensor fcprojw; // (L, C, 4*C)
-    Tensor fcprojb; // (L, C)
-    Tensor lnfw; // (C)
-    Tensor lnfb; // (C)
-} GPUParameterTensors;
 
 void fill_in_parameter_sizes(size_t* param_sizes, GPT2Config config) {
     size_t Vp = config.padded_vocab_size;
@@ -164,32 +140,6 @@ typedef struct {
 } ActivationTensors;
 
 
-typedef struct {
-    Tensor encoded; // (B, T, C)
-    Tensor ln1; // (L, B, T, C)
-    Tensor ln1_mean; // (L, B, T)
-    Tensor ln1_rstd; // (L, B, T)
-    Tensor qkv; // (L, B, T, 3*C)
-    Tensor atty; // (L, B, T, C)
-    Tensor preatt; // (L, B, NH, T, T)
-    Tensor att; // (L, B, NH, T, T)
-    Tensor attproj; // (L, B, T, C)
-    Tensor residual2; // (L, B, T, C)
-    Tensor ln2; // (L, B, T, C)
-    Tensor ln2_mean; // (L, B, T)
-    Tensor ln2_rstd; // (L, B, T)
-    Tensor fch; // (L, B, T, 4*C)
-    Tensor fch_gelu; // (L, B, T, 4*C)
-    Tensor fcproj; // (L, B, T, C)
-    Tensor residual3; // (L, B, T, C)
-    Tensor lnf; // (B, T, C)
-    Tensor lnf_mean; // (B, T)
-    Tensor lnf_rstd; // (B, T)
-    Tensor logits; // (B, T, V)
-    Tensor probs; // (B, T, V)
-    Tensor losses; // (B, T)
-} GPUActivationTensors;
-
 
 void fill_in_activation_sizes(size_t* act_sizes, GPT2Config config, int B, int T) {
     size_t C = config.channels;
@@ -241,10 +191,26 @@ float* malloc_and_point_activations(ActivationTensors* acts, size_t* act_sizes) 
     return acts_memory;
 }
 
+struct GPUParameters {
+  Tensor data[NUM_PARAMETER_TENSORS];
+};
+
+struct GPUActivations {
+  Tensor data[NUM_ACTIVATION_TENSORS];
+};
+
+
+void gpu_alloc(Context& ctx, Tensor* tensors, size_t* sizes, size_t n) { 
+    for (size_t i = 0; i < n; i++) {
+        tensors[i] = createTensor(ctx, Shape{sizes[i]}, kf32);
+    }
+}
+
 typedef struct {
     GPT2Config config;
     // the weights (parameters) of the model, and their sizes
     ParameterTensors params;
+    GPUParameters params_; // TODO(avh): eventually this replaces params
     size_t param_sizes[NUM_PARAMETER_TENSORS];
     float* params_memory;
     size_t num_parameters;
@@ -256,6 +222,7 @@ typedef struct {
     float* v_memory;
     // the activations of the model, and their sizes
     ActivationTensors acts;
+    GPUActivations acts_; // TODO(avh): eventually this replaces params
     size_t act_sizes[NUM_ACTIVATION_TENSORS];
     float* acts_memory;
     size_t num_activations;
@@ -270,7 +237,7 @@ typedef struct {
     float mean_loss; // after a forward pass with targets, will be populated with the mean loss
 } GPT2;
 
-void gpt2_build_from_checkpoint(GPT2 *model, const char* checkpoint_path) {
+void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoint_path) {
 
     // read in model from a checkpoint file
     FILE *model_file = fopenCheck(checkpoint_path, "rb");
@@ -330,6 +297,10 @@ void gpt2_build_from_checkpoint(GPT2 *model, const char* checkpoint_path) {
     model->batch_size = 0;
     model->seq_len = 0;
     model->mean_loss = -1.0f; // -1.0f will designate no loss
+
+    // TODO(avh): this is just a resource test for now, eventually deprecate CPU allocations
+    gpu_alloc(ctx, model->params_.data, model->param_sizes, NUM_PARAMETER_TENSORS);
+
 }
 
 
@@ -364,6 +335,8 @@ void gpt2_forward(Context& ctx, GPT2 *model, int* inputs, int* targets, size_t B
         model->seq_len = T;
         // and now allocate the space
         fill_in_activation_sizes(model->act_sizes, model->config, B, T);
+        // TODO(avh): this is just a resource test for now, eventually deprecate CPU allocations
+        gpu_alloc(ctx, model->acts_.data, model->act_sizes, NUM_PARAMETER_TENSORS);
         size_t num_activations = 0;
         for (size_t i = 0; i < NUM_ACTIVATION_TENSORS; i++) {
             num_activations += model->act_sizes[i];
@@ -678,11 +651,18 @@ int sample_mult(float* probabilities, int n, float coin) {
 // main training loop
 int main() {
 
-  setLogLevel(kError);
+    setLogLevel(kWarn);
+
+    printf("Creating GPU context\n");
+    WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
+    gpu::Context ctx = gpu::createContext({}, {}, {
+        .requiredLimits = &requiredLimits
+    });
+    // gpu::Context ctx = gpu::createContext();
 
     // build the GPT-2 model from a checkpoint
     GPT2 model;
-    gpt2_build_from_checkpoint(&model, "gpt2_124M.bin");
+    gpt2_build_from_checkpoint(ctx, &model, "gpt2_124M.bin");
 
     // build the DataLoaders from tokens files. for now use tiny_shakespeare if available, else tiny_stories
     const char* tiny_stories_train = "dev/data/tinystories/TinyStories_train.bin";
@@ -709,13 +689,7 @@ int main() {
     int* gen_tokens = (int*)mallocCheck(B * T * sizeof(int));
     const int genT = 64; // number of steps of inference we will do
 
-    printf("Creating GPU context\n");
-    WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
-    gpu::Context ctx = gpu::createContext({}, {}, {
-        .requiredLimits = &requiredLimits
-    });
-    // gpu::Context ctx = gpu::createContext();
-
+      
     // train
     struct timespec start, end;
     printf("Starting training\n");
