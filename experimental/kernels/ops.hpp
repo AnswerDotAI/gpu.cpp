@@ -9,6 +9,8 @@ using namespace gpu;
 extern "C" {
 #endif
 
+#define VOCAB_SIZE 50257
+
 // See https://github.com/google/dawn/blob/a8fbe981a86cb59536e2de423d2013a82d9b54a0/src/dawn/native/Limits.cpp
 #define LIMITS_BUFFER_SIZE_1GB { \
     .nextInChain = nullptr, \

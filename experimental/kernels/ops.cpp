@@ -9,8 +9,6 @@
 
 using namespace gpu;
 
-#define VOCAB_SIZE 50257
-
 void encoder_forward(Context& ctx, float* out,
                          int* inp, float* wte, float* wpe,
                          int B, int T, int C){

@@ -15,7 +15,8 @@ endif
 # EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s ASYNCIFY=1 -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
-CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
+# CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
+CFLAGS=-O2 -march=native -I. -Iunittest_llmc
 
 LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn
 FLAGS=$(CXXFLAGS) $(LDFLAGS)
@@ -91,40 +92,25 @@ build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o
 
 build/ops.o: ops.cpp ops.hpp kernels.h
-	mkdir -p build && $(CXX) $(CXXFLAGS) -g -c -o $@ $<
-
-# build/gpt2_webgpu: llm.c build/ops.o gpt2_124M.bin
-#	mkdir -p build
-#	$(CC) -g $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp build/ops.o
+	mkdir -p build && $(CXX) $(CXXFLAGS) -c -o $@ $<
 
 build/gpt2_webgpu: llm.c gpt2_124M.bin
 	mkdir -p build
-	$(CC) -g $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
+	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
 
-build/test_gpt2.html: check-emsdk run.cpp term.html build/test_gpt2
-	em++ llm.c/test_gpt2.c unittest_llmc/unittest_kernels.cpp \
+build/gpt2_webgpu.html: check-emsdk gpt2_webgpu.cpp term.html
+	em++ gpt2_webgpu.cpp ops.cpp \
 		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
 		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
 		--preload-file gpt2_124M_debug_state.bin@/gpt2_124M_debug_state.bin \
 		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_train.bin@dev/data/tinyshakespeare/tiny_shakespeare_train.bin \
 		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_val.bin@dev/data/tinyshakespeare/tiny_shakespeare_val.bin \
-		-o build/test_gpt2.html \
-		$(EMFLAGS) \
-		--shell-file term.html \
-
-build/train_gpt2.html: check-emsdk run.cpp term.html build/train_gpt2
-	em++ llm.c/train_gpt2.c unittest_llmc/unittest_kernels.cpp \
-		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
-		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
-		--preload-file gpt2_124M_debug_state.bin@/gpt2_124M_debug_state.bin \
-		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_train.bin@dev/data/tinyshakespeare/tiny_shakespeare_train.bin \
-		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_val.bin@dev/data/tinyshakespeare/tiny_shakespeare_val.bin \
-		-o build/train_gpt2.html \
+		-o build/gpt2_webgpu.html \
 		$(EMFLAGS) \
 		--shell-file term.html \
 
 watch-web:
-	ls *.cpp *.c *.hpp *.h | entr -s make build/gpt2_gpucpp.html
+	ls *.cpp *.c *.hpp *.h | entr -s make build/gpt2_webgpu.html
 
 watch-native:
 	ls *.cpp *.c *.hpp *.h | entr -s "rm -f build/gpt2_webgpu && rm -f build/ops.o && make build/gpt2_webgpu"
@@ -132,7 +118,8 @@ watch-native:
 run-native: build/gpt2_webgpu
 	. $(GPUCPP)/source && ./build/gpt2_webgpu
 
-server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
+# server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
+server: build/gpt2_webgpu.html
 	@echo "\n┌───────────────────────────────────────────────────────────────────────────────────┐"
 	@echo   "│  Open http://localhost:8000/build/run.html in your browser to see the output.     │"
 	@echo	  "│                                                                                   │"

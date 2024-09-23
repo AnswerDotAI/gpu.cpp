@@ -1,9 +1,5 @@
 #include "gpu.hpp"
-#ifdef __EMSCRIPTEN__
-#include "unittest_kernels.h" // replace once we figure out how to get context to persist
-#else
 #include "ops.hpp"
-#endif
 /*
 This file trains the GPT-2 model.
 This version is the clean, minimal, reference. As such:
@@ -37,7 +33,7 @@ There will be other versions of this code that specialize it and make it fast.
 
 // CPU reference implementations
 #include <iostream>
-#include "gpt2_cpu.hpp"
+// #include "gpt2_cpu.hpp"
 
 using namespace gpu;
 
