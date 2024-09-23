@@ -91,11 +91,15 @@ build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o
 
 build/ops.o: ops.cpp ops.hpp kernels.h
-	mkdir -p build && $(CXX) $(CXXFLAGS) -DNDEBUG -c -o $@ $<
+	mkdir -p build && $(CXX) $(CXXFLAGS) -g -c -o $@ $<
 
-build/gpt2_webgpu: llm.c build/ops.o gpt2_124M.bin
+# build/gpt2_webgpu: llm.c build/ops.o gpt2_124M.bin
+#	mkdir -p build
+#	$(CC) -g $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp build/ops.o
+
+build/gpt2_webgpu: llm.c gpt2_124M.bin
 	mkdir -p build
-	$(CC) -g $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp build/ops.o
+	$(CC) -g $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
 
 build/test_gpt2.html: check-emsdk run.cpp term.html build/test_gpt2
 	em++ llm.c/test_gpt2.c unittest_llmc/unittest_kernels.cpp \
@@ -119,22 +123,14 @@ build/train_gpt2.html: check-emsdk run.cpp term.html build/train_gpt2
 		$(EMFLAGS) \
 		--shell-file term.html \
 
-build/gpt2_gpucpp.html: check-emsdk run.cpp term.html build/train_gpt2
-	em++ gpt2_webgpu.cpp unittest_llmc/unittest_kernels.cpp \
-		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
-		--preload-file gpt2_124M.bin@/gpt2_124M.bin \
-		--preload-file gpt2_124M_debug_state.bin@/gpt2_124M_debug_state.bin \
-		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_train.bin@dev/data/tinyshakespeare/tiny_shakespeare_train.bin \
-		--preload-file llm.c/dev/data/tinyshakespeare/tiny_shakespeare_val.bin@dev/data/tinyshakespeare/tiny_shakespeare_val.bin \
-		-o build/gpt2_gpucpp.html \
-		$(EMFLAGS) \
-		--shell-file term.html \
-
 watch-web:
-	ls *.cpp *.c *.hpp *.h | entr -c make build/gpt2_gpucpp.html
+	ls *.cpp *.c *.hpp *.h | entr -s make build/gpt2_gpucpp.html
 
 watch-native:
-	ls *.cpp *.c *.hpp *.h | entr -c make build/train_gpt2
+	ls *.cpp *.c *.hpp *.h | entr -s "rm -f build/gpt2_webgpu && rm -f build/ops.o && make build/gpt2_webgpu"
+
+run-native: build/gpt2_webgpu
+	. $(GPUCPP)/source && ./build/gpt2_webgpu
 
 server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
 	@echo "\n┌───────────────────────────────────────────────────────────────────────────────────┐"
@@ -152,11 +148,11 @@ dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_pa
 run_setup: check-python
 	cd $(GPUCPP) && python3 setup.py
 
-build/$(TARGET): run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o $@ $<
+#build/$(TARGET): run.cpp
+#	mkdir -p build && $(CXX) $(FLAGS) -DNDEBUG -o $@ $<
 
-debug: run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET) $<
+#debug: run.cpp
+#	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET) $<
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
