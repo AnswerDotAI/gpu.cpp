@@ -12,11 +12,10 @@ else
 endif
 
 # ASYNCIFY allows emscripten to sleep
-# EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 EMFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers/wasm -I. -Iunittest_llmc -Illm.c -s USE_WEBGPU=1 -s ASYNCIFY=1 -s STACK_SIZE=100000 -s MEMORY64=1 -s ALLOW_MEMORY_GROWTH=1
 CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_llmc
-# CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
-CFLAGS=-O2 -march=native -I. -Iunittest_llmc
+CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
+# CFLAGS=-O2 -march=native -I. -Iunittest_llmc
 
 LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn
 FLAGS=$(CXXFLAGS) $(LDFLAGS)
