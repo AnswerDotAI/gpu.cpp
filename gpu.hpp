@@ -1441,6 +1441,33 @@ inline void dispatchKernel(Context &ctx, Kernel &kernel,
       &promise);
 }
 
+#ifdef __APPLE__
+#include <Metal/Metal.h>
+#include <QuartzCore/CAMetalLayer.h>
+
+class MetalShaderProfiler {
+public:
+  MetalShaderProfiler() : device(nil), captureManager(nil), captureScope(nil) {
+    device = MTLCreateSystemDefaultDevice();
+    captureManager = MTLCaptureManager::sharedCaptureManager();
+    captureScope = [captureManager newCaptureScopeWithDevice:device];
+  }
+
+  void startCapture() {
+    [captureScope beginScope];
+  }
+
+  void stopCapture() {
+    [captureScope endScope];
+  }
+
+private:
+  id<MTLDevice> device;
+  MTLCaptureManager *captureManager;
+  id<MTLCaptureScope> captureScope;
+};
+#endif
+
 } // namespace gpu
 
 #endif // GPU_H

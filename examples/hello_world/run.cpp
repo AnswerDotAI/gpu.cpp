@@ -37,13 +37,22 @@ int main(int argc, char **argv) {
   }
   Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = createTensor(ctx, Shape{N}, kf32);
+
+  MetalShaderProfiler profiler; // Add an instance of MetalShaderProfiler
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
+
+  profiler.startCapture(); // Call startCapture before dispatching the kernel
+
   Kernel op = createKernel(ctx, {kGelu, 256, kf32},
                            Bindings{input, output},
                            /* nWorkgroups */ {cdiv(N, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
+
+  profiler.stopCapture(); // Call stopCapture after waiting for the kernel to finish
+
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 12; ++i) {
     printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
