@@ -32,6 +32,12 @@ default: run-native
 run_llm.c: ./build/test_gpt2 dawnlib
 	$(LIBSPEC) && $<
 
+run_llm.c_with_metal_profiler: ./build/test_gpt2_with_metal_profiler dawnlib
+	$(LIBSPEC) && export METAL_CAPTURE_ENABLED=1 && $<
+
+run_llm.c_with_time_profiler: ./build/test_gpt2_with_metal_profiler dawnlib
+	$(LIBSPEC) && xcrun xctrace record --template 'Time Profiler' --launch -- $<
+
 run_llm.c_train: ./build/train_gpt2 dawnlib
 	if [ ! -d dev ] ; then ln -s $(GPUCPP)/third_party/llm.c/dev ; fi
 	if [ ! -f gpt2_tokenizer.bin ] ; then ln -s $(GPUCPP)/third_party/llm.c/gpt2_tokenizer.bin ; fi
@@ -48,8 +54,9 @@ gpt2_124M.bin: llm.c
 					ln -s ./llm.c/gpt2_tokenizer.bin ; \
 	fi
 
-build/test_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
-	mkdir -p build
+define preprocess_file
+	sed -i -e 's/int main(/int MAIN(/g' llm.c/test_gpt2.c
+	sed -i -e 's/int main(/int MAIN(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void encoder_forward(/void ENCODER_FORWARD_CPU(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void layernorm_forward(/void LAYERNORM_FORWARD_CPU(/g' llm.c/train_gpt2.c
 	sed -i -e 's/void matmul_forward(/void MATMUL_FORWARD_CPU(/g' llm.c/train_gpt2.c
@@ -67,26 +74,22 @@ build/test_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	sed -i -e 's/void crossentropy_softmax_backward(/void CROSSENTROPY_SOFTMAX_BACKWARD_CPU(/g' llm.c/train_gpt2.c
 	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || \
 		printf '1i\n#include "unittest_kernels.h"\n.\nw\nq\n' | ed -s llm.c/train_gpt2.c
+endef
+
+build/test_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
+	mkdir -p build
+	$(call preprocess_file)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/unittest_kernels.o
+
+build/test_gpt2_with_metal_profiler: llm.c build/unittest_kernels.o gpt2_124M.bin
+	mkdir -p build
+	$(call preprocess_file)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/unittest_kernels.o -I$(GPUCPP) $(GPUCPP)/experimental/profiler/metal.mm -framework metal -framework Foundation -DMETAL_PROFILER -g
+	install_name_tool -change @rpath/libdawn.dylib $(GPUCPP)/third_party/lib/libdawn.dylib $@
 
 build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	mkdir -p build
-	sed -i -e 's/void encoder_forward(/void ENCODER_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void layernorm_forward(/void LAYERNORM_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void matmul_forward(/void MATMUL_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void attention_forward(/void ATTENTION_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void gelu_forward(/void GELU_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void residual_forward(/void RESIDUAL_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void softmax_forward(/void SOFTMAX_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void crossentropy_forward(/void CROSSENTROPY_FORWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void encoder_backward(/void ENCODER_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void layernorm_backward(/void LAYERNORM_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void matmul_backward(/void MATMUL_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void attention_backward(/void ATTENTION_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void gelu_backward(/void GELU_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void residual_backward(/void RESIDUAL_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	sed -i -e 's/void crossentropy_softmax_backward(/void CROSSENTROPY_SOFTMAX_BACKWARD_CPU(/g' llm.c/train_gpt2.c
-	grep -q "^#include \"unittest_kernels.h\"" llm.c/train_gpt2.c || sed -i '1i#include \"unittest_kernels.h\"' llm.c/train_gpt2.c
+	$(call preprocess_file)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o
 
 build/ops.o: ops.cpp ops.hpp kernels.h llm.c
