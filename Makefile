@@ -19,8 +19,51 @@ pch:
 	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -x c++-header gpu.hpp -o build/gpu.hpp.pch
 
 # TODO(avh): change extension based on platform
-lib:
-	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/libgpucpp.dylib
+# Get the current OS name
+OS = $(shell uname | tr -d '\n')
+LIB_PATH ?= /usr/lib
+HEADER_PATH ?= /usr/include
+# Set the specific variables for each platform
+ifeq ($(OS), Linux)
+    OS_TYPE ?= Linux
+	
+	GPU_CPP_LIB_NAME ?= libgpucpp.so
+	DAWN_LIB_NAME ?= libdawn.so
+else ifeq ($(OS), Darwin)
+    OS_TYPE ?= macOS
+
+	GPU_CPP_LIB_NAME ?= libgpucpp.dylib
+	DAWN_LIB_NAME ?= libdawn.dylib
+else
+    OS_TYPE ?= unknown
+endif
+
+lib: check-clang dawnlib
+ifneq ($(OS_TYPE), unknown)
+	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/$(GPU_CPP_LIB_NAME)
+	python3 build.py
+	cp third_party/lib/$(DAWN_LIB_NAME) build/
+else
+	@echo "Unsupported operating system"
+endif
+
+install:
+ifneq ($(OS_TYPE), unknown)
+	cp build/$(GPU_CPP_LIB_NAME) $(LIB_PATH)
+	cp build/$(DAWN_LIB_NAME) $(LIB_PATH)
+	cp build/gpu.hpp $(HEADER_PATH)
+else
+	@echo "Unsupported operating system"
+endif
+
+uninstall:
+ifneq ($(OS_TYPE), unknown)
+	rm $(LIB_PATH)/$(GPU_CPP_LIB_NAME)
+	rm $(LIB_PATH)/$(DAWN_LIB_NAME)
+	rm $(HEADER_PATH)/gpu.hpp
+else
+	@echo "Unsupported operating system"
+endif
 
 examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
 	$(LIBSPEC) && cd examples/hello_world && make build/hello_world && ./build/hello_world
