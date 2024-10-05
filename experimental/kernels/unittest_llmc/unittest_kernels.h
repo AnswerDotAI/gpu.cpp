@@ -2,6 +2,23 @@
 extern "C" {
 #endif
 
+#ifdef METAL_PROFILER
+#include "experimental/profiler/metal.hpp"
+
+#define MAIN main_wrapper
+static int main_wrapper(int argc, char *argv[]);
+
+int main(int argc, char *argv[]) {
+  startCapture();
+  int ret = main_wrapper(argc, argv);
+  stopCapture();
+  return ret;
+}
+
+#else
+#define MAIN main
+#endif
+
 // --  USE_GPU_FOR_* are the GPU/CPU switching flags for the kernels in llm.c. --
 
 #define USE_GPU_FOR_ENCODER_FORWARD 1

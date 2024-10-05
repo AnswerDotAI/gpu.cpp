@@ -13,6 +13,10 @@
 #include "experimental/wgsl.h"      // loopUnrolling
 #include "numeric_types/half.hpp"
 
+#ifdef METAL_PROFILER
+#include "experimental/profiler/metal.hpp"
+#endif
+
 using namespace gpu;
 
 const std::string versionToStr(int version);
@@ -799,7 +803,11 @@ void runTest(int version, size_t M, size_t K, size_t N,
   Tensor input = createTensor(ctx, Shape{M, K}, numtype, inputPtr.get());
   Tensor weights = createTensor(ctx, Shape{N, K}, numtype, weightsPtr.get()); // column-major
 
+#ifdef METAL_PROFILER
+  constexpr size_t nIter = 1;
+#else
   constexpr size_t nIter = 30;
+#endif
 
   // Initialize Kernel and bind GPU buffers
 
@@ -815,8 +823,10 @@ void runTest(int version, size_t M, size_t K, size_t N,
     kernels[i] = selectMatmul(ctx, version, {input, weights, outputs[i]}, M, K, N, numtype);
   }
 
+#ifndef METAL_PROFILER
   printf("[ Press enter to start tests ... ]\n");
   getchar();
+#endif
   LOG(kDefLog, kInfo, "Dispatching Kernel version %d: %s, %d iterations ...",
       version, versionToStr(version).c_str(), nIter);
 
@@ -930,11 +940,17 @@ int main() {
     N = 2 * 4096;
   }
 
+#ifdef METAL_PROFILER
+  startCapture();
+#endif
   if (enableF16) {
     runTestWithCheck<half>(version, M, K, N, transposedInput, kTestSize, numtype);
   } else {
     runTestWithCheck<float>(version, M, K, N, transposedInput, kTestSize, numtype);
   }
+#ifdef METAL_PROFILER
+  stopCapture();
+#endif
 
   LOG(kDefLog, kInfo, "Done.");
   return 0;
