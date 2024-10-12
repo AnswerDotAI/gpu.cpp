@@ -20,7 +20,7 @@ The implementation aims for a small API surface area with minimum boilerplate. T
 
 In this spirit of fast experimentation, we also want near-instantaneous C++ builds taking no more than a second or two even on modestly capable personal computing devices. With this in mind, we not only keep the API surface area small, but also keep the implementation small and we also provide a prebuilt binary of the Dawn native WebGPU implementation.
 
-The core library implementation in the header-only `gpu.h` source code is around 1000 lines of code. In addition to enabling instantaneous, semi-interactive compilation cycles, the small implementation surface area keeps maintenance burden low and the velocity of improvements high.
+The core library implementation in the header-only `gpu.hpp` source code is around 1000 lines of code. In addition to enabling instantaneous, semi-interactive compilation cycles, the small implementation surface area keeps maintenance burden low and the velocity of improvements high.
 We also pre-build Google's Dawn WebGPU implementation as a shared library binary. This allows builds to link the shared library with each build and incorporate Google's powerful native WebGPU implementation without paying the cost of re-compiling Dawn during development cycles.
 
 For more advanced users and release deployments, we include `cmake` examples for building both Dawn with gpu.cpp end-to-end, but this is not required nor recommended for most users to get started.
