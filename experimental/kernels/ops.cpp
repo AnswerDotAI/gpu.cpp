@@ -6,6 +6,7 @@
 
 #include "kernels.h"
 #include "ops.hpp"
+#include "experimental/wgsl.h"      // loopUnrolling
 
 using namespace gpu;
 
@@ -178,18 +179,55 @@ void matmul_forward(Context& ctx, float* out,
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   assert ( (b*t) % 256 == 0 );
-  Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
-                           Bindings{inp_i, weight_i, bias_i, out_o},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           MatmulParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c),
-                             static_cast<uint32_t>(oc)
-                           });
-  dispatchKernel(ctx, op, promise);
-  wait(ctx, future);
+  int version = 1;
+  if (version == 1){
+    static constexpr size_t BT = 64;
+    static constexpr size_t BC = 8;
+    static constexpr size_t BOC = 64;
+    static constexpr size_t TT = BT / BC;
+    static constexpr size_t TOC = BOC / BC;
+    size_t num_threads = BT * BOC / (TT * TOC);
+    Shape wgSize = {num_threads, 1, 1}; // This is the same as BK * BK.
+    Shape nWorkgroups = {b, cdiv(T, BT), cdiv(OC, BOC)};
+    
+    std::string codeString(kShaderMatmul2DTiling);
+    replaceAll(codeString, {{"{{precision}}", toString(kf32)},
+                            {"{{BT}}", toString(BT)},
+                            {"{{BC}}", toString(BC)},
+                            {"{{BOC}}", toString(BOC)},
+                            {"{{TT}}", toString(TT)},
+                            {"{{TOC}}", toString(TOC)},
+                            {"{{NUM_TILEI}}", toString(BT * BC / num_threads)},
+                            {"{{NUM_TILEW}}", toString(BOC * BC / num_threads)}
+                            });
+    std::string unrolledCode = loopUnrolling(codeString);
+    Kernel op = createKernel(ctx, {unrolledCode, wgSize, kf32},
+                             Bindings{inp_i, weight_i, bias_i, out_o},
+                             nWorkgroups,
+                             /* params */
+                             MatmulParams{
+                               static_cast<uint32_t>(b),
+                               static_cast<uint32_t>(t),
+                               static_cast<uint32_t>(c),
+                               static_cast<uint32_t>(oc)
+                             });
+    dispatchKernel(ctx, op, promise);
+    wait(ctx, future);
+    toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
+  } else {
+    Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
+                             Bindings{inp_i, weight_i, bias_i, out_o},
+                             /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                             /* params */
+                             MatmulParams{
+                               static_cast<uint32_t>(b),
+                               static_cast<uint32_t>(t),
+                               static_cast<uint32_t>(c),
+                               static_cast<uint32_t>(oc)
+                             });
+    dispatchKernel(ctx, op, promise);
+    wait(ctx, future);
+  }
   toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
 }
 

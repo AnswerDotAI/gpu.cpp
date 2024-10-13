@@ -5,6 +5,7 @@
 
 #include "kernels.h"
 #include "unittest_llmc/unittest_kernels.h"
+#include "experimental/wgsl.h"      // loopUnrolling
 
 using namespace gpu; // createContext, createTensor, createKernel,
                      // createShader, dispatchKernel, wait, toCPU
@@ -50,6 +51,28 @@ using namespace gpu; // createContext, createTensor, createKernel,
       .maxComputeWorkgroupsPerDimension=65535 \
     } \
   }
+
+struct DurationTime {
+  std::chrono::high_resolution_clock::time_point start;
+  std::chrono::high_resolution_clock::time_point end;
+  std::chrono::microseconds duration;
+  std::string src;
+  bool verbose;
+  
+  inline DurationTime(const std::string& src, bool verbose = true) {
+    this->src = src;
+    this->verbose = verbose;
+    start = std::chrono::high_resolution_clock::now();
+  }
+
+  inline ~DurationTime() {
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    if (this->verbose) {
+      printf("Duration(%s): %.1f microseconds\n", src.c_str(), static_cast<double>(duration.count()));
+    }
+  }
+};
 
 void ENCODER_FORWARD_GPU(float* out,
                          int* inp, float* wte, float* wpe,
@@ -202,9 +225,25 @@ void LAYERNORM_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
   toCPU(ctx, dbias_t, dbias, c * sizeof(float));
 }
 
+void matmul_forward_dummy(float* out,
+                          const float* inp, const float* weight, const float* bias,
+                          int B, int T, int C, int OC);
+
 void MATMUL_FORWARD_GPU(float* out,
                         const float* inp, const float* weight, const float* bias,
                         int B, int T, int C, int OC){
+  int version = 2;
+  bool verbose = false;
+  bool debug = false;
+  float *out_exp;
+  DurationTime duration("matmul_forward_gpu with creating context", verbose);
+  if (verbose) {
+    printf("matmul forward: B=%d, T=%d, C=%d, OC=%d, bias=%d\n", B, T, C, OC, bias != NULL);
+  }
+  if (debug) {
+    out_exp = new float[B*T*OC];
+    matmul_forward_dummy(out_exp, inp, weight, bias, B, T, C, OC);
+  }
   struct MatmulParams {
     uint32_t B;
     uint32_t T;
@@ -221,26 +260,118 @@ void MATMUL_FORWARD_GPU(float* out,
       .requiredLimits = &requiredLimits
     });
 
-  Tensor inp_i = createTensor(ctx, Shape{b * t * c}, kf32, inp);
-  Tensor weight_i = createTensor(ctx, Shape{oc * c}, kf32, weight);
-  Tensor bias_i = bias == NULL ? createTensor(ctx, Shape{1}, kf32) : createTensor(ctx, Shape{oc}, kf32, bias);
-  Tensor out_o = createTensor(ctx, Shape{b * t * oc}, kf32);
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  assert ( (b*t) % 256 == 0 );
-  Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
-                           Bindings{inp_i, weight_i, bias_i, out_o},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           MatmulParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c),
-                             static_cast<uint32_t>(oc)
-                           });
-  dispatchKernel(ctx, op, promise);
-  wait(ctx, future);
-  toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
+  {
+    DurationTime duration("matmul_forward_gpu: before creating tensors", verbose);
+    Tensor inp_i = createTensor(ctx, Shape{b * t * c}, kf32, inp);
+    Tensor weight_i = createTensor(ctx, Shape{oc * c}, kf32, weight);
+    Tensor bias_i = bias == NULL ? createTensor(ctx, Shape{1}, kf32) : createTensor(ctx, Shape{oc}, kf32, bias);
+    Tensor out_o = createTensor(ctx, Shape{b * t * oc}, kf32);
+    std::promise<void> promise;
+    std::future<void> future = promise.get_future();
+  
+    if (version == 2) {
+      DurationTime duration("matmul_forward_gpu: after creating tensors", verbose);
+      static constexpr size_t BT = 64;
+      static constexpr size_t BC = 16;
+      static constexpr size_t BOC = 64;
+      static constexpr size_t TT = BT / BC;
+      static constexpr size_t TOC = BOC / BC;
+      static constexpr size_t num_threads = BT * BOC / (TT * TOC);
+      Shape wgSize = {num_threads, 1, 1};
+      Shape nWorkgroups = {b, cdiv(T, BT), cdiv(OC, BOC)};
+    
+      std::string codeString(kShaderMatmul2DTiling);
+      replaceAll(codeString, {{"{{precision}}", toString(kf32)},
+                              {"{{BT}}", toString(BT)},
+                              {"{{BC}}", toString(BC)},
+                              {"{{BOC}}", toString(BOC)},
+                              {"{{TT}}", toString(TT)},
+                              {"{{TOC}}", toString(TOC)},
+                              {"{{NUM_TILEI}}", toString(BT * BC / num_threads)},
+                              {"{{NUM_TILEW}}", toString(BOC * BC / num_threads)}
+        });
+      std::string unrolledCode = loopUnrolling(codeString);
+      {
+        DurationTime duration("matmul_forward_gpu: before creating kernels", verbose);
+
+        Kernel op = createKernel(ctx, {unrolledCode, wgSize, kf32},
+                                 Bindings{inp_i, weight_i, bias_i, out_o},
+                                 nWorkgroups,
+                                 /* params */
+                                 MatmulParams{
+                                   static_cast<uint32_t>(b),
+                                   static_cast<uint32_t>(t),
+                                   static_cast<uint32_t>(c),
+                                   static_cast<uint32_t>(oc)
+                                 });
+        {
+          DurationTime duration("matmul_forward_gpu without creating context", verbose);
+          dispatchKernel(ctx, op, promise);
+          wait(ctx, future);
+          toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
+        }
+      }
+    } else if (version == 1) {
+      Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
+                               Bindings{inp_i, weight_i, bias_i, out_o},
+                               /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                               /* params */
+                               MatmulParams{
+                                 static_cast<uint32_t>(b),
+                                 static_cast<uint32_t>(t),
+                                 static_cast<uint32_t>(c),
+                                 static_cast<uint32_t>(oc)
+                               });
+      {
+        DurationTime duration("matmul_forward_gpu without creating context", verbose);
+        dispatchKernel(ctx, op, promise);
+        wait(ctx, future);
+        toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
+      }
+    } else {
+      DurationTime duration("matmul_forward_cpu", verbose);
+      matmul_forward_dummy(out, inp, weight, bias, B, T, C, OC);
+    }
+  }
+
+  if (debug) { // compare out with out_exp.
+    for (int i = 0; i < B*T*OC; i++) {
+      if (fabs(out[i] - out_exp[i]) > 1e-2) {
+        printf("matmul forward: out[%d] = %f, out_exp[%d] = %f\n", i, out[i], i, out_exp[i]);
+        //Dump the first 4 x 4 elements by table, at first output out, then output out_exp
+        printf("inp:\n");
+        for (int j = 0; j < 4; j++) {
+          for (int k = 0; k < 4; k++) {
+            printf("%f ", inp[j * C + k]);
+          }
+          printf("\n");
+        }
+        printf("weight:\n");
+        for (int j = 0; j < 4; j++) {
+          for (int k = 0; k < 4; k++) {
+            printf("%f ", weight[j * OC + k]);
+          }
+          printf("\n");
+        }
+        printf("out:\n");
+        for (int j = 0; j < 4; j++) {
+          for (int k = 0; k < 4; k++) {
+            printf("%f ", out[j * OC + k]);
+          }
+          printf("\n");
+        }
+        printf("out_exp:\n");
+        for (int j = 0; j < 4; j++) {
+          for (int k = 0; k < 4; k++) {
+            printf("%f ", out_exp[j * OC + k]);
+          }
+          printf("\n");
+        }
+        exit(1);
+      }
+    } 
+    delete[] out_exp;
+  }
 }
 
 void MATMUL_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
