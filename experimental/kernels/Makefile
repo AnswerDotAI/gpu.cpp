@@ -79,7 +79,7 @@ endef
 build/test_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	mkdir -p build
 	$(call preprocess_file)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/unittest_kernels.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/unittest_kernels.o -g
 
 build/test_gpt2_with_metal_profiler: llm.c build/unittest_kernels.o gpt2_124M.bin
 	mkdir -p build
@@ -90,7 +90,7 @@ build/test_gpt2_with_metal_profiler: llm.c build/unittest_kernels.o gpt2_124M.bi
 build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	mkdir -p build
 	$(call preprocess_file)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/train_gpt2.c build/unittest_kernels.o -g
 
 build/ops.o: ops.cpp ops.hpp kernels.h llm.c
 	mkdir -p build && $(CXX) $(CXXFLAGS) -c -o $@ $<

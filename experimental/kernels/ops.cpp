@@ -179,10 +179,34 @@ static std::string kShaderMatmul2D(loopUnrolling(
                                                  )
                                    );
 
+struct DurationTime {
+  std::chrono::high_resolution_clock::time_point start;
+  std::chrono::high_resolution_clock::time_point end;
+  std::chrono::microseconds duration;
+  std::string src;
+  bool verbose;
+  
+  inline DurationTime(const std::string& src, bool verbose = true) {
+    this->src = src;
+    this->verbose = verbose;
+    start = std::chrono::high_resolution_clock::now();
+  }
+
+  inline ~DurationTime() {
+    end = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    if (this->verbose) {
+      printf("Duration(%s): %.1f microseconds\n", src.c_str(), static_cast<double>(duration.count()));
+    }
+  }
+};
+
 
 void matmul_forward(Context& ctx, float* out,
                         const float* inp, const float* weight, const float* bias,
                         int B, int T, int C, int OC){
+  bool verbose = false;
+  DurationTime duration("matmul_forward_gpu", verbose);
   struct MatmulParams {
     uint32_t B;
     uint32_t T;
@@ -204,6 +228,7 @@ void matmul_forward(Context& ctx, float* out,
   assert ( (b*t) % 256 == 0 );
   int version = 1;
   if (version == 1){
+    DurationTime duration("matmul_forward_gpu without creating tensors", verbose);
     Shape nWorkgroups = {b, cdiv(T, MATMUL_BT), cdiv(OC, MATMUL_BOC)};
     Kernel op = createKernel(ctx, {kShaderMatmul2D, MATMUL_wgSize, kf32},
                              Bindings{inp_i, weight_i, bias_i, out_o},
@@ -215,9 +240,12 @@ void matmul_forward(Context& ctx, float* out,
                                static_cast<uint32_t>(c),
                                static_cast<uint32_t>(oc)
                              });
-    dispatchKernel(ctx, op, promise);
-    wait(ctx, future);
-    toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
+    {
+      DurationTime duration("matmul_forward_gpu without creating kernel", verbose);
+      dispatchKernel(ctx, op, promise);
+      wait(ctx, future);
+      toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
+    }
   } else {
     Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
                              Bindings{inp_i, weight_i, bias_i, out_o},
