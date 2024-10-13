@@ -415,12 +415,14 @@ struct KernelCode {
  * @endcode
  * "f32"}});
  */
-inline void
+inline const std::string
 replaceAll(std::string &str,
            const std::vector<std::pair<std::string, std::string>> &reps) {
   for (const auto &rep : reps) {
     replaceAll(str, rep.first, rep.second);
   }
+
+  return str;
 }
 
 /**

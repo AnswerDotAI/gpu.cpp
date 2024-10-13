@@ -95,7 +95,7 @@ build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 build/ops.o: ops.cpp ops.hpp kernels.h llm.c
 	mkdir -p build && $(CXX) $(CXXFLAGS) -c -o $@ $<
 
-build/gpt2_webgpu: llm.c gpt2_124M.bin llm.c
+build/gpt2_webgpu: llm.c gpt2_124M.bin llm.c gpt2_webgpu.cpp ops.cpp
 	mkdir -p build
 	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
 
