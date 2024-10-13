@@ -157,6 +157,29 @@ void layernorm_backward(Context& ctx, float* dinp, float* dweight, float* dbias,
   toCPU(ctx, dbias_t, dbias, c * sizeof(float));
 }
 
+static constexpr size_t MATMUL_BT = 64;
+static constexpr size_t MATMUL_BC = 8;
+static constexpr size_t MATMUL_BOC = 64;
+static constexpr size_t MATMUL_TT = MATMUL_BT / MATMUL_BC;
+static constexpr size_t MATMUL_TOC = MATMUL_BOC / MATMUL_BC;
+static size_t MATMUL_num_threads = MATMUL_BT * MATMUL_BOC / (MATMUL_TT * MATMUL_TOC);
+static Shape MATMUL_wgSize = {MATMUL_num_threads, 1, 1};
+static std::string kShaderMatmul2DTiling_(kShaderMatmul2DTiling);
+static std::string kShaderMatmul2D(loopUnrolling(
+                                                 replaceAll(kShaderMatmul2DTiling_,
+                                                            {{"{{precision}}", toString(kf32)},
+                                                             {"{{BT}}", toString(MATMUL_BT)},
+                                                             {"{{BC}}", toString(MATMUL_BC)},
+                                                             {"{{BOC}}", toString(MATMUL_BOC)},
+                                                             {"{{TT}}", toString(MATMUL_TT)},
+                                                             {"{{TOC}}", toString(MATMUL_TOC)},
+                                                             {"{{NUM_TILEI}}", toString(MATMUL_BT * MATMUL_BC / MATMUL_num_threads)},
+                                                             {"{{NUM_TILEW}}", toString(MATMUL_BOC * MATMUL_BC / MATMUL_num_threads)}
+                                                            })
+                                                 )
+                                   );
+
+
 void matmul_forward(Context& ctx, float* out,
                         const float* inp, const float* weight, const float* bias,
                         int B, int T, int C, int OC){
@@ -181,27 +204,8 @@ void matmul_forward(Context& ctx, float* out,
   assert ( (b*t) % 256 == 0 );
   int version = 1;
   if (version == 1){
-    static constexpr size_t BT = 64;
-    static constexpr size_t BC = 8;
-    static constexpr size_t BOC = 64;
-    static constexpr size_t TT = BT / BC;
-    static constexpr size_t TOC = BOC / BC;
-    size_t num_threads = BT * BOC / (TT * TOC);
-    Shape wgSize = {num_threads, 1, 1}; // This is the same as BK * BK.
-    Shape nWorkgroups = {b, cdiv(T, BT), cdiv(OC, BOC)};
-    
-    std::string codeString(kShaderMatmul2DTiling);
-    replaceAll(codeString, {{"{{precision}}", toString(kf32)},
-                            {"{{BT}}", toString(BT)},
-                            {"{{BC}}", toString(BC)},
-                            {"{{BOC}}", toString(BOC)},
-                            {"{{TT}}", toString(TT)},
-                            {"{{TOC}}", toString(TOC)},
-                            {"{{NUM_TILEI}}", toString(BT * BC / num_threads)},
-                            {"{{NUM_TILEW}}", toString(BOC * BC / num_threads)}
-                            });
-    std::string unrolledCode = loopUnrolling(codeString);
-    Kernel op = createKernel(ctx, {unrolledCode, wgSize, kf32},
+    Shape nWorkgroups = {b, cdiv(T, MATMUL_BT), cdiv(OC, MATMUL_BOC)};
+    Kernel op = createKernel(ctx, {kShaderMatmul2D, MATMUL_wgSize, kf32},
                              Bindings{inp_i, weight_i, bias_i, out_o},
                              nWorkgroups,
                              /* params */
@@ -213,7 +217,6 @@ void matmul_forward(Context& ctx, float* out,
                              });
     dispatchKernel(ctx, op, promise);
     wait(ctx, future);
-    toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
   } else {
     Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
                              Bindings{inp_i, weight_i, bias_i, out_o},
