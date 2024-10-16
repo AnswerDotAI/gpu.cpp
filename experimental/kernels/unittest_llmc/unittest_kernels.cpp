@@ -327,7 +327,10 @@ void MATMUL_FORWARD_GPU(float* out,
   }
   if (debug) {
     out_exp = new float[B*T*OC];
-    matmul_forward_dummy(out_exp, inp, weight, bias, B, T, C, OC);
+    {
+      DurationTime duration("matmul_forward_cpu", verbose);
+      matmul_forward_dummy(out_exp, inp, weight, bias, B, T, C, OC);
+    }
   }
   struct MatmulParams {
     uint32_t B;
@@ -421,8 +424,8 @@ void MATMUL_FORWARD_GPU(float* out,
       DurationTime duration("matmul_forward_gpu", verbose);
       dispatchKernel(ctx, op, promise);
       wait(ctx, future);
-      toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
     }
+    toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
   } else {
     DurationTime duration("matmul_forward_cpu", verbose);
     matmul_forward_dummy(out, inp, weight, bias, B, T, C, OC);
