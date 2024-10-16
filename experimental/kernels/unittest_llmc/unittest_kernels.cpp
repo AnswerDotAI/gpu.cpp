@@ -173,6 +173,8 @@ void ENCODER_BACKWARD_GPU(float* dwte, float* dwpe,
   Tensor& dout_t = ctx.pool.data[op->buffers[2]];
   Tensor& input = ctx.pool.data[op->buffers[3]];
 
+  toGPU(ctx, dwte, dwte_t);
+  toGPU(ctx, dwpe, dwpe_t);
   toGPU(ctx, dout, dout_t);
   toGPU(ctx, inp, input);
 
@@ -289,6 +291,9 @@ void LAYERNORM_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
   Tensor& mean_t = ctx.pool.data[op->buffers[6]];
   Tensor& rstd_t = ctx.pool.data[op->buffers[7]];
 
+  toGPU(ctx, dinp, dinp_t);
+  toGPU(ctx, dweight, dweight_t);
+  toGPU(ctx, dbias, dbias_t);
   toGPU(ctx, dout, dout_t);
   toGPU(ctx, inp, inp_t);
   toGPU(ctx, weight, weight_t);
@@ -518,6 +523,9 @@ void MATMUL_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
   Tensor& inp_t = ctx.pool.data[op->buffers[4]];
   Tensor& weight_t = ctx.pool.data[op->buffers[5]];
 
+  toGPU(ctx, dinp, dinp_t);
+  toGPU(ctx, dweight, dweight_t);
+  toGPU(ctx, dbias, dbias_t);
   toGPU(ctx, dout, dout_t);
   toGPU(ctx, inp, inp_t);
   toGPU(ctx, weight, weight_t);
@@ -575,6 +583,8 @@ void ATTENTION_FORWARD_GPU(float* out, float* preatt, float* att,
   Tensor& out_t = ctx.pool.data[op->buffers[3]];
 
   toGPU(ctx, inp, inp_t);
+  toGPU(ctx, preatt, preatt_t);
+  toGPU(ctx, att, att_t);
 
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
@@ -632,10 +642,13 @@ void ATTENTION_BACKWARD_GPU(float* dinp, float* dpreatt, float* datt,
   Tensor& inp_t = ctx.pool.data[op->buffers[4]];
   Tensor& att_t = ctx.pool.data[op->buffers[5]];
 
+  toGPU(ctx, dinp, dinp_t);
+  toGPU(ctx, dpreatt, dpreatt_t);
+  toGPU(ctx, datt, datt_t);
   toGPU(ctx, dout, dout_t);
   toGPU(ctx, inp, inp_t);
   toGPU(ctx, att, att_t);
-
+  
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
   dispatchKernel(ctx, op, promise);
@@ -702,6 +715,7 @@ void GELU_BACKWARD_GPU(float* dinp, float* inp, float* dout, int N){
 
   toGPU(ctx, inp, inp_i);
   toGPU(ctx, dout, dout_i);
+  toGPU(ctx, dinp, dinp_o);
 
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
@@ -769,6 +783,8 @@ void RESIDUAL_BACKWARD_GPU(float* dinp1, float* dinp2, float* dout, int N){
   Tensor& dinp2_o = ctx.pool.data[op->buffers[2]];
 
   toGPU(ctx, dout, dout_i);
+  toGPU(ctx, dinp1, dinp1_o);
+  toGPU(ctx, dinp2, dinp2_o);
 
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
@@ -854,6 +870,7 @@ void CROSSENTROPY_FORWARD_GPU(float* losses,
   Tensor& probs_t = ctx.pool.data[op->buffers[1]];
   Tensor& targets_t = ctx.pool.data[op->buffers[2]];
 
+  toGPU(ctx, losses, losses_t);
   toGPU(ctx, probs, probs_t);
   toGPU(ctx, targets, targets_t);
 
@@ -907,6 +924,7 @@ void CROSSENTROPY_SOFTMAX_BACKWARD_GPU(float* dlogits,
   Tensor& probs_t = ctx.pool.data[op->buffers[2]];
   Tensor& targets_t = ctx.pool.data[op->buffers[3]];
 
+  toGPU(ctx, dlogits, dlogits_t);
   toGPU(ctx, dlosses, dlosses_t);
   toGPU(ctx, probs, probs_t);
   toGPU(ctx, targets, targets_t);
