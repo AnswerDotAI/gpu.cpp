@@ -1175,6 +1175,11 @@ inline void toGPU(Context &ctx, const half *data, Tensor &tensor) {
                        tensor.data.size);
 }
 
+inline void toGPU(Context &ctx, const int *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
 template <typename Params>
 inline void toGPU(Context &ctx, Params &params, Kernel &op) {
   // TODO(avh): Maintain params metadata in Kernel and check for consistency.
