@@ -75,6 +75,11 @@ struct DurationTime {
   }
 };
 
+static WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
+static Context ctx = createContext({},{},{
+    .requiredLimits = &requiredLimits
+  });
+
 void ENCODER_FORWARD_GPU(float* out,
                          int* inp, float* wte, float* wpe,
                          int B, int T, int C){
@@ -88,25 +93,40 @@ void ENCODER_FORWARD_GPU(float* out,
     uint32_t C;
   };
   setLogLevel(kError);
-  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
-  Context ctx = createContext({},{},{
-      .requiredLimits = &requiredLimits
-    });
-  Tensor input = createTensor(ctx, Shape{b * t}, ki32, inp);
-  Tensor wte_t = createTensor(ctx, Shape{v, c}, kf32, wte);
-  Tensor wpe_t = createTensor(ctx, Shape{t, c}, kf32, wpe);
-  Tensor output = createTensor(ctx, Shape{b * t * c}, kf32);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "ENCODER_FORWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor input = createTensor(ctx, Shape{b * t}, ki32);
+    Tensor wte_t = createTensor(ctx, Shape{v, c}, kf32);
+    Tensor wpe_t = createTensor(ctx, Shape{t, c}, kf32);
+    Tensor output = createTensor(ctx, Shape{b * t * c}, kf32);
+    op = createKernel(ctx, {kShaderEncoder, 256, kf32},
+                      Bindings{input, wte_t, wpe_t, output},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      EncoderParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(c)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& input = ctx.pool.data[op->buffers[0]];
+  Tensor& wte_t = ctx.pool.data[op->buffers[1]];
+  Tensor& wpe_t = ctx.pool.data[op->buffers[2]];
+  Tensor& output = ctx.pool.data[op->buffers[3]];
+
+  toGPU(ctx, inp, input);
+  toGPU(ctx, wte, wte_t);
+  toGPU(ctx, wpe, wpe_t);
+  
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderEncoder, 256, kf32},
-                           Bindings{input, wte_t, wpe_t, output},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           EncoderParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, out, b * t * c * sizeof(float));
@@ -125,25 +145,39 @@ void ENCODER_BACKWARD_GPU(float* dwte, float* dwpe,
     uint32_t C;
   };
   setLogLevel(kError);
-  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
-  Context ctx = createContext({},{},{
-      .requiredLimits = &requiredLimits
-    });
-  Tensor dwte_t = createTensor(ctx, Shape{v, c}, kf32, dwte);
-  Tensor dwpe_t = createTensor(ctx, Shape{t, c}, kf32, dwpe);
-  Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32, dout);
-  Tensor input = createTensor(ctx, Shape{b * t}, ki32, inp);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "ENCODER_BACKWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor dwte_t = createTensor(ctx, Shape{v, c}, kf32);
+    Tensor dwpe_t = createTensor(ctx, Shape{t, c}, kf32);
+    Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor input = createTensor(ctx, Shape{b * t}, ki32);
+    op = createKernel(ctx, {kShaderEncoderBackward, 256, kf32},
+                      Bindings{dwte_t, dwpe_t, dout_t, input},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      EncoderParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(c)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& dwte_t = ctx.pool.data[op->buffers[0]];
+  Tensor& dwpe_t = ctx.pool.data[op->buffers[1]];
+  Tensor& dout_t = ctx.pool.data[op->buffers[2]];
+  Tensor& input = ctx.pool.data[op->buffers[3]];
+
+  toGPU(ctx, dout, dout_t);
+  toGPU(ctx, inp, input);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderEncoderBackward, 256, kf32},
-                           Bindings{dwte_t, dwpe_t, dout_t, input},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           EncoderParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, dwte_t, dwte, v * c * sizeof(float));
@@ -162,24 +196,44 @@ void LAYERNORM_FORWARD_GPU(float* out, float* mean, float* rstd,
     uint32_t C;
   };
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor inp_t = createTensor(ctx, Shape{b * t * c}, kf32, inp);
-  Tensor weight_t = createTensor(ctx, Shape{c}, kf32, weight);
-  Tensor bias_t = createTensor(ctx, Shape{c}, kf32, bias);
-  Tensor out_t = createTensor(ctx, Shape{b * t * c}, kf32);
-  Tensor mean_t = createTensor(ctx, Shape{b * t}, kf32);
-  Tensor rstd_t = createTensor(ctx, Shape{b * t}, kf32);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "LAYERNORM_FORWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor inp_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor weight_t = createTensor(ctx, Shape{c}, kf32);
+    Tensor bias_t = createTensor(ctx, Shape{c}, kf32);
+    Tensor out_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor mean_t = createTensor(ctx, Shape{b * t}, kf32);
+    Tensor rstd_t = createTensor(ctx, Shape{b * t}, kf32);
+    op = createKernel(ctx, {kShaderLayerNorm, 256, kf32},
+                      Bindings{inp_t, weight_t, bias_t, out_t, mean_t, rstd_t},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      LayerNormParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(c)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& inp_t = ctx.pool.data[op->buffers[0]];
+  Tensor& weight_t = ctx.pool.data[op->buffers[1]];
+  Tensor& bias_t = ctx.pool.data[op->buffers[2]];
+  Tensor& out_t = ctx.pool.data[op->buffers[3]];
+  Tensor& mean_t = ctx.pool.data[op->buffers[4]];
+  Tensor& rstd_t = ctx.pool.data[op->buffers[5]];
+
+  toGPU(ctx, inp, inp_t);
+  toGPU(ctx, weight, weight_t);
+  toGPU(ctx, bias, bias_t);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderLayerNorm, 256, kf32},
-                           Bindings{inp_t, weight_t, bias_t, out_t, mean_t, rstd_t},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           LayerNormParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, out_t, out, b * t * c * sizeof(float));
@@ -199,26 +253,50 @@ void LAYERNORM_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
     uint32_t C;
   };
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor dinp_t = createTensor(ctx, Shape{b * t * c}, kf32, dinp);
-  Tensor dweight_t = createTensor(ctx, Shape{c}, kf32, dweight);
-  Tensor dbias_t = createTensor(ctx, Shape{c}, kf32, dbias);
-  Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32, dout);
-  Tensor inp_t = createTensor(ctx, Shape{b * t * c}, kf32, inp);
-  Tensor weight_t = createTensor(ctx, Shape{c}, kf32, weight);
-  Tensor mean_t = createTensor(ctx, Shape{b * t}, kf32, mean);
-  Tensor rstd_t = createTensor(ctx, Shape{b * t}, kf32, rstd);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "LAYERNORM_BACKWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor dinp_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor dweight_t = createTensor(ctx, Shape{c}, kf32);
+    Tensor dbias_t = createTensor(ctx, Shape{c}, kf32);
+    Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor inp_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor weight_t = createTensor(ctx, Shape{c}, kf32);
+    Tensor mean_t = createTensor(ctx, Shape{b * t}, kf32);
+    Tensor rstd_t = createTensor(ctx, Shape{b * t}, kf32);
+    op = createKernel(ctx, {kShaderLayerNormBackward, 256, kf32},
+                      Bindings{dinp_t, dweight_t, dbias_t, dout_t, inp_t, weight_t, mean_t, rstd_t},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      LayerNormParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(c)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& dinp_t = ctx.pool.data[op->buffers[0]];
+  Tensor& dweight_t = ctx.pool.data[op->buffers[1]];
+  Tensor& dbias_t = ctx.pool.data[op->buffers[2]];
+  Tensor& dout_t = ctx.pool.data[op->buffers[3]];
+  Tensor& inp_t = ctx.pool.data[op->buffers[4]];
+  Tensor& weight_t = ctx.pool.data[op->buffers[5]];
+  Tensor& mean_t = ctx.pool.data[op->buffers[6]];
+  Tensor& rstd_t = ctx.pool.data[op->buffers[7]];
+
+  toGPU(ctx, dout, dout_t);
+  toGPU(ctx, inp, inp_t);
+  toGPU(ctx, weight, weight_t);
+  toGPU(ctx, mean, mean_t);
+  toGPU(ctx, rstd, rstd_t);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderLayerNormBackward, 256, kf32},
-                           Bindings{dinp_t, dweight_t, dbias_t, dout_t, inp_t, weight_t, mean_t, rstd_t},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           LayerNormParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, dinp_t, dinp, b * t * c * sizeof(float));
@@ -230,28 +308,24 @@ void matmul_forward_dummy(float* out,
                           const float* inp, const float* weight, const float* bias,
                           int B, int T, int C, int OC);
 
-static WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
-static Context ctx = createContext({},{},{
-    .requiredLimits = &requiredLimits
-  });
 
-static constexpr size_t BT = 64;
-static constexpr size_t BC = 16;
-static constexpr size_t BOC = 64;
-static constexpr size_t TT = BT / BC;
-static constexpr size_t TOC = BOC / BC;
-static constexpr size_t num_threads = BT * BOC / (TT * TOC);
-static Shape wgSize = {num_threads, 1, 1};
+static constexpr size_t MATMUL_BT = 64;
+static constexpr size_t MATMUL_BC = 16;
+static constexpr size_t MATMUL_BOC = 64;
+static constexpr size_t MATMUL_TT = MATMUL_BT / MATMUL_BC;
+static constexpr size_t MATMUL_TOC = MATMUL_BOC / MATMUL_BC;
+static constexpr size_t MATMUL_num_threads = MATMUL_BT * MATMUL_BOC / (MATMUL_TT * MATMUL_TOC);
+static Shape MATMUL_wgSize = {MATMUL_num_threads, 1, 1};
 
-static std::string codeString(kShaderMatmul2DTiling);
-static std::string unrolledCode = loopUnrolling(replaceAll(codeString, {{"{{precision}}", toString(kf32)},
-                        {"{{BT}}", toString(BT)},
-                        {"{{BC}}", toString(BC)},
-                        {"{{BOC}}", toString(BOC)},
-                        {"{{TT}}", toString(TT)},
-                        {"{{TOC}}", toString(TOC)},
-                        {"{{NUM_TILEI}}", toString(BT * BC / num_threads)},
-                        {"{{NUM_TILEW}}", toString(BOC * BC / num_threads)}
+static std::string MATMUL_codeString(kShaderMatmul2DTiling);
+static std::string MATMUL_unrolledCode = loopUnrolling(replaceAll(MATMUL_codeString, {{"{{precision}}", toString(kf32)},
+                        {"{{BT}}", toString(MATMUL_BT)},
+                        {"{{BC}}", toString(MATMUL_BC)},
+                        {"{{BOC}}", toString(MATMUL_BOC)},
+                        {"{{TT}}", toString(MATMUL_TT)},
+                        {"{{TOC}}", toString(MATMUL_TOC)},
+                        {"{{NUM_TILEI}}", toString(MATMUL_BT * MATMUL_BC / MATMUL_num_threads)},
+                        {"{{NUM_TILEW}}", toString(MATMUL_BOC * MATMUL_BC / MATMUL_num_threads)}
     }));
 
 
@@ -285,15 +359,15 @@ void MATMUL_FORWARD_GPU(float* out,
   {
     DurationTime duration("matmul_forward_gpu: before creating tensors", verbose);
     // Generate the key of the cache by arguments.
-    std::string key = std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C) + "_" + std::to_string(OC);
+    std::string key = "MATMUL_FORWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C) + "_" + std::to_string(OC);
     Kernel op;
     if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
-      Shape nWorkgroups = {b, cdiv(T, BT), cdiv(OC, BOC)};
+      Shape nWorkgroups = {b, cdiv(T, MATMUL_BT), cdiv(OC, MATMUL_BOC)};
       Tensor inp_i = createTensor(ctx, Shape{b * t * c}, kf32);
       Tensor weight_i = createTensor(ctx, Shape{oc * c}, kf32);
       Tensor bias_i = bias == NULL ? createTensor(ctx, Shape{1}, kf32) : createTensor(ctx, Shape{oc}, kf32);
       Tensor out_o = createTensor(ctx, Shape{b * t * oc}, kf32);
-      op = createKernel(ctx, {unrolledCode, wgSize, kf32},
+      op = createKernel(ctx, {MATMUL_unrolledCode, MATMUL_wgSize, kf32},
                         Bindings{inp_i, weight_i, bias_i, out_o},
                         nWorkgroups,
                         /* params */
@@ -411,28 +485,45 @@ void MATMUL_BACKWARD_GPU(float* dinp, float* dweight, float* dbias,
   unsigned long c = static_cast<unsigned long>(C);
   unsigned long oc = static_cast<unsigned long>(OC);
   setLogLevel(kError);
-  WGPURequiredLimits requiredLimits = LIMITS_BUFFER_SIZE_1GB;
-  Context ctx = createContext({},{},{
-      .requiredLimits = &requiredLimits
-    });
-  Tensor dinp_t = createTensor(ctx, Shape{b * t * c}, kf32, dinp);
-  Tensor dweight_t = createTensor(ctx, Shape{oc * c}, kf32, dweight);
-  Tensor dbias_t = createTensor(ctx, Shape{oc}, kf32, dbias);
-  Tensor dout_t = createTensor(ctx, Shape{b * t * oc}, kf32, dout);
-  Tensor inp_t = createTensor(ctx, Shape{b * t * c}, kf32, inp);
-  Tensor weight_t = createTensor(ctx, Shape{oc * c}, kf32, weight);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "MATMUL_BACKWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C) + "_" + std::to_string(OC);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor dinp_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor dweight_t = createTensor(ctx, Shape{oc * c}, kf32);
+    Tensor dbias_t = createTensor(ctx, Shape{oc}, kf32);
+    Tensor dout_t = createTensor(ctx, Shape{b * t * oc}, kf32);
+    Tensor inp_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor weight_t = createTensor(ctx, Shape{oc * c}, kf32);
+    op = createKernel(ctx, {kShaderMatmulBackward, 256, kf32},
+                      Bindings{dinp_t, dweight_t, dbias_t, dout_t, inp_t, weight_t},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      MatmulParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(c),
+                        static_cast<uint32_t>(oc)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& dinp_t = ctx.pool.data[op->buffers[0]];
+  Tensor& dweight_t = ctx.pool.data[op->buffers[1]];
+  Tensor& dbias_t = ctx.pool.data[op->buffers[2]];
+  Tensor& dout_t = ctx.pool.data[op->buffers[3]];
+  Tensor& inp_t = ctx.pool.data[op->buffers[4]];
+  Tensor& weight_t = ctx.pool.data[op->buffers[5]];
+
+  toGPU(ctx, dout, dout_t);
+  toGPU(ctx, inp, inp_t);
+  toGPU(ctx, weight, weight_t);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderMatmulBackward, 256, kf32},
-                           Bindings{dinp_t, dweight_t, dbias_t, dout_t, inp_t, weight_t},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           MatmulParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c),
-                             static_cast<uint32_t>(oc)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, dinp_t, dinp, b * t * c * sizeof(float));
@@ -454,23 +545,39 @@ void ATTENTION_FORWARD_GPU(float* out, float* preatt, float* att,
   unsigned long c = static_cast<unsigned long>(C);
   unsigned long nh = static_cast<unsigned long>(NH);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor inp_t = createTensor(ctx, Shape{b * t * c * 3}, kf32, inp);
-  Tensor preatt_t = createTensor(ctx, Shape{b * nh * t * t}, kf32, preatt);
-  Tensor att_t = createTensor(ctx, Shape{b * nh * t * t}, kf32, att);
-  Tensor out_t = createTensor(ctx, Shape{b * t * c}, kf32);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "ATTENTION_FORWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C) + "_" + std::to_string(NH);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor inp_t = createTensor(ctx, Shape{b * t * c * 3}, kf32);
+    Tensor preatt_t = createTensor(ctx, Shape{b * nh * t * t}, kf32);
+    Tensor att_t = createTensor(ctx, Shape{b * nh * t * t}, kf32);
+    Tensor out_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    op = createKernel(ctx, {kShaderAttention, 256, kf32},
+                      Bindings{inp_t, preatt_t, att_t, out_t},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      AttentionParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(c),
+                        static_cast<uint32_t>(nh)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& inp_t = ctx.pool.data[op->buffers[0]];
+  Tensor& preatt_t = ctx.pool.data[op->buffers[1]];
+  Tensor& att_t = ctx.pool.data[op->buffers[2]];
+  Tensor& out_t = ctx.pool.data[op->buffers[3]];
+
+  toGPU(ctx, inp, inp_t);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderAttention, 256, kf32},
-                           Bindings{inp_t, preatt_t, att_t, out_t},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           AttentionParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c),
-                             static_cast<uint32_t>(nh)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, preatt_t, preatt, b * nh * t * t * sizeof(float));
@@ -492,25 +599,45 @@ void ATTENTION_BACKWARD_GPU(float* dinp, float* dpreatt, float* datt,
   unsigned long c = static_cast<unsigned long>(C);
   unsigned long nh = static_cast<unsigned long>(NH);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor dinp_t = createTensor(ctx, Shape{b * t * c * 3}, kf32, dinp);
-  Tensor dpreatt_t = createTensor(ctx, Shape{b * nh * t * t}, kf32, dpreatt);
-  Tensor datt_t = createTensor(ctx, Shape{b * nh * t * t}, kf32, datt);
-  Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32, dout);
-  Tensor inp_t = createTensor(ctx, Shape{b * t * c * 3}, kf32, inp);
-  Tensor att_t = createTensor(ctx, Shape{b * nh * t * t}, kf32, att);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "ATTENTION_BACKWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C) + "_" + std::to_string(NH);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor dinp_t = createTensor(ctx, Shape{b * t * c * 3}, kf32);
+    Tensor dpreatt_t = createTensor(ctx, Shape{b * nh * t * t}, kf32);
+    Tensor datt_t = createTensor(ctx, Shape{b * nh * t * t}, kf32);
+    Tensor dout_t = createTensor(ctx, Shape{b * t * c}, kf32);
+    Tensor inp_t = createTensor(ctx, Shape{b * t * c * 3}, kf32);
+    Tensor att_t = createTensor(ctx, Shape{b * nh * t * t}, kf32);
+    op = createKernel(ctx, {kShaderAttentionBackward, 256, kf32},
+                      Bindings{dinp_t, dpreatt_t, datt_t, dout_t, inp_t, att_t},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      AttentionParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(c),
+                        static_cast<uint32_t>(nh)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& dinp_t = ctx.pool.data[op->buffers[0]];
+  Tensor& dpreatt_t = ctx.pool.data[op->buffers[1]];
+  Tensor& datt_t = ctx.pool.data[op->buffers[2]];
+  Tensor& dout_t = ctx.pool.data[op->buffers[3]];
+  Tensor& inp_t = ctx.pool.data[op->buffers[4]];
+  Tensor& att_t = ctx.pool.data[op->buffers[5]];
+
+  toGPU(ctx, dout, dout_t);
+  toGPU(ctx, inp, inp_t);
+  toGPU(ctx, att, att_t);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderAttentionBackward, 256, kf32},
-                           Bindings{dinp_t, dpreatt_t, datt_t, dout_t, inp_t, att_t},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           AttentionParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(c),
-                             static_cast<uint32_t>(nh)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, dinp_t, dinp, b * t * c * 3 * sizeof(float));
@@ -521,14 +648,29 @@ void ATTENTION_BACKWARD_GPU(float* dinp, float* dpreatt, float* datt,
 void GELU_FORWARD_GPU(float* out, float* inp, int n) {
   unsigned long N = static_cast<unsigned long>(n);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor input = createTensor(ctx, Shape{N}, kf32, inp);
-  Tensor output = createTensor(ctx, Shape{N}, kf32);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "GELU_FORWARD_GPU_" + std::to_string(n);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor input = createTensor(ctx, Shape{N}, kf32);
+    Tensor output = createTensor(ctx, Shape{N}, kf32);
+    op = createKernel(ctx, {kShaderGelu, 256, kf32},
+                      Bindings{input, output},
+                      /* nWorkgroups */ {cdiv(N, 256), 1, 1},
+                      nullptr,
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& input = ctx.pool.data[op->buffers[0]];
+  Tensor& output = ctx.pool.data[op->buffers[1]];
+
+  toGPU(ctx, inp, input);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderGelu, 256, kf32},
-                           Bindings{input, output},
-                           /* nWorkgroups */ {cdiv(N, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, out, N * sizeof(float));
@@ -537,15 +679,32 @@ void GELU_FORWARD_GPU(float* out, float* inp, int n) {
 void GELU_BACKWARD_GPU(float* dinp, float* inp, float* dout, int N){
   unsigned long n = static_cast<unsigned long>(N);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor inp_i = createTensor(ctx, Shape{n}, kf32, inp);
-  Tensor dout_i = createTensor(ctx, Shape{n}, kf32, dout);
-  Tensor dinp_o = createTensor(ctx, Shape{n}, kf32, dinp);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "GELU_BACKWARD_GPU_" + std::to_string(N);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor inp_i = createTensor(ctx, Shape{n}, kf32);
+    Tensor dout_i = createTensor(ctx, Shape{n}, kf32);
+    Tensor dinp_o = createTensor(ctx, Shape{n}, kf32);
+    op = createKernel(ctx, {kShaderGeluBackward, 256, kf32},
+                      Bindings{inp_i, dout_i, dinp_o},
+                      /* nWorkgroups */ {cdiv(n, 256), 1, 1},
+                      nullptr,
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& inp_i = ctx.pool.data[op->buffers[0]];
+  Tensor& dout_i = ctx.pool.data[op->buffers[1]];
+  Tensor& dinp_o = ctx.pool.data[op->buffers[2]];
+
+  toGPU(ctx, inp, inp_i);
+  toGPU(ctx, dout, dout_i);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderGeluBackward, 256, kf32},
-                           Bindings{inp_i, dout_i, dinp_o},
-                           /* nWorkgroups */ {cdiv(n, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, dinp_o, dinp, n * sizeof(float));
@@ -554,15 +713,32 @@ void GELU_BACKWARD_GPU(float* dinp, float* inp, float* dout, int N){
 void RESIDUAL_FORWARD_GPU(float* out, float* inp1, float* inp2, int N){
   unsigned long n = static_cast<unsigned long>(N);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor inp1_i = createTensor(ctx, Shape{n}, kf32, inp1);
-  Tensor inp2_i = createTensor(ctx, Shape{n}, kf32, inp2);
-  Tensor out_o = createTensor(ctx, Shape{n}, kf32);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "RESIDUAL_FORWARD_GPU_" + std::to_string(N);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor inp1_i = createTensor(ctx, Shape{n}, kf32);
+    Tensor inp2_i = createTensor(ctx, Shape{n}, kf32);
+    Tensor out_o = createTensor(ctx, Shape{n}, kf32);
+    op = createKernel(ctx, {kShaderResidual, 256, kf32},
+                      Bindings{inp1_i, inp2_i, out_o},
+                      /* nWorkgroups */ {cdiv(n, 256), 1, 1},
+                      nullptr,
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& inp1_i = ctx.pool.data[op->buffers[0]];
+  Tensor& inp2_i = ctx.pool.data[op->buffers[1]];
+  Tensor& out_o = ctx.pool.data[op->buffers[2]];
+
+  toGPU(ctx, inp1, inp1_i);
+  toGPU(ctx, inp2, inp2_i);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderResidual, 256, kf32},
-                           Bindings{inp1_i, inp2_i, out_o},
-                           /* nWorkgroups */ {cdiv(n, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, out_o, out, n * sizeof(float));
@@ -571,15 +747,31 @@ void RESIDUAL_FORWARD_GPU(float* out, float* inp1, float* inp2, int N){
 void RESIDUAL_BACKWARD_GPU(float* dinp1, float* dinp2, float* dout, int N){
   unsigned long n = static_cast<unsigned long>(N);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor dout_i = createTensor(ctx, Shape{n}, kf32, dout);
-  Tensor dinp1_o = createTensor(ctx, Shape{n}, kf32, dinp1);
-  Tensor dinp2_o = createTensor(ctx, Shape{n}, kf32, dinp2);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "RESIDUAL_BACKWARD_GPU_" + std::to_string(N);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor dout_i = createTensor(ctx, Shape{n}, kf32);
+    Tensor dinp1_o = createTensor(ctx, Shape{n}, kf32);
+    Tensor dinp2_o = createTensor(ctx, Shape{n}, kf32);
+    op = createKernel(ctx, {kShaderResidualBackward, 256, kf32},
+                      Bindings{dout_i, dinp1_o, dinp2_o},
+                      /* nWorkgroups */ {cdiv(n, 256), 1, 1},
+                      nullptr,
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& dout_i = ctx.pool.data[op->buffers[0]];
+  Tensor& dinp1_o = ctx.pool.data[op->buffers[1]];
+  Tensor& dinp2_o = ctx.pool.data[op->buffers[2]];
+
+  toGPU(ctx, dout, dout_i);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderResidualBackward, 256, kf32},
-                           Bindings{dout_i, dinp1_o, dinp2_o},
-                           /* nWorkgroups */ {cdiv(n, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, dinp1_o, dinp1, n * sizeof(float));
@@ -596,15 +788,29 @@ void SOFTMAX_FORWARD_GPU(float* probs, float* logits, int B, int T, int V, int V
   uint32_t t = static_cast<uint32_t>(T);
   uint32_t c = static_cast<uint32_t>(V);
   uint32_t cp = static_cast<uint32_t>(Vp);
-  Context ctx = createContext();
-  Tensor input = createTensor(ctx, {b * t, cp}, kf32, logits);
-  Tensor output = createTensor(ctx, {b * t, cp}, kf32);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "SOFTMAX_FORWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(V) + "_" + std::to_string(Vp);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor input = createTensor(ctx, {b * t, cp}, kf32);
+    Tensor output = createTensor(ctx, {b * t, cp}, kf32);
+    assert( (B*T) % 256 == 0);
+    op = createKernel(
+        ctx, {kShaderSoftmax1, 256, kf32}, Bindings{input, output},
+        Shape{cdiv(B * T, 256), 1, 1}, SoftmaxParam{b * t, c, cp},
+        nullptr,
+        key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& input = ctx.pool.data[op->buffers[0]];
+  Tensor& output = ctx.pool.data[op->buffers[1]];
+
+  toGPU(ctx, logits, input);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  assert( (B*T) % 256 == 0);
-  Kernel op = createKernel(
-      ctx, {kShaderSoftmax1, 256, kf32}, Bindings{input, output},
-      Shape{cdiv(B * T, 256), 1, 1}, SoftmaxParam{b * t, c, cp});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, probs, sizeof(float)*b*t*cp);
@@ -622,21 +828,37 @@ void CROSSENTROPY_FORWARD_GPU(float* losses,
   unsigned long t = static_cast<unsigned long>(T);
   unsigned long vp = static_cast<unsigned long>(Vp);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor losses_t = createTensor(ctx, Shape{b * t}, kf32, losses);
-  Tensor probs_t = createTensor(ctx, Shape{b * t * vp}, kf32, probs);
-  Tensor targets_t = createTensor(ctx, Shape{b * t}, ki32, targets);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "CROSSENTROPY_FORWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(Vp);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor losses_t = createTensor(ctx, Shape{b * t}, kf32);
+    Tensor probs_t = createTensor(ctx, Shape{b * t * vp}, kf32);
+    Tensor targets_t = createTensor(ctx, Shape{b * t}, ki32);
+    op = createKernel(ctx, {kShaderCrossEntropyForward, 256, kf32},
+                      Bindings{losses_t, probs_t, targets_t},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      CrossEntropyParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(vp)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& losses_t = ctx.pool.data[op->buffers[0]];
+  Tensor& probs_t = ctx.pool.data[op->buffers[1]];
+  Tensor& targets_t = ctx.pool.data[op->buffers[2]];
+
+  toGPU(ctx, probs, probs_t);
+  toGPU(ctx, targets, targets_t);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderCrossEntropyForward, 256, kf32},
-                           Bindings{losses_t, probs_t, targets_t},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           CrossEntropyParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(vp)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, losses_t, losses, b * t * sizeof(float));
@@ -656,23 +878,41 @@ void CROSSENTROPY_SOFTMAX_BACKWARD_GPU(float* dlogits,
   unsigned long v = static_cast<unsigned long>(V);
   unsigned long vp = static_cast<unsigned long>(Vp);
   setLogLevel(kError);
-  Context ctx = createContext();
-  Tensor dlogits_t = createTensor(ctx, Shape{b * t * vp}, kf32, dlogits);
-  Tensor dlosses_t = createTensor(ctx, Shape{b * t}, kf32, dlosses);
-  Tensor probs_t = createTensor(ctx, Shape{b * t * vp}, kf32, probs);
-  Tensor targets_t = createTensor(ctx, Shape{b * t}, ki32, targets);
+
+  // Generate the key of the cache by arguments.
+  std::string key = "CROSSENTROPY_SOFTMAX_BACKWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(V) + "_" + std::to_string(Vp);
+  Kernel op;
+  if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
+    Tensor dlogits_t = createTensor(ctx, Shape{b * t * vp}, kf32);
+    Tensor dlosses_t = createTensor(ctx, Shape{b * t}, kf32);
+    Tensor probs_t = createTensor(ctx, Shape{b * t * vp}, kf32);
+    Tensor targets_t = createTensor(ctx, Shape{b * t}, ki32);
+    op = createKernel(ctx, {kShaderCrossEntropySoftmaxBackward, 256, kf32},
+                      Bindings{dlogits_t, dlosses_t, probs_t, targets_t},
+                      /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                      /* params */
+                      CrossEntropySoftmaxBackwardParams{
+                        static_cast<uint32_t>(b),
+                        static_cast<uint32_t>(t),
+                        static_cast<uint32_t>(v),
+                        static_cast<uint32_t>(vp)
+                      },
+                      nullptr,
+                      key.c_str());
+  } else {
+    op = ctx.kernelPool.data[key];
+  }
+  Tensor& dlogits_t = ctx.pool.data[op->buffers[0]];
+  Tensor& dlosses_t = ctx.pool.data[op->buffers[1]];
+  Tensor& probs_t = ctx.pool.data[op->buffers[2]];
+  Tensor& targets_t = ctx.pool.data[op->buffers[3]];
+
+  toGPU(ctx, dlosses, dlosses_t);
+  toGPU(ctx, probs, probs_t);
+  toGPU(ctx, targets, targets_t);
+
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kShaderCrossEntropySoftmaxBackward, 256, kf32},
-                           Bindings{dlogits_t, dlosses_t, probs_t, targets_t},
-                           /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-                           /* params */
-                           CrossEntropySoftmaxBackwardParams{
-                             static_cast<uint32_t>(b),
-                             static_cast<uint32_t>(t),
-                             static_cast<uint32_t>(v),
-                             static_cast<uint32_t>(vp)
-                           });
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, dlogits_t, dlogits, b * t * vp * sizeof(float));
