@@ -235,28 +235,6 @@ void layernorm_backward(Context& ctx, float* dinp, float* dweight, float* dbias,
   toCPU(ctx, dbias_t, dbias, c * sizeof(float));
 }
 
-static constexpr size_t MATMUL_BT = 64;
-static constexpr size_t MATMUL_BC = 8;
-static constexpr size_t MATMUL_BOC = 64;
-static constexpr size_t MATMUL_TT = MATMUL_BT / MATMUL_BC;
-static constexpr size_t MATMUL_TOC = MATMUL_BOC / MATMUL_BC;
-static size_t MATMUL_num_threads = MATMUL_BT * MATMUL_BOC / (MATMUL_TT * MATMUL_TOC);
-static Shape MATMUL_wgSize = {MATMUL_num_threads, 1, 1};
-static std::string kShaderMatmul2DTiling_(kShaderMatmul2DTiling);
-static std::string kShaderMatmul2D(loopUnrolling(
-                                                 replaceAll(kShaderMatmul2DTiling_,
-                                                            {{"{{precision}}", toString(kf32)},
-                                                             {"{{BT}}", toString(MATMUL_BT)},
-                                                             {"{{BC}}", toString(MATMUL_BC)},
-                                                             {"{{BOC}}", toString(MATMUL_BOC)},
-                                                             {"{{TT}}", toString(MATMUL_TT)},
-                                                             {"{{TOC}}", toString(MATMUL_TOC)},
-                                                             {"{{NUM_TILEI}}", toString(MATMUL_BT * MATMUL_BC / MATMUL_num_threads)},
-                                                             {"{{NUM_TILEW}}", toString(MATMUL_BOC * MATMUL_BC / MATMUL_num_threads)}
-                                                            })
-                                                 )
-                                   );
-
 struct DurationTime {
   std::chrono::high_resolution_clock::time_point start;
   std::chrono::high_resolution_clock::time_point end;
@@ -301,12 +279,36 @@ void matmul_forward(Context& ctx, float* out,
   std::string key = "matmul_forward_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C) + "_" + std::to_string(OC);
   Kernel op;
   if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
-    Shape nWorkgroups = {b, cdiv(T, MATMUL_BT), cdiv(OC, MATMUL_BOC)};
+    constexpr size_t BT = 64;
+    constexpr size_t BC = 8;
+    constexpr size_t BOC = 64;
+    constexpr size_t TT = BT / BC;
+    constexpr size_t TOC = BOC / BC;
+    size_t num_threads = BT * BOC / (TT * TOC);
+    Shape wgSize = {num_threads, 1, 1};
+    Shape nWorkgroups = {b, cdiv(T, BT), cdiv(OC, BOC)};
+
+    std::string kShaderMatmul2DTiling_(kShaderMatmul2DTiling);
+    std::string kShaderMatmul2D(loopUnrolling(
+                                              replaceAll(kShaderMatmul2DTiling_,
+                                                         {{"{{precision}}", toString(kf32)},
+                                                          {"{{BT}}", toString(BT)},
+                                                          {"{{BC}}", toString(BC)},
+                                                          {"{{BOC}}", toString(BOC)},
+                                                          {"{{TT}}", toString(TT)},
+                                                          {"{{TOC}}", toString(TOC)},
+                                                          {"{{NUM_TILEI}}", toString(BT * BC / num_threads)},
+                                                          {"{{NUM_TILEW}}", toString(BOC * BC / num_threads)}
+                                                         })
+                                              )
+                                );
+
     Tensor inp_i = createTensor(ctx, Shape{b * t * c}, kf32);
     Tensor weight_i = createTensor(ctx, Shape{oc * c}, kf32);
     Tensor bias_i = bias == NULL ? createTensor(ctx, Shape{1}, kf32) : createTensor(ctx, Shape{oc}, kf32);
     Tensor out_o = createTensor(ctx, Shape{b * t * oc}, kf32);
-    op = createKernel(ctx, {kShaderMatmul2D, MATMUL_wgSize, kf32},
+    
+    op = createKernel(ctx, {kShaderMatmul2D, wgSize, kf32},
                       Bindings{inp_i, weight_i, bias_i, out_o},
                       nWorkgroups,
                       /* params */
