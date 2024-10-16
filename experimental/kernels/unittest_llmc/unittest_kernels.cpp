@@ -321,7 +321,7 @@ void MATMUL_FORWARD_GPU(float* out,
   bool verbose = false;
   bool debug = false;
   float *out_exp;
-  DurationTime duration("matmul_forward_gpu with creating context", verbose);
+  DurationTime duration("matmul_forward_gpu with preparing a kernel", verbose);
   if (verbose) {
     printf("matmul forward: B=%d, T=%d, C=%d, OC=%d, bias=%d\n", B, T, C, OC, bias != NULL);
   }
@@ -341,49 +341,65 @@ void MATMUL_FORWARD_GPU(float* out,
   unsigned long oc = static_cast<unsigned long>(OC);
   setLogLevel(kError);
 
-  {
-    DurationTime duration("matmul_forward_gpu: before creating tensors", verbose);
+  if (version == 2 || version == 1) {
     // Generate the key of the cache by arguments.
     std::string key = "MATMUL_FORWARD_GPU_" + std::to_string(B) + "_" + std::to_string(T) + "_" + std::to_string(C) + "_" + std::to_string(OC);
     Kernel op;
     if (ctx.kernelPool.data.find(key) == ctx.kernelPool.data.end()) {
-      constexpr size_t BT = 64;
-      constexpr size_t BC = 16;
-      constexpr size_t BOC = 64;
-      constexpr size_t TT = BT / BC;
-      constexpr size_t TOC = BOC / BC;
-      constexpr size_t num_threads = BT * BOC / (TT * TOC);
-      Shape wgSize = {num_threads, 1, 1};
-
-      std::string codeString(kShaderMatmul2DTiling);
-      std::string unrolledCode = loopUnrolling(replaceAll(codeString, {{"{{precision}}", toString(kf32)},
-                                                                       {"{{BT}}", toString(BT)},
-                                                                       {"{{BC}}", toString(BC)},
-                                                                       {"{{BOC}}", toString(BOC)},
-                                                                       {"{{TT}}", toString(TT)},
-                                                                       {"{{TOC}}", toString(TOC)},
-                                                                       {"{{NUM_TILEI}}", toString(BT * BC / num_threads)},
-                                                                       {"{{NUM_TILEW}}", toString(BOC * BC / num_threads)}
-          }));
-
-      Shape nWorkgroups = {b, cdiv(T, BT), cdiv(OC, BOC)};
       Tensor inp_i = createTensor(ctx, Shape{b * t * c}, kf32);
       Tensor weight_i = createTensor(ctx, Shape{oc * c}, kf32);
       Tensor bias_i = bias == NULL ? createTensor(ctx, Shape{1}, kf32) : createTensor(ctx, Shape{oc}, kf32);
       Tensor out_o = createTensor(ctx, Shape{b * t * oc}, kf32);
-      op = createKernel(ctx, {unrolledCode, wgSize, kf32},
-                        Bindings{inp_i, weight_i, bias_i, out_o},
-                        nWorkgroups,
-                        /* params */
-                        MatmulParams{
-                          static_cast<uint32_t>(b),
-                          static_cast<uint32_t>(t),
-                          static_cast<uint32_t>(c),
-                          static_cast<uint32_t>(oc)
-                        },
-                        nullptr,
-                        key.c_str()
-                        );
+
+      if (version == 2) {
+        constexpr size_t BT = 64;
+        constexpr size_t BC = 16;
+        constexpr size_t BOC = 64;
+        constexpr size_t TT = BT / BC;
+        constexpr size_t TOC = BOC / BC;
+        constexpr size_t num_threads = BT * BOC / (TT * TOC);
+        Shape wgSize = {num_threads, 1, 1};
+
+        std::string codeString(kShaderMatmul2DTiling);
+        std::string unrolledCode = loopUnrolling(replaceAll(codeString, {{"{{precision}}", toString(kf32)},
+                                                                         {"{{BT}}", toString(BT)},
+                                                                         {"{{BC}}", toString(BC)},
+                                                                         {"{{BOC}}", toString(BOC)},
+                                                                         {"{{TT}}", toString(TT)},
+                                                                         {"{{TOC}}", toString(TOC)},
+                                                                         {"{{NUM_TILEI}}", toString(BT * BC / num_threads)},
+                                                                         {"{{NUM_TILEW}}", toString(BOC * BC / num_threads)}
+            }));
+
+        Shape nWorkgroups = {b, cdiv(T, BT), cdiv(OC, BOC)};
+        op = createKernel(ctx, {unrolledCode, wgSize, kf32},
+                          Bindings{inp_i, weight_i, bias_i, out_o},
+                          nWorkgroups,
+                          /* params */
+                          MatmulParams{
+                            static_cast<uint32_t>(b),
+                            static_cast<uint32_t>(t),
+                            static_cast<uint32_t>(c),
+                            static_cast<uint32_t>(oc)
+                          },
+                          nullptr,
+                          key.c_str()
+                          );
+      } else {
+        op = createKernel(ctx, {kShaderMatmul, 256, kf32},
+                          Bindings{inp_i, weight_i, bias_i, out_o},
+                          /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
+                          /* params */
+                          MatmulParams{
+                            static_cast<uint32_t>(b),
+                            static_cast<uint32_t>(t),
+                            static_cast<uint32_t>(c),
+                            static_cast<uint32_t>(oc)
+                          },
+                          nullptr,
+                          key.c_str()
+                          );
+      }
     } else {
       op = ctx.kernelPool.data[key];
     }
@@ -400,39 +416,16 @@ void MATMUL_FORWARD_GPU(float* out,
     
     std::promise<void> promise;
     std::future<void> future = promise.get_future();
-  
-    if (version == 2) {
-      DurationTime duration("matmul_forward_gpu: after creating tensors", verbose);
-      {
-        DurationTime duration("matmul_forward_gpu: before creating kernels", verbose);
-        {
-          DurationTime duration("matmul_forward_gpu without creating context", verbose);
-          dispatchKernel(ctx, op, promise);
-          wait(ctx, future);
-          toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
-        }
-      }
-    // } else if (version == 1) {
-    //   Kernel op = createKernel(ctx, {kShaderMatmul, 256, kf32},
-    //                            Bindings{inp_i, weight_i, bias_i, out_o},
-    //                            /* nWorkgroups */ {cdiv(b * t, 256), 1, 1},
-    //                            /* params */
-    //                            MatmulParams{
-    //                              static_cast<uint32_t>(b),
-    //                              static_cast<uint32_t>(t),
-    //                              static_cast<uint32_t>(c),
-    //                              static_cast<uint32_t>(oc)
-    //                            });
-    //   {
-    //     DurationTime duration("matmul_forward_gpu without creating context", verbose);
-    //     dispatchKernel(ctx, op, promise);
-    //     wait(ctx, future);
-    //     toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
-    //   }
-    } else {
-      DurationTime duration("matmul_forward_cpu", verbose);
-      matmul_forward_dummy(out, inp, weight, bias, B, T, C, OC);
+
+    {
+      DurationTime duration("matmul_forward_gpu", verbose);
+      dispatchKernel(ctx, op, promise);
+      wait(ctx, future);
+      toCPU(ctx, out_o, out, b * t * oc * sizeof(float));
     }
+  } else {
+    DurationTime duration("matmul_forward_cpu", verbose);
+    matmul_forward_dummy(out, inp, weight, bias, B, T, C, OC);
   }
 
   if (debug) { // compare out with out_exp.
