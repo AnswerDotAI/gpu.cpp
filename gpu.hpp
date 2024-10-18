@@ -1065,6 +1065,9 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
   toCPU(ctx, tensor, data, bufferSize, op);
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
 }
 
 /**
@@ -1131,6 +1134,9 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data,
       },
       &callbackData);
   wait(ctx, op.future);
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
 }
 
   
