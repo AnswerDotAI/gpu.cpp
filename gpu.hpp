@@ -1002,6 +1002,7 @@ inline void wait(Context &ctx, std::future<void> &future) {
 inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
                   CopyData &op) {
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
+  wgpuCommandBufferRelease(op.commandBuffer);
   CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
                                &op.future};
   wgpuQueueOnSubmittedWorkDone(
@@ -1109,6 +1110,7 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data,
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
+  wgpuCommandBufferRelease(op.commandBuffer);
   CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
                                &op.future};
   wgpuQueueOnSubmittedWorkDone(
@@ -1513,6 +1515,7 @@ inline void dispatchKernel(Context &ctx, Kernel &kernel,
     resetCommandBuffer(ctx.device, kernel);
   }
   wgpuQueueSubmit(ctx.queue, 1, &kernel->commandBuffer);
+  wgpuCommandBufferRelease(kernel->commandBuffer);
   kernel->used = true;
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
