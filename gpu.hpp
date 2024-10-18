@@ -1063,6 +1063,7 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
     wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
                                          op.readbackBuffer, 0, bufferSize);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
   toCPU(ctx, tensor, data, bufferSize, op);
@@ -1107,6 +1108,7 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data,
     wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, buffer, 0,
                                          op.readbackBuffer, 0, bufferSize);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
@@ -1225,6 +1227,7 @@ inline void resetCommandBuffer(WGPUDevice &device, Kernel &op) {
         op->totalWorkgroups[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
     op->commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
     op->used = false;
   }
 }
