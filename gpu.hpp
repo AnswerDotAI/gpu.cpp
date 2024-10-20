@@ -415,12 +415,14 @@ struct KernelCode {
  * @endcode
  * "f32"}});
  */
-inline void
+inline const std::string
 replaceAll(std::string &str,
            const std::vector<std::pair<std::string, std::string>> &reps) {
   for (const auto &rep : reps) {
     replaceAll(str, rep.first, rep.second);
   }
+
+  return str;
 }
 
 /**
@@ -452,7 +454,7 @@ struct CopyData {
  * The struct members can be divided into "consumed upon dispatch"
  * (commandBuffer) and reusable ahead-of-time setup (all other members).
  */
-struct Kernel {
+struct RawKernel {
   std::unique_ptr<WGPUBuffer[]> buffers; // non-owning
   std::unique_ptr<size_t[]> bufferSizes;
   size_t numBindings;
@@ -460,7 +462,10 @@ struct Kernel {
   WGPUBindGroup bindGroup;             // persists between submission
   WGPUComputePipeline computePipeline; // persists between submission
   WGPUCommandBuffer commandBuffer;     // destroyed upon submission
+  bool used;
 };
+
+typedef std::shared_ptr<RawKernel> Kernel;
 
 
 /**
@@ -481,7 +486,7 @@ struct CompilationInfo {
  * @return True if lhs < rhs, false otherwise
  */
 inline bool operator<(const Kernel &lhs, const Kernel &rhs) {
-  return lhs.commandBuffer < rhs.commandBuffer;
+  return lhs->commandBuffer < rhs->commandBuffer;
 }
 
 /**
@@ -492,7 +497,7 @@ inline bool operator<(const Kernel &lhs, const Kernel &rhs) {
 struct KernelPool {
   inline KernelPool(Context *ctx) : ctx(ctx), data() {}
   Context *ctx;
-  std::set<Kernel *> data;
+  std::unordered_map<std::string, Kernel> data;
   inline ~KernelPool() {
     // Note : Some kernel resources such as commandBuffer are harvested by
     // queue submission, explicitly destroying readback and callback buffers
@@ -997,6 +1002,7 @@ inline void wait(Context &ctx, std::future<void> &future) {
 inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
                   CopyData &op) {
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
+  wgpuCommandBufferRelease(op.commandBuffer);
   CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
                                &op.future};
   wgpuQueueOnSubmittedWorkDone(
@@ -1052,14 +1058,17 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
   }
   {
     WGPUCommandEncoder commandEncoder;
-    WGPUComputePassEncoder computePassEncoder;
     commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
     wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
                                          op.readbackBuffer, 0, bufferSize);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
   toCPU(ctx, tensor, data, bufferSize, op);
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
 }
 
 /**
@@ -1078,6 +1087,61 @@ void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data) {
   toCPU(ctx, tensor, data.data(), sizeof(data));
 }
 
+inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data,
+                  size_t size) {
+  uint64_t bufferSize = size;
+  CopyData op;
+  op.future = op.promise.get_future();
+  {
+    WGPUBufferDescriptor readbackBufferDescriptor = {
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
+        .size = bufferSize,
+    };
+    op.readbackBuffer =
+        wgpuDeviceCreateBuffer(ctx.device, &readbackBufferDescriptor);
+  }
+  {
+    WGPUCommandEncoder commandEncoder;
+    commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
+    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, buffer, 0,
+                                         op.readbackBuffer, 0, bufferSize);
+    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
+    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
+  }
+  wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
+  wgpuCommandBufferRelease(op.commandBuffer);
+  CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
+                               &op.future};
+  wgpuQueueOnSubmittedWorkDone(
+      ctx.queue,
+      [](WGPUQueueWorkDoneStatus status, void *callbackData) {
+        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+              __FILE__, __LINE__);
+        const auto *data = static_cast<CallbackData *>(callbackData);
+        wgpuBufferMapAsync(
+            data->buffer, WGPUMapMode_Read, 0, data->bufferSize,
+            [](WGPUBufferMapAsyncStatus status, void *captureData) {
+              const auto *data = static_cast<CallbackData *>(captureData);
+              check(status == WGPUBufferMapAsyncStatus_Success,
+                    "Map readbackBuffer", __FILE__, __LINE__);
+              const void *mappedData = wgpuBufferGetConstMappedRange(
+                  data->buffer, /*offset=*/0, data->bufferSize);
+              check(mappedData, "Get mapped range", __FILE__, __LINE__);
+              memcpy(data->output, mappedData, data->bufferSize);
+              wgpuBufferUnmap(data->buffer);
+              data->promise->set_value();
+            },
+            callbackData);
+      },
+      &callbackData);
+  wait(ctx, op.future);
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
+}
+
+  
 /**
  * @brief Copies data from CPU memory to a GPU buffer. The toGPU overloads are
  * effectively a convenience wrapper around the WebGPU API call
@@ -1119,13 +1183,18 @@ inline void toGPU(Context &ctx, const half *data, Tensor &tensor) {
                        tensor.data.size);
 }
 
+inline void toGPU(Context &ctx, const int *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
 template <typename Params>
 inline void toGPU(Context &ctx, Params &params, Kernel &op) {
   // TODO(avh): Maintain params metadata in Kernel and check for consistency.
   // If a kernel does not have parameters this will quietly overwrite
   // the last buffer in the bind group with the parameters buffer.
-  if (op.numBindings > 0) {
-    wgpuQueueWriteBuffer(ctx.queue, op.buffers[op.numBindings - 1], 0,
+  if (op->numBindings > 0) {
+    wgpuQueueWriteBuffer(ctx.queue, op->buffers[op->numBindings - 1], 0,
                          static_cast<void *>(&params), sizeof(params));
   }
 }
@@ -1148,14 +1217,17 @@ inline void resetCommandBuffer(WGPUDevice &device, Kernel &op) {
         wgpuDeviceCreateCommandEncoder(device, nullptr);
     WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
-    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, op->computePipeline);
+    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op->bindGroup, 0,
                                        nullptr);
     wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder, op.totalWorkgroups[0], op.totalWorkgroups[1],
-        op.totalWorkgroups[2]);
+        computePassEncoder, op->totalWorkgroups[0], op->totalWorkgroups[1],
+        op->totalWorkgroups[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
-    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuComputePassEncoderRelease(computePassEncoder);
+    op->commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
+    op->used = false;
   }
 }
 
@@ -1217,11 +1289,19 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
                            const size_t *viewOffsets, const Shape &totalWorkgroups,
                            const void *params = nullptr,
                            size_t paramsSize = 0,
-                           CompilationInfo* compilationInfo = nullptr) {
+                           CompilationInfo* compilationInfo = nullptr,
+                           const char* cacheKey = nullptr) {
+  // Create a cache key by the pointer values of the data bindings and the kernel code
+  if (cacheKey != nullptr && ctx.kernelPool.data.find(cacheKey) != ctx.kernelPool.data.end()) {
+    LOG(kDefLog, kInfo, "Kernel cache hit");
+    return ctx.kernelPool.data[cacheKey];
+  }
+
   assert(totalWorkgroups.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
-  Kernel op;
+  Kernel op(new RawKernel());
+
   // paramIndex is the index into bgLayoutEntries for the parameters buffer If
   // there are no parameters for the kernel, paramsSize == 0 and paramIndex is
   // effectively undefined (== -1)
@@ -1234,9 +1314,9 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
                                   // op.buffers, op.bufferSizes and
                                   // bgLayoutEntries
   }
-  op.buffers = std::make_unique<WGPUBuffer[]>(numBindings);
-  op.bufferSizes = std::make_unique<size_t[]>(numBindings);
-  op.numBindings = numBindings;
+  op->buffers = std::make_unique<WGPUBuffer[]>(numBindings);
+  op->bufferSizes = std::make_unique<size_t[]>(numBindings);
+  op->numBindings = numBindings;
   std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBindings);
   // Create layout entries for input buffers
   for (size_t i = 0; i < numTensors; ++i) {
@@ -1270,8 +1350,8 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   WGPUBindGroupLayout bgLayout =
       wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
   for (size_t i = 0; i < numTensors; ++i) {
-    op.buffers[i] = dataBindings[i].data.buffer;
-    op.bufferSizes[i] = dataBindings[i].data.size;
+    op->buffers[i] = dataBindings[i].data.buffer;
+    op->bufferSizes[i] = dataBindings[i].data.size;
   }
   // Create a buffer for the Params struct
   if (paramsSize > 0) {
@@ -1280,9 +1360,9 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
         .size = paramsSize,
         .mappedAtCreation = false,
     };
-    op.buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
-    op.bufferSizes[paramIndex] = paramsSize;
-    wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params, paramsSize);
+    op->buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
+    op->bufferSizes[paramIndex] = paramsSize;
+    wgpuQueueWriteBuffer(queue, op->buffers[paramIndex], 0, params, paramsSize);
     LOG(kDefLog, kTrace, "Params buffer written");
   } else {
     LOG(kDefLog, kTrace, "No params buffer needed");
@@ -1291,9 +1371,9 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   for (size_t i = 0; i < numTensors; ++i) {
     bindGroupEntries[i] = WGPUBindGroupEntry{
         .binding = static_cast<uint32_t>(i),
-        .buffer = op.buffers[i],
+        .buffer = op->buffers[i],
         .offset = viewOffsets[i],
-        .size = op.bufferSizes[i],
+        .size = op->bufferSizes[i],
     };
   }
   if (paramsSize > 0) {
@@ -1301,7 +1381,7 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
     LOG(kDefLog, kInfo, "paramIndex: %d", paramIndex);
     bindGroupEntries[paramIndex] = WGPUBindGroupEntry{
         .binding = static_cast<uint32_t>(paramIndex),
-        .buffer = op.buffers[paramIndex],
+        .buffer = op->buffers[paramIndex],
         .offset = 0,
         .size = paramsSize,
     };
@@ -1312,7 +1392,7 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
       .entryCount = static_cast<uint32_t>(numBindings),
       .entries = bindGroupEntries.data(),
   };
-  op.bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
+  op->bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
 
   WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
       .bindGroupLayoutCount = 1,
@@ -1334,12 +1414,13 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
 
   computePipelineDesc.compute.entryPoint = code.entryPoint.c_str();
   computePipelineDesc.label = code.label.c_str();
-  op.computePipeline =
+  op->computePipeline =
       wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-  op.totalWorkgroups = {totalWorkgroups[0], totalWorkgroups[1], totalWorkgroups[2]};
+  op->totalWorkgroups = {totalWorkgroups[0], totalWorkgroups[1], totalWorkgroups[2]};
   resetCommandBuffer(device, op);
-  ctx.kernelPool.data.insert(&op);
-
+  if (cacheKey != nullptr)
+    ctx.kernelPool.data[cacheKey]=op;
+  
   WGPUCompilationInfoCallback cb =
       [](WGPUCompilationInfoRequestStatus status,
          WGPUCompilationInfo const *compilationInfo, void *userData) {
@@ -1394,17 +1475,20 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
                     const Bindings<numInputs> &dataBindings,
                     const Shape &totalWorkgroups,
                     const ParamsType &params = ParamsType{},
-                    CompilationInfo* compilationInfo = nullptr 
+                    CompilationInfo* compilationInfo = nullptr,
+                    const char* cacheKey = nullptr
                     ) {
   if constexpr (!IsNoParam<ParamsType>) {
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), totalWorkgroups,
                         reinterpret_cast<const void *>(&params),
-                        sizeof(ParamsType), compilationInfo);
+                        sizeof(ParamsType), compilationInfo,
+                        cacheKey);
   } else {
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), totalWorkgroups, nullptr,
-                        0, compilationInfo);
+                        0, compilationInfo,
+                        cacheKey);
   }
 }
 
@@ -1429,7 +1513,12 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
 inline void dispatchKernel(Context &ctx, Kernel &kernel,
                            std::promise<void> &promise) {
   // Submit the command buffer
-  wgpuQueueSubmit(ctx.queue, 1, &kernel.commandBuffer);
+  if (kernel->used) {
+    resetCommandBuffer(ctx.device, kernel);
+  }
+  wgpuQueueSubmit(ctx.queue, 1, &kernel->commandBuffer);
+  wgpuCommandBufferRelease(kernel->commandBuffer);
+  kernel->used = true;
   wgpuQueueOnSubmittedWorkDone(
       ctx.queue,
       [](WGPUQueueWorkDoneStatus status, void *data) {
