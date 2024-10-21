@@ -99,6 +99,10 @@ build/gpt2_webgpu: llm.c gpt2_124M.bin llm.c gpt2_webgpu.cpp ops.cpp
 	mkdir -p build
 	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
 
+build/gpt2_webgpu_aot: llm.c gpt2_124M.bin llm.c gpt2_webgpu_aot.cpp ops_aot.cpp
+	mkdir -p build
+	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu_aot.cpp ops_aot.cpp
+
 build/gpt2_webgpu.html: check-emsdk gpt2_webgpu.cpp term.html llm.c
 	em++ gpt2_webgpu.cpp ops.cpp \
 		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
@@ -116,8 +120,8 @@ watch-web:
 watch-native:
 	ls *.cpp *.c *.hpp *.h | entr -s "rm -f build/gpt2_webgpu && rm -f build/ops.o && make build/gpt2_webgpu"
 
-run-native: build/gpt2_webgpu
-	. $(GPUCPP)/source && ./build/gpt2_webgpu
+run-native: build/gpt2_webgpu_aot
+	. $(GPUCPP)/source && ./build/gpt2_webgpu_aot
 
 # server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
 server: build/gpt2_webgpu.html
