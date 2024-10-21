@@ -1,5 +1,5 @@
 #include "gpu.hpp"
-#include "ops.hpp"
+#include "ops_aot.hpp"
 /*
 This file trains the GPT-2 model.
 This version is the clean, minimal, reference. As such:
@@ -91,25 +91,25 @@ void fill_in_parameter_sizes(size_t* param_sizes, GPT2Config config) {
 }
 
 // allocate memory for the parameters and point the individual tensors to the right places
-float* malloc_and_point_parameters(ParameterTensors* params, size_t* param_sizes) {
-    size_t num_parameters = 0;
-    for (size_t i = 0; i < NUM_PARAMETER_TENSORS; i++) {
-        num_parameters += param_sizes[i];
+void malloc_and_point_parameters(Context& ctx, ParameterTensors* params, size_t* param_sizes) {
+    params->wte = createTensor(ctx, Shape{param_sizes[0]}, kf32);
+    params->wpe = createTensor(ctx, Shape{param_sizes[1]}, kf32);
+    for(int l = 0; l < NUM_PARAMETER_LAYERS; l++) {
+      params->ln1w.push_back(createTensor(ctx, Shape{param_sizes[2]/NUM_PARAMETER_LAYERS}, kf32));
+      params->ln1b.push_back(createTensor(ctx, Shape{param_sizes[3]/NUM_PARAMETER_LAYERS}, kf32));
+      params->qkvw.push_back(createTensor(ctx, Shape{param_sizes[4]/NUM_PARAMETER_LAYERS}, kf32));
+      params->qkvb.push_back(createTensor(ctx, Shape{param_sizes[5]/NUM_PARAMETER_LAYERS}, kf32));
+      params->attprojw.push_back(createTensor(ctx, Shape{param_sizes[6]/NUM_PARAMETER_LAYERS}, kf32));
+      params->attprojb.push_back(createTensor(ctx, Shape{param_sizes[7]/NUM_PARAMETER_LAYERS}, kf32));
+      params->ln2w.push_back(createTensor(ctx, Shape{param_sizes[8]/NUM_PARAMETER_LAYERS}, kf32));
+      params->ln2b.push_back(createTensor(ctx, Shape{param_sizes[9]/NUM_PARAMETER_LAYERS}, kf32));
+      params->fcw.push_back(createTensor(ctx, Shape{param_sizes[10]/NUM_PARAMETER_LAYERS}, kf32));
+      params->fcb.push_back(createTensor(ctx, Shape{param_sizes[11]/NUM_PARAMETER_LAYERS}, kf32));
+      params->fcprojw.push_back(createTensor(ctx, Shape{param_sizes[12]/NUM_PARAMETER_LAYERS}, kf32));
+      params->fcprojb.push_back(createTensor(ctx, Shape{param_sizes[13]/NUM_PARAMETER_LAYERS}, kf32));
     }
-    // malloc all parameters all at once
-    float* params_memory = (float*)mallocCheck(num_parameters * sizeof(float));
-    // assign all the tensors
-    float** ptrs[] = {
-        &params->wte, &params->wpe, &params->ln1w, &params->ln1b, &params->qkvw, &params->qkvb,
-        &params->attprojw, &params->attprojb, &params->ln2w, &params->ln2b, &params->fcw, &params->fcb,
-        &params->fcprojw, &params->fcprojb, &params->lnfw, &params->lnfb
-    };
-    float* params_memory_iterator = params_memory;
-    for (size_t i = 0; i < NUM_PARAMETER_TENSORS; i++) {
-        *(ptrs[i]) = params_memory_iterator;
-        params_memory_iterator += param_sizes[i];
-    }
-    return params_memory;
+    params->lnfw = createTensor(ctx, Shape{param_sizes[14]}, kf32);
+    params->lnfb = createTensor(ctx, Shape{param_sizes[15]}, kf32);
 }
 
 
@@ -154,7 +154,7 @@ typedef struct {
     Kernel layernorm_final_forward;
     Kernel matmul_final_forward;
     Kernel softmax_final_forward;
-    std::vector<Kernel> crossentropy_forward;
+    Kernel crossentropy_forward;
   
     Kernel crossentropy_softmax_backward;
     Kernel matmul_final_backward;
@@ -201,24 +201,32 @@ void fill_in_activation_sizes(size_t* act_sizes, GPT2Config config, int B, int T
     act_sizes[22] = B * T; // losses
 }
 
-float* malloc_and_point_activations(ActivationTensors* acts, size_t* act_sizes) {
-    size_t num_activations = 0;
-    for (size_t i = 0; i < NUM_ACTIVATION_TENSORS; i++) {
-        num_activations += act_sizes[i];
+void malloc_and_point_activations(Context& ctx, ActivationTensors* acts, size_t* act_sizes) {
+    acts->encoded = createTensor(ctx, Shape{act_sizes[0]}, kf32);
+    for (int l = 0; l < NUM_PARAMETER_LAYERS; l++) {
+        acts->ln1.push_back(createTensor(ctx, Shape{act_sizes[1]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->ln1_mean.push_back(createTensor(ctx, Shape{act_sizes[2]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->ln1_rstd.push_back(createTensor(ctx, Shape{act_sizes[3]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->qkv.push_back(createTensor(ctx, Shape{act_sizes[4]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->atty.push_back(createTensor(ctx, Shape{act_sizes[5]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->preatt.push_back(createTensor(ctx, Shape{act_sizes[6]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->att.push_back(createTensor(ctx, Shape{act_sizes[7]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->attproj.push_back(createTensor(ctx, Shape{act_sizes[8]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->residual2.push_back(createTensor(ctx, Shape{act_sizes[9]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->ln2.push_back(createTensor(ctx, Shape{act_sizes[10]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->ln2_mean.push_back(createTensor(ctx, Shape{act_sizes[11]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->ln2_rstd.push_back(createTensor(ctx, Shape{act_sizes[12]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->fch.push_back(createTensor(ctx, Shape{act_sizes[13]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->fch_gelu.push_back(createTensor(ctx, Shape{act_sizes[14]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->fcproj.push_back(createTensor(ctx, Shape{act_sizes[15]/NUM_PARAMETER_LAYERS}, kf32));
+        acts->residual3.push_back(createTensor(ctx, Shape{act_sizes[16]/NUM_PARAMETER_LAYERS}, kf32));
     }
-    float* acts_memory = (float*)mallocCheck(num_activations * sizeof(float));
-    float** ptrs[] = {
-        &acts->encoded, &acts->ln1, &acts->ln1_mean, &acts->ln1_rstd, &acts->qkv, &acts->atty,
-        &acts->preatt, &acts->att, &acts->attproj, &acts->residual2, &acts->ln2, &acts->ln2_mean,
-        &acts->ln2_rstd, &acts->fch, &acts->fch_gelu, &acts->fcproj, &acts->residual3, &acts->lnf,
-        &acts->lnf_mean, &acts->lnf_rstd, &acts->logits, &acts->probs, &acts->losses
-    };
-    float* acts_memory_iterator = acts_memory;
-    for (size_t i = 0; i < NUM_ACTIVATION_TENSORS; i++) {
-        *(ptrs[i]) = acts_memory_iterator;
-        acts_memory_iterator += act_sizes[i];
-    }
-    return acts_memory;
+    acts->lnf = createTensor(ctx, Shape{act_sizes[17]}, kf32);
+    acts->lnf_mean = createTensor(ctx, Shape{act_sizes[18]}, kf32);
+    acts->lnf_rstd = createTensor(ctx, Shape{act_sizes[19]}, kf32);
+    acts->logits = createTensor(ctx, Shape{act_sizes[20]}, kf32);
+    acts->probs = createTensor(ctx, Shape{act_sizes[21]}, kf32);
+    acts->losses = createTensor(ctx, Shape{act_sizes[22]}, kf32);
 }
 
 struct GPUParameters {
@@ -240,7 +248,6 @@ typedef struct {
     GPT2Config config;
     // the weights (parameters) of the model, and their sizes
     ParameterTensors params;
-    GPUParameters params_; // TODO(avh): eventually this replaces params
     size_t param_sizes[NUM_PARAMETER_TENSORS];
     float* params_memory;
     size_t num_parameters;
@@ -252,7 +259,6 @@ typedef struct {
     float* v_memory;
     // the activations of the model, and their sizes
     ActivationTensors acts;
-    GPUActivations acts_; // TODO(avh): eventually this replaces params
     size_t act_sizes[NUM_ACTIVATION_TENSORS];
     float* acts_memory;
     size_t num_activations;
@@ -262,13 +268,16 @@ typedef struct {
     // other run state configuration
     int batch_size; // the batch size (B) of current forward pass
     int seq_len; // the sequence length (T) of current forward pass
-    int* inputs; // the input tokens for the current forward pass
-    int* targets; // the target tokens for the current forward pass
+    Tensor inputs; // the input tokens for the current forward pass
+    Tensor targets; // the target tokens for the current forward pass
     float mean_loss; // after a forward pass with targets, will be populated with the mean loss
+
+    // kernels
+    Kernels kernels;
 } GPT2;
 
 void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoint_path) {
-
+    printf("Building GPT-2 model from checkpoint '%s'\n", checkpoint_path);
     // read in model from a checkpoint file
     FILE *model_file = fopenCheck(checkpoint_path, "rb");
     int model_header[256];
@@ -302,7 +311,6 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
 
     // allocate space for all the parameters and read them in
     fill_in_parameter_sizes(model->param_sizes,  model->config);
-
     // count the number of parameters
     size_t num_parameters = 0;
     for (size_t i = 0; i < NUM_PARAMETER_TENSORS; i++) {
@@ -312,9 +320,48 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
     model->num_parameters = num_parameters;
 
     // read in all the parameters from file
-    model->params_memory = malloc_and_point_parameters(&model->params, model->param_sizes);
+    malloc_and_point_parameters(ctx, &model->params, model->param_sizes);
+    model->params_memory = (float*)mallocCheck(num_parameters * sizeof(float));
     freadCheck(model->params_memory, sizeof(float), num_parameters, model_file);
     fcloseCheck(model_file);
+
+    // transfer to GPU memory
+    float* iter = model->params_memory;
+    toGPU(ctx, iter, model->params.wte);
+    iter += model->param_sizes[0];
+    toGPU(ctx, iter, model->params.wpe);
+    iter += model->param_sizes[1];
+    for (int l = 0; l < L; l++) {
+        toGPU(ctx, iter, model->params.ln1w[l]);
+        iter += model->param_sizes[2]/L;
+        toGPU(ctx, iter, model->params.ln1b[l]);
+        iter += model->param_sizes[3]/L;
+        toGPU(ctx, iter, model->params.qkvw[l]);
+        iter += model->param_sizes[4]/L;
+        toGPU(ctx, iter, model->params.qkvb[l]);
+        iter += model->param_sizes[5]/L;
+        toGPU(ctx, iter, model->params.attprojw[l]);
+        iter += model->param_sizes[6]/L;
+        toGPU(ctx, iter, model->params.attprojb[l]);
+        iter += model->param_sizes[7]/L;
+        toGPU(ctx, iter, model->params.ln2w[l]);
+        iter += model->param_sizes[8]/L;
+        toGPU(ctx, iter, model->params.ln2b[l]);
+        iter += model->param_sizes[9]/L;
+        toGPU(ctx, iter, model->params.fcw[l]);
+        iter += model->param_sizes[10]/L;
+        toGPU(ctx, iter, model->params.fcb[l]);
+        iter += model->param_sizes[11]/L;
+        toGPU(ctx, iter, model->params.fcprojw[l]);
+        iter += model->param_sizes[12]/L;
+        toGPU(ctx, iter, model->params.fcprojb[l]);
+        iter += model->param_sizes[13]/L;
+    }
+    toGPU(ctx, iter, model->params.lnfw);
+    iter += model->param_sizes[14];
+    toGPU(ctx, iter, model->params.lnfb);
+    iter += model->param_sizes[15];
+    
 
     // other inits
     model->acts_memory = NULL;
@@ -322,19 +369,16 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
     model->m_memory = NULL;
     model->v_memory = NULL;
     model->grads_acts_memory = NULL;
-    model->inputs = NULL;
-    model->targets = NULL;
     model->batch_size = 0;
     model->seq_len = 0;
     model->mean_loss = -1.0f; // -1.0f will designate no loss
 
-    // TODO(avh): this is just a resource test for now, eventually deprecate CPU allocations
-    gpu_alloc(ctx, model->params_.data, model->param_sizes, NUM_PARAMETER_TENSORS);
+    printf("Model build complete\n");
 
 }
 
 
-void gpt2_forward(Context& ctx, GPT2 *model, int* inputs, int* targets, size_t B, size_t T) {
+void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, size_t B, size_t T) {
     // targets are optional and could be NULL
 
     // ensure the model was initialized or error out
@@ -350,13 +394,13 @@ void gpt2_forward(Context& ctx, GPT2 *model, int* inputs, int* targets, size_t B
     size_t NH = model->config.num_heads;
     size_t C = model->config.channels;
 
-    // validate inputs, all indices must be in the range [0, V)
-    for(int i = 0; i < B * T; i++) {
-        assert(0 <= inputs[i] && inputs[i] < V);
-        if (targets != NULL) {
-            assert(0 <= targets[i] && targets[i] < V);
-        }
-    }
+    // // validate inputs, all indices must be in the range [0, V)
+    // for(int i = 0; i < B * T; i++) {
+    //     assert(0 <= inputs[i] && inputs[i] < V);
+    //     if (targets != NULL) {
+    //         assert(0 <= targets[i] && targets[i] < V);
+    //     }
+    // }
 
     // allocate space for all the activations if needed (done here, lazily)
     if(model->acts_memory == NULL) {
@@ -365,8 +409,8 @@ void gpt2_forward(Context& ctx, GPT2 *model, int* inputs, int* targets, size_t B
         model->seq_len = T;
         // and now allocate the space
         fill_in_activation_sizes(model->act_sizes, model->config, B, T);
+
         // TODO(avh): this is just a resource test for now, eventually deprecate CPU allocations
-        gpu_alloc(ctx, model->acts_.data, model->act_sizes, NUM_PARAMETER_TENSORS);
         size_t num_activations = 0;
         for (size_t i = 0; i < NUM_ACTIVATION_TENSORS; i++) {
             num_activations += model->act_sizes[i];
@@ -374,10 +418,12 @@ void gpt2_forward(Context& ctx, GPT2 *model, int* inputs, int* targets, size_t B
         printf("num_activations: %zu\n", num_activations);
         model->num_activations = num_activations;
         printf("Allocating %.2f MB for activations\n", num_activations * sizeof(float) / (1024.0f * 1024.0f));
-        model->acts_memory = malloc_and_point_activations(&model->acts, model->act_sizes);
+        malloc_and_point_activations(ctx, &model->acts, model->act_sizes);
         // also create memory for caching inputs and targets
-        model->inputs = (int*)mallocCheck(B * T * sizeof(int));
-        model->targets = (int*)mallocCheck(B * T * sizeof(int)); // might be unused if we never have targets but it's small
+        //model->inputs = (int*)mallocCheck(B * T * sizeof(int));
+        //model->targets = (int*)mallocCheck(B * T * sizeof(int)); // might be unused if we never have targets but it's small
+        model->inputs = createTensor(ctx, Shape{B * T}, ki32);
+        model->targets = createTensor(ctx, Shape{B * T}, ki32);
     } else {
         // validate B,T is consistent with how we've allocated the memory before
         // in principle we could get more clever here in the future, for now this is safest
@@ -386,99 +432,202 @@ void gpt2_forward(Context& ctx, GPT2 *model, int* inputs, int* targets, size_t B
             exit(EXIT_FAILURE);
         }
     }
-
-    printf("Cache inputs/targets\n");
-    // cache the inputs/targets
-    memcpy(model->inputs, inputs, B * T * sizeof(int));
-    if (targets != NULL) {
-        memcpy(model->targets, targets, B * T * sizeof(int));
+    // create all kernels ahead of time
+    if (model->kernels.encoder_forward == nullptr) {
+        printf("Creating Kernels\n");
+        Kernels& kernels = model->kernels;
+        kernels.layernorm_forward.resize(L);
+        kernels.layernorm1_backward.resize(L);
+        kernels.qkv_projection_forward.resize(L);
+        kernels.qkv_projection_backward.resize(L);
+        kernels.attention_forward.resize(L);
+        kernels.attention_backward.resize(L);
+        kernels.attention_projection_forward.resize(L);
+        kernels.attention_projection_backward.resize(L);
+        kernels.residual_forward.resize(L);
+        kernels.residual2_forward.resize(L);
+        kernels.residual2_backward.resize(L);
+        kernels.ff_up_forward.resize(L);
+        kernels.ff_up_backward.resize(L);
+        kernels.gelu_forward.resize(L);
+        kernels.gelu_backward.resize(L);
+        kernels.ff_down_forward.resize(L);
+        kernels.ff_down_backward.resize(L);
+        for (int l = 0; l < L; ++l) {
+            kernels.layernorm_forward[l] = layernorm_forward(ctx, model->acts.ln1[l], model->acts.ln1_mean[l], model->acts.ln1_rstd[l],
+                                                            /*input=*/ model->acts.residual3[l], /*weight=*/ model->params.ln1w[l], /*bias=*/ model->params.ln1b[l],
+                                                            B, T, C);
+            kernels.qkv_projection_forward[l] = matmul_forward(ctx, model->acts.qkv[l], model->acts.ln1[l], model->params.qkvw[l], model->params.qkvb[l], B, T, C, 3*C);
+            kernels.attention_forward[l] = attention_forward(ctx, model->acts.atty[l], model->acts.preatt[l], model->acts.att[l], model->acts.qkv[l], B, T, C, NH);
+            kernels.attention_projection_forward[l] = matmul_forward(ctx, model->acts.attproj[l], model->acts.atty[l], model->params.attprojw[l], model->params.attprojb[l], B, T, C, C);
+            kernels.residual_forward[l] = residual_forward(ctx, model->acts.residual2[l], model->acts.residual3[l], model->acts.attproj[l], B*T*C);
+            kernels.ff_up_forward[l] = matmul_forward(ctx, model->acts.fch[l], model->acts.ln2[l], model->params.fcw[l], model->params.fcb[l], B, T, C, 4*C);
+            kernels.gelu_forward[l] = gelu_forward(ctx, model->acts.fch_gelu[l], model->acts.fch[l], B*T*4*C);
+            kernels.ff_down_forward[l] = matmul_forward(ctx, model->acts.fcproj[l], model->acts.fch_gelu[l], model->params.fcw[l], model->params.fcb[l], B, T, 4*C, C);
+            kernels.residual2_forward[l] = residual_forward(ctx, model->acts.residual3[l], model->acts.residual2[l], model->acts.fcproj[l], B*T*C);
+        }
+        kernels.crossentropy_forward = crossentropy_forward(ctx, model->acts.losses, model->acts.probs, targets, B, T, Vp);
+        
+        kernels.encoder_forward = encoder_forward(ctx, model->acts.encoded, inputs, model->params.wte, model->params.wpe, B, T, C); // encoding goes into residual[0]
+        kernels.encoder_backward = encoder_backward(ctx, model->params.wte, model->params.wpe, model->acts.encoded, inputs, B, T, C);
+        kernels.layernorm_final_forward = layernorm_forward(ctx, model->acts.lnf, model->acts.lnf_mean, model->acts.lnf_rstd,
+                                                        /*input=*/ model->acts.residual3[L-1], /*weight=*/ model->params.lnfw, /*bias=*/ model->params.lnfb,
+                                                        B, T, C);
+        Tensor nullTensor = createTensor(ctx, Shape{1}, kf32);
+        kernels.matmul_final_forward = matmul_forward(ctx, model->acts.logits, model->acts.lnf, model->params.wte, nullTensor, B, T, C, Vp);
+        kernels.softmax_final_forward = softmax_forward(ctx, model->acts.probs, model->acts.logits, B, T, V, Vp);
+        kernels.crossentropy_softmax_backward = crossentropy_softmax_backward(ctx, model->acts.logits, model->acts.losses, model->acts.probs, targets, B, T, V, Vp);
+        kernels.matmul_final_backward = matmul_backward(ctx, model->acts.lnf, model->params.wte, nullTensor, model->acts.logits,
+                                                 model->acts.lnf, model->params.wte, B, T, C, Vp);
+        kernels.layernorm_final_backward = layernorm_backward(ctx, model->acts.residual3[L-1], model->params.lnfw, model->params.lnfb,
+                                                        model->acts.lnf, model->acts.residual3[L-1], model->params.lnfw,
+                                                        model->acts.lnf_mean, model->acts.lnf_rstd, B, T, C);
+        printf("Created Kernels\n");
     }
 
+    printf("Cache inputs/targets\n");
     printf("Forward pass\n");
     // forward pass
     ParameterTensors params = model->params; // for brevity
     ActivationTensors acts = model->acts;
     float* residual;
     printf("Encoding\n");
-    printf("inputs[0] = %d\n", inputs[0]);
-    encoder_forward(ctx, acts.encoded, inputs, params.wte, params.wpe, B, T, C); // encoding goes into residual[0]
+    //printf("inputs[0] = %d\n", inputs[0]);
+    // encoder_forward(ctx, acts.encoded, inputs, params.wte, params.wpe, B, T, C); // encoding goes into residual[0]
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.encoder_forward, promise);
+        wait(ctx, future);
+    }
     for (int l = 0; l < L; l++) {
       printf("Forward Pass Layer %d\n", l);
 
-        residual = l == 0 ? acts.encoded : acts.residual3 + (l-1) * B * T * C;
-
-        // get the pointers of the weights for this layer
-        float* l_ln1w = params.ln1w + l * C;
-        float* l_ln1b = params.ln1b + l * C;
-        float* l_qkvw = params.qkvw + l * 3*C * C;
-        float* l_qkvb = params.qkvb + l * 3*C;
-        float* l_attprojw = params.attprojw + l * C * C;
-        float* l_attprojb = params.attprojb + l * C;
-        float* l_ln2w = params.ln2w + l * C;
-        float* l_ln2b = params.ln2b + l * C;
-        float* l_fcw = params.fcw + l * 4*C * C;
-        float* l_fcb = params.fcb + l * 4*C;
-        float* l_fcprojw = params.fcprojw + l * C * 4*C;
-        float* l_fcprojb = params.fcprojb + l * C;
-
-        // get the pointers of the activations for this layer
-        float* l_ln1 = acts.ln1 + l * B * T * C;
-        float* l_ln1_mean = acts.ln1_mean + l * B * T;
-        float* l_ln1_rstd = acts.ln1_rstd + l * B * T;
-        float* l_qkv = acts.qkv + l * B * T * 3*C;
-        float* l_atty = acts.atty + l * B * T * C;
-        float* l_preatt = acts.preatt + l * B * NH * T * T;
-        float* l_att = acts.att + l * B * NH * T * T;
-        float* l_attproj = acts.attproj + l * B * T * C;
-        float* l_residual2 = acts.residual2 + l * B * T * C;
-        float* l_ln2 = acts.ln2 + l * B * T * C;
-        float* l_ln2_mean = acts.ln2_mean + l * B * T;
-        float* l_ln2_rstd = acts.ln2_rstd + l * B * T;
-        float* l_fch = acts.fch + l * B * T * 4*C;
-        float* l_fch_gelu = acts.fch_gelu + l * B * T * 4*C;
-        float* l_fcproj = acts.fcproj + l * B * T * C;
-        float* l_residual3 = acts.residual3 + l * B * T * C;
-
         // now do the forward pass
         printf("  [Forward] : LayerNorm1\n");
-        layernorm_forward(ctx, l_ln1, l_ln1_mean, l_ln1_rstd, residual, l_ln1w, l_ln1b, B, T, C);
+        // layernorm_forward(ctx, l_ln1, l_ln1_mean, l_ln1_rstd, residual, l_ln1w, l_ln1b, B, T, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.layernorm_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : QKV Projection\n");
-        matmul_forward(ctx, l_qkv, l_ln1, l_qkvw, l_qkvb, B, T, C, 3*C);
+        // matmul_forward(ctx, l_qkv, l_ln1, l_qkvw, l_qkvb, B, T, C, 3*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.qkv_projection_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : Attention\n");
-        attention_forward(ctx, l_atty, l_preatt, l_att, l_qkv, B, T, C, NH);
+        // attention_forward(ctx, l_atty, l_preatt, l_att, l_qkv, B, T, C, NH);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.attention_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : Attention Projection\n");
-        matmul_forward(ctx, l_attproj, l_atty, l_attprojw, l_attprojb, B, T, C, C);
+        // matmul_forward(ctx, l_attproj, l_atty, l_attprojw, l_attprojb, B, T, C, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.attention_projection_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : Residual1\n");
-        residual_forward(ctx, l_residual2, residual, l_attproj, B*T*C);
+        // residual_forward(ctx, l_residual2, residual, l_attproj, B*T*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.residual_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : LayerNorm2\n");
-        layernorm_forward(ctx, l_ln2, l_ln2_mean, l_ln2_rstd, l_residual2, l_ln2w, l_ln2b, B, T, C);
+        // layernorm_forward(ctx, l_ln2, l_ln2_mean, l_ln2_rstd, l_residual2, l_ln2w, l_ln2b, B, T, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.layernorm2_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : FF Up\n");
-        matmul_forward(ctx, l_fch, l_ln2, l_fcw, l_fcb, B, T, C, 4*C);
+        // matmul_forward(ctx, l_fch, l_ln2, l_fcw, l_fcb, B, T, C, 4*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.ff_up_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : GELU\n");
-        gelu_forward(ctx, l_fch_gelu, l_fch, B*T*4*C);
+        // gelu_forward(ctx, l_fch_gelu, l_fch, B*T*4*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.gelu_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : FF Down\n");
-        matmul_forward(ctx, l_fcproj, l_fch_gelu, l_fcprojw, l_fcprojb, B, T, 4*C, C);
+        // matmul_forward(ctx, l_fcproj, l_fch_gelu, l_fcprojw, l_fcprojb, B, T, 4*C, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.ff_down_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Forward] : Residual2\n");
-        residual_forward(ctx, l_residual3, l_residual2, l_fcproj, B*T*C);
+        // residual_forward(ctx, l_residual3, l_residual2, l_fcproj, B*T*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.residual2_forward[l], promise);
+            wait(ctx, future);
+        }
     }
-    residual = acts.residual3 + (L-1) * B * T * C; // last residual is in residual3
-    layernorm_forward(ctx, acts.lnf, acts.lnf_mean, acts.lnf_rstd, residual, params.lnfw, params.lnfb, B, T, C);
-    matmul_forward(ctx, acts.logits, acts.lnf, params.wte, NULL, B, T, C, Vp);
-    softmax_forward(ctx, acts.probs, acts.logits, B, T, V, Vp);
+    //    residual = acts.residual3.data() + (L-1) * B * T * C; // last residual is in residual3
+    // layernorm_forward(ctx, acts.lnf, acts.lnf_mean, acts.lnf_rstd, residual, params.lnfw, params.lnfb, B, T, C);
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.layernorm_final_forward, promise);
+        wait(ctx, future);
+    }
+    // matmul_forward(ctx, acts.logits, acts.lnf, params.wte, NULL, B, T, C, Vp);
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.matmul_final_forward, promise);
+        wait(ctx, future);
+    }
+    // softmax_forward(ctx, acts.probs, acts.logits, B, T, V, Vp);
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.softmax_final_forward, promise);
+        wait(ctx, future);
+    }
 
     printf("Crossentropy\n");
     // also forward the cross-entropy loss function if we have the targets
-    if (targets != NULL) {
-        crossentropy_forward(ctx, model->acts.losses, model->acts.probs, targets, B, T, Vp);
+    //    if (targets != NULL) {
+        // crossentropy_forward(ctx, model->acts.losses, model->acts.probs, targets, B, T, Vp);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.crossentropy_forward, promise);
+            wait(ctx, future);
+        }
         // for convenience also evaluate the mean loss
         float mean_loss = 0.0f;
-        for (int i=0; i<B*T; i++) { mean_loss += model->acts.losses[i]; }
+        //toCPU(ctx, model->acts_.data[22], model->acts.losses.data, model->act_sizes[22] * sizeof(float));
+        for (int i=0; i<B*T; i++) { mean_loss += model->acts.losses.data[i]; }
         mean_loss /= B*T;
         model->mean_loss = mean_loss;
-    } else {
-        // if we don't have targets, we don't have a loss
-        model->mean_loss = -1.0f;
-    }
+    // } else {
+    //     // if we don't have targets, we don't have a loss
+    //     model->mean_loss = -1.0f;
+    // }
     printf("Forward pass done\n");
 }
 
@@ -499,8 +648,8 @@ void gpt2_backward(Context& ctx, GPT2 *model) {
     // lazily allocate the memory for gradients of the weights and activations, if needed
     if (model->grads_memory == NULL) {
         printf("Allocating %.2f MB for gradients\n", model->num_parameters * sizeof(float) / (1024.0f * 1024.0f));
-        model->grads_memory = malloc_and_point_parameters(&model->grads, model->param_sizes);
-        model->grads_acts_memory = malloc_and_point_activations(&model->grads_acts, model->act_sizes);
+        malloc_and_point_parameters(&model->grads, model->param_sizes);
+        malloc_and_point_activations(&model->grads_acts, model->act_sizes);
         gpt2_zero_grad(model);
     }
 
@@ -523,90 +672,124 @@ void gpt2_backward(Context& ctx, GPT2 *model) {
     // technically this is a small, inline backward() pass of calculating
     // total, final loss as the mean over all losses over all (B,T) positions in the batch
     float dloss_mean = 1.0f / (B*T);
-    for (int i = 0; i < B*T; i++) { grads_acts.losses[i] = dloss_mean; }
+    for (int i = 0; i < B*T; i++) { grads_acts.losses.data[i] = dloss_mean; }
+    toGPU(ctx, grads_acts.losses.data, model->acts_.data[22]);
 
-    crossentropy_softmax_backward(ctx, grads_acts.logits, grads_acts.losses, acts.probs, model->targets, B, T, V, Vp);
-    matmul_backward(ctx, grads_acts.lnf, grads.wte, NULL, grads_acts.logits, acts.lnf, params.wte, B, T, C, Vp);
-    float* residual = acts.residual3 + (L-1) * B * T * C; // last layer's residual
-    float* dresidual = grads_acts.residual3 + (L-1) * B * T * C; // write to last layer's residual
-    layernorm_backward(ctx, dresidual, grads.lnfw, grads.lnfb, grads_acts.lnf, residual, params.lnfw, acts.lnf_mean, acts.lnf_rstd, B, T, C);
+    // crossentropy_softmax_backward(ctx, grads_acts.logits, grads_acts.losses, acts.probs, model->targets, B, T, V, Vp);
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.crossentropy_softmax_backward, promise);
+        wait(ctx, future);
+    }
+    // matmul_backward(ctx, grads_acts.lnf, grads.wte, NULL, grads_acts.logits, acts.lnf, params.wte, B, T, C, Vp);
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.matmul_final_backward, promise);
+        wait(ctx, future);
+    }
+    // layernorm_backward(ctx, dresidual, grads.lnfw, grads.lnfb, grads_acts.lnf, residual, params.lnfw, acts.lnf_mean, acts.lnf_rstd, B, T, C);
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.layernorm_final_backward, promise);
+        wait(ctx, future);
+    }
 
     for (int l = L-1; l >= 0; l--) {
         printf("Backward Pass Layer %d\n", l);
-
-        residual = l == 0 ? acts.encoded : acts.residual3 + (l-1) * B * T * C;
-        dresidual = l == 0 ? grads_acts.encoded : grads_acts.residual3 + (l-1) * B * T * C;
-
-        // get the pointers of the weights for this layer
-        float* l_ln1w = params.ln1w + l * C;
-        float* l_qkvw = params.qkvw + l * 3*C * C;
-        float* l_attprojw = params.attprojw + l * C * C;
-        float* l_ln2w = params.ln2w + l * C;
-        float* l_fcw = params.fcw + l * 4*C * C;
-        float* l_fcprojw = params.fcprojw + l * C * 4*C;
-        // get the pointers of the gradients of the weights for this layer
-        float* dl_ln1w = grads.ln1w + l * C;
-        float* dl_ln1b = grads.ln1b + l * C;
-        float* dl_qkvw = grads.qkvw + l * 3*C * C;
-        float* dl_qkvb = grads.qkvb + l * 3*C;
-        float* dl_attprojw = grads.attprojw + l * C * C;
-        float* dl_attprojb = grads.attprojb + l * C;
-        float* dl_ln2w = grads.ln2w + l * C;
-        float* dl_ln2b = grads.ln2b + l * C;
-        float* dl_fcw = grads.fcw + l * 4*C * C;
-        float* dl_fcb = grads.fcb + l * 4*C;
-        float* dl_fcprojw = grads.fcprojw + l * C * 4*C;
-        float* dl_fcprojb = grads.fcprojb + l * C;
-        // get the pointers of the activations for this layer
-        float* l_ln1 = acts.ln1 + l * B * T * C;
-        float* l_ln1_mean = acts.ln1_mean + l * B * T;
-        float* l_ln1_rstd = acts.ln1_rstd + l * B * T;
-        float* l_qkv = acts.qkv + l * B * T * 3*C;
-        float* l_atty = acts.atty + l * B * T * C;
-        float* l_att = acts.att + l * B * NH * T * T;
-        float* l_residual2 = acts.residual2 + l * B * T * C;
-        float* l_ln2 = acts.ln2 + l * B * T * C;
-        float* l_ln2_mean = acts.ln2_mean + l * B * T;
-        float* l_ln2_rstd = acts.ln2_rstd + l * B * T;
-        float* l_fch = acts.fch + l * B * T * 4*C;
-        float* l_fch_gelu = acts.fch_gelu + l * B * T * 4*C;
-        // get the pointers of the gradients of the activations for this layer
-        float* dl_ln1 = grads_acts.ln1 + l * B * T * C;
-        float* dl_qkv = grads_acts.qkv + l * B * T * 3*C;
-        float* dl_atty = grads_acts.atty + l * B * T * C;
-        float* dl_preatt = grads_acts.preatt + l * B * NH * T * T;
-        float* dl_att = grads_acts.att + l * B * NH * T * T;
-        float* dl_attproj = grads_acts.attproj + l * B * T * C;
-        float* dl_residual2 = grads_acts.residual2 + l * B * T * C;
-        float* dl_ln2 = grads_acts.ln2 + l * B * T * C;
-        float* dl_fch = grads_acts.fch + l * B * T * 4*C;
-        float* dl_fch_gelu = grads_acts.fch_gelu + l * B * T * 4*C;
-        float* dl_fcproj = grads_acts.fcproj + l * B * T * C;
-        float* dl_residual3 = grads_acts.residual3 + l * B * T * C;
-
         // backprop this layer
         printf("  [Backward] : Residual2\n");
-        residual_backward(ctx, dl_residual2, dl_fcproj, dl_residual3, B*T*C);
+        // residual_backward(ctx, dl_residual2, dl_fcproj, dl_residual3, B*T*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.residual2_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : FF Down \n");
-        matmul_backward(ctx, dl_fch_gelu, dl_fcprojw, dl_fcprojb, dl_fcproj, l_fch_gelu, l_fcprojw, B, T, 4*C, C);
+        // matmul_backward(ctx, dl_fch_gelu, dl_fcprojw, dl_fcprojb, dl_fcproj, l_fch_gelu, l_fcprojw, B, T, 4*C, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.ff_down_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : GELU\n");
-        gelu_backward(ctx, dl_fch, l_fch, dl_fch_gelu, B*T*4*C);
+        // gelu_backward(ctx, dl_fch, l_fch, dl_fch_gelu, B*T*4*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.gelu_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : FF Up\n");
-        matmul_backward(ctx, dl_ln2, dl_fcw, dl_fcb, dl_fch, l_ln2, l_fcw, B, T, C, 4*C);
+        // matmul_backward(ctx, dl_ln2, dl_fcw, dl_fcb, dl_fch, l_ln2, l_fcw, B, T, C, 4*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.ff_up_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : LayerNorm2\n");
-        layernorm_backward(ctx, dl_residual2, dl_ln2w, dl_ln2b, dl_ln2, l_residual2, l_ln2w, l_ln2_mean, l_ln2_rstd, B, T, C);
+        // layernorm_backward(ctx, dl_residual2, dl_ln2w, dl_ln2b, dl_ln2, l_residual2, l_ln2w, l_ln2_mean, l_ln2_rstd, B, T, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.layernorm2_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : Residual1\n");
-        residual_backward(ctx, dresidual, dl_attproj, dl_residual2, B*T*C);
+        // residual_backward(ctx, dresidual, dl_attproj, dl_residual2, B*T*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.residual_forward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : Attention Projection\n");
-        matmul_backward(ctx, dl_atty, dl_attprojw, dl_attprojb, dl_attproj, l_atty, l_attprojw, B, T, C, C);
+        // matmul_backward(ctx, dl_atty, dl_attprojw, dl_attprojb, dl_attproj, l_atty, l_attprojw, B, T, C, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.attention_projection_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : Attention\n");
-        attention_backward(ctx, dl_qkv, dl_preatt, dl_att, dl_atty, l_qkv, l_att, B, T, C, NH);
+        // attention_backward(ctx, dl_qkv, dl_preatt, dl_att, dl_atty, l_qkv, l_att, B, T, C, NH);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.attention_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : QKV Projection\n");
-        matmul_backward(ctx, dl_ln1, dl_qkvw, dl_qkvb, dl_qkv, l_ln1, l_qkvw, B, T, C, 3*C);
+        // matmul_backward(ctx, dl_ln1, dl_qkvw, dl_qkvb, dl_qkv, l_ln1, l_qkvw, B, T, C, 3*C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.qkv_projection_backward[l], promise);
+            wait(ctx, future);
+        }
         printf("  [Backward] : LayerNorm1\n");
-        layernorm_backward(ctx, dresidual, dl_ln1w, dl_ln1b, dl_ln1, residual, l_ln1w, l_ln1_mean, l_ln1_rstd, B, T, C);
+        // layernorm_backward(ctx, dresidual, dl_ln1w, dl_ln1b, dl_ln1, residual, l_ln1w, l_ln1_mean, l_ln1_rstd, B, T, C);
+        {
+            std::promise<void> promise;
+            std::future<void> future = promise.get_future();
+            dispatchKernel(ctx, model->kernels.layernorm1_backward[l], promise);
+            wait(ctx, future);
+        }
     }
-    encoder_backward(ctx, grads.wte, grads.wpe, grads_acts.encoded, model->inputs, B, T, C);
+    // encoder_backward(ctx, grads.wte, grads.wpe, grads_acts.encoded, model->inputs, B, T, C);
+    {
+        std::promise<void> promise;
+        std::future<void> future = promise.get_future();
+        dispatchKernel(ctx, model->kernels.encoder_backward, promise);
+        wait(ctx, future);
+    }
+    toCPU(ctx, model->params_.data[0], model->grads.wte.data, model->param_sizes[0] * sizeof(float));
+    toCPU(ctx, model->params_.data[1], model->grads.wpe.data, model->param_sizes[1] * sizeof(float));
 }
 
 void gpt2_update(GPT2 *model, float learning_rate, float beta1, float beta2, float eps, float weight_decay, int t) {
@@ -635,6 +818,8 @@ void gpt2_update(GPT2 *model, float learning_rate, float beta1, float beta2, flo
         model->v_memory[i] = v;
         model->params_memory[i] -= learning_rate * (m_hat / (sqrtf(v_hat) + eps) + weight_decay * param);
     }
+    toGPU(ctx, model->params_memory, model->params_.data[0]);
+    toGPU(ctx, model->params_memory + model->param_sizes[0], model->params_.data[1]);
 }
 
 void gpt2_free(GPT2 *model) {
@@ -688,9 +873,11 @@ int main() {
     gpu::Context ctx = gpu::createContext({}, {}, {
         .requiredLimits = &requiredLimits
     });
-    // gpu::Context ctx = gpu::createContext();
+    
+Continue!
 
-    // build the GPT-2 model from a checkpoint
+```cpp
+   // build the GPT-2 model from a checkpoint
     GPT2 model;
     gpt2_build_from_checkpoint(ctx, &model, "gpt2_124M.bin");
 
@@ -719,12 +906,11 @@ int main() {
     int* gen_tokens = (int*)mallocCheck(B * T * sizeof(int));
     const int genT = 64; // number of steps of inference we will do
 
-      
     // train
     struct timespec start, end;
     printf("Starting training\n");
     for (int step = 0; step <= 40; step++) {
-      printf("Step %d\n", step);
+        printf("Step %d\n", step);
 
         // once in a while estimate the validation loss
         if (step % 10 == 0) {
@@ -757,7 +943,9 @@ int main() {
                 // we're in principle running B "inference streams" in parallel here
                 // but only using position 0
                 // get the Vp-dimensional vector probs[0, t-1, :]
-                float* probs = model.acts.probs + (t-1) * model.config.padded_vocab_size;
+                float* probs = model.acts.probs.data + (t-1) * model.config.padded_vocab_size;
+                toCPU(ctx, model.acts_.data[21], probs, (t-1) * model.config.padded_vocab_size * sizeof(float));
+
                 float coin = random_f32(&rng_state);
                 // note we're only sampling from the first V elements, ignoring padding
                 // (the probabilities in the padded region should be zero anyway)

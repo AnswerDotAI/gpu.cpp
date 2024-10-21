@@ -5,10 +5,6 @@
 
 using namespace gpu;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define VOCAB_SIZE 50257
 
 // See https://github.com/google/dawn/blob/a8fbe981a86cb59536e2de423d2013a82d9b54a0/src/dawn/native/Limits.cpp
@@ -100,9 +96,5 @@ Kernel crossentropy_forward(Context& ctx, Tensor& losses,
 Kernel crossentropy_softmax_backward(Context& ctx, Tensor& dlogits,
                                      Tensor& dlosses, Tensor& probs, Tensor& targets,
                                      int B, int T, int V, int Vp);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // OPS_H
