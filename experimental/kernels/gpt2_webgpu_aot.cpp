@@ -272,6 +272,7 @@ typedef struct {
     Tensor targets; // the target tokens for the current forward pass
     float mean_loss; // after a forward pass with targets, will be populated with the mean loss
     float* mean_loss_buffer;
+    float* probs_buffer;
 
     Tensor nullTensor;
 
@@ -377,6 +378,7 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
     model->mean_loss = -1.0f; // -1.0f will designate no loss
     // Allocate B * C buffer for mean loss
     model->mean_loss_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len);
+    model->probs_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len * Vp);
 
     printf("Model build complete\n");
 
@@ -616,7 +618,8 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
 
     printf("Crossentropy\n");
     // also forward the cross-entropy loss function if we have the targets
-    //    if (targets != NULL) {
+    // When targets's shape is (1), it means we don't have targets
+    if (targets.shape[0] != 1) {
         // crossentropy_forward(ctx, model->acts.losses, model->acts.probs, targets, B, T, Vp);
         {
             std::promise<void> promise;
@@ -627,13 +630,14 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
         // for convenience also evaluate the mean loss
         float mean_loss = 0.0f;
         //toCPU(ctx, model->acts_.data[22], model->acts.losses.data, model->act_sizes[22] * sizeof(float));
-        for (int i=0; i<B*T; i++) { mean_loss += model->acts.losses.data[i]; }
+        toCPU(ctx, model->acts.losses, model->mean_loss_buffer, B*T * sizeof(float));
+        for (int i=0; i<B*T; i++) { mean_loss += model->mean_loss_buffer[i]; }
         mean_loss /= B*T;
         model->mean_loss = mean_loss;
-    // } else {
-    //     // if we don't have targets, we don't have a loss
-    //     model->mean_loss = -1.0f;
-    // }
+    } else {
+        // if we don't have targets, we don't have a loss
+        model->mean_loss = -1.0f;
+    }
     printf("Forward pass done\n");
 }
 
@@ -654,8 +658,8 @@ void gpt2_backward(Context& ctx, GPT2 *model) {
     // lazily allocate the memory for gradients of the weights and activations, if needed
     if (model->grads_memory == NULL) {
         printf("Allocating %.2f MB for gradients\n", model->num_parameters * sizeof(float) / (1024.0f * 1024.0f));
-        malloc_and_point_parameters(&model->grads, model->param_sizes);
-        malloc_and_point_activations(&model->grads_acts, model->act_sizes);
+        malloc_and_point_parameters(ctx, &model->grads, model->param_sizes);
+        malloc_and_point_activations(ctx, &model->grads_acts, model->act_sizes);
         gpt2_zero_grad(model);
     }
 
@@ -678,8 +682,9 @@ void gpt2_backward(Context& ctx, GPT2 *model) {
     // technically this is a small, inline backward() pass of calculating
     // total, final loss as the mean over all losses over all (B,T) positions in the batch
     float dloss_mean = 1.0f / (B*T);
-    for (int i = 0; i < B*T; i++) { grads_acts.losses.data[i] = dloss_mean; }
-    toGPU(ctx, grads_acts.losses.data, model->acts_.data[22]);
+    for (int i = 0; i < B*T; i++) { model->mean_loss_buffer[i] = dloss_mean; }
+    toGPU(ctx, model->mean_loss_buffer, model->acts.losses);
+    //toGPU(ctx, grads_acts.losses.data, model->acts_.data[22]);
 
     // crossentropy_softmax_backward(ctx, grads_acts.logits, grads_acts.losses, acts.probs, model->targets, B, T, V, Vp);
     {
@@ -794,11 +799,11 @@ void gpt2_backward(Context& ctx, GPT2 *model) {
         dispatchKernel(ctx, model->kernels.encoder_backward, promise);
         wait(ctx, future);
     }
-    toCPU(ctx, model->params_.data[0], model->grads.wte.data, model->param_sizes[0] * sizeof(float));
-    toCPU(ctx, model->params_.data[1], model->grads.wpe.data, model->param_sizes[1] * sizeof(float));
+    // toCPU(ctx, model->params_.data[0], model->grads.wte.data, model->param_sizes[0] * sizeof(float));
+    // toCPU(ctx, model->params_.data[1], model->grads.wpe.data, model->param_sizes[1] * sizeof(float));
 }
 
-void gpt2_update(GPT2 *model, float learning_rate, float beta1, float beta2, float eps, float weight_decay, int t) {
+void gpt2_update(Context& ctx, GPT2 *model, float learning_rate, float beta1, float beta2, float eps, float weight_decay, int t) {
     // reference: https://pytorch.org/docs/stable/generated/torch.optim.AdamW.html
 
     // lazily allocate the memory for m_memory and v_memory
@@ -806,6 +811,45 @@ void gpt2_update(GPT2 *model, float learning_rate, float beta1, float beta2, flo
         model->m_memory = (float*)calloc(model->num_parameters, sizeof(float));
         model->v_memory = (float*)calloc(model->num_parameters, sizeof(float));
     }
+
+    // Copy the parameters to the CPU
+    float* iter = model->params_memory;
+    toCPU(ctx, model->params.wte, iter, model->param_sizes[0] * sizeof(float));
+    iter += model->param_sizes[0];
+    toCPU(ctx, model->params.wpe, iter, model->param_sizes[1] * sizeof(float));
+    iter += model->param_sizes[1];
+    size_t L = model->config.num_layers;
+    for (int l = 0; l < L; l++) {
+        toCPU(ctx, model->params.ln1w[l], iter, model->param_sizes[2]/L * sizeof(float));
+        iter += model->param_sizes[2]/L;
+        toCPU(ctx, model->params.ln1b[l], iter, model->param_sizes[3]/L * sizeof(float));
+        iter += model->param_sizes[3]/L;
+        toCPU(ctx, model->params.qkvw[l], iter, model->param_sizes[4]/L * sizeof(float));
+        iter += model->param_sizes[4]/L;
+        toCPU(ctx, model->params.qkvb[l], iter, model->param_sizes[5]/L * sizeof(float));
+        iter += model->param_sizes[5]/L;
+        toCPU(ctx, model->params.attprojw[l], iter, model->param_sizes[6]/L * sizeof(float));
+        iter += model->param_sizes[6]/L;
+        toCPU(ctx, model->params.attprojb[l], iter, model->param_sizes[7]/L * sizeof(float));
+        iter += model->param_sizes[7]/L;
+        toCPU(ctx, model->params.ln2w[l], iter, model->param_sizes[8]/L * sizeof(float));
+        iter += model->param_sizes[8]/L;
+        toCPU(ctx, model->params.ln2b[l], iter, model->param_sizes[9]/L * sizeof(float));
+        iter += model->param_sizes[9]/L;
+        toCPU(ctx, model->params.fcw[l], iter, model->param_sizes[10]/L * sizeof(float));
+        iter += model->param_sizes[10]/L;
+        toCPU(ctx, model->params.fcb[l], iter, model->param_sizes[11]/L * sizeof(float));
+        iter += model->param_sizes[11]/L;
+        toCPU(ctx, model->params.fcprojw[l], iter, model->param_sizes[12]/L * sizeof(float));
+        iter += model->param_sizes[12]/L;
+        toCPU(ctx, model->params.fcprojb[l], iter, model->param_sizes[13]/L * sizeof(float));
+        iter += model->param_sizes[13]/L;
+    }
+    toCPU(ctx, model->params.lnfw, iter, model->param_sizes[14] * sizeof(float));
+    iter += model->param_sizes[14];
+    toCPU(ctx, model->params.lnfb, iter, model->param_sizes[15] * sizeof(float));
+    iter += model->param_sizes[15];
+    
 
     for (size_t i = 0; i < model->num_parameters; i++) {
         float param = model->params_memory[i];
@@ -824,8 +868,43 @@ void gpt2_update(GPT2 *model, float learning_rate, float beta1, float beta2, flo
         model->v_memory[i] = v;
         model->params_memory[i] -= learning_rate * (m_hat / (sqrtf(v_hat) + eps) + weight_decay * param);
     }
-    toGPU(ctx, model->params_memory, model->params_.data[0]);
-    toGPU(ctx, model->params_memory + model->param_sizes[0], model->params_.data[1]);
+    // toGPU(ctx, model->params_memory, model->params_.data[0]);
+    // toGPU(ctx, model->params_memory + model->param_sizes[0], model->params_.data[1]);
+    iter = model->params_memory;
+    toGPU(ctx, iter, model->params.wte);
+    iter += model->param_sizes[0];
+    toGPU(ctx, iter, model->params.wpe);
+    iter += model->param_sizes[1];
+    for (int l = 0; l < L; l++) {
+        toGPU(ctx, iter, model->params.ln1w[l]);
+        iter += model->param_sizes[2]/L;
+        toGPU(ctx, iter, model->params.ln1b[l]);
+        iter += model->param_sizes[3]/L;
+        toGPU(ctx, iter, model->params.qkvw[l]);
+        iter += model->param_sizes[4]/L;
+        toGPU(ctx, iter, model->params.qkvb[l]);
+        iter += model->param_sizes[5]/L;
+        toGPU(ctx, iter, model->params.attprojw[l]);
+        iter += model->param_sizes[6]/L;
+        toGPU(ctx, iter, model->params.attprojb[l]);
+        iter += model->param_sizes[7]/L;
+        toGPU(ctx, iter, model->params.ln2w[l]);
+        iter += model->param_sizes[8]/L;
+        toGPU(ctx, iter, model->params.ln2b[l]);
+        iter += model->param_sizes[9]/L;
+        toGPU(ctx, iter, model->params.fcw[l]);
+        iter += model->param_sizes[10]/L;
+        toGPU(ctx, iter, model->params.fcb[l]);
+        iter += model->param_sizes[11]/L;
+        toGPU(ctx, iter, model->params.fcprojw[l]);
+        iter += model->param_sizes[12]/L;
+        toGPU(ctx, iter, model->params.fcprojb[l]);
+        iter += model->param_sizes[13]/L;
+    }
+    toGPU(ctx, iter, model->params.lnfw);
+    iter += model->param_sizes[14];
+    toGPU(ctx, iter, model->params.lnfb);
+    iter += model->param_sizes[15];
 }
 
 void gpt2_free(GPT2 *model) {
@@ -915,6 +994,7 @@ int main() {
     Tensor inputs = createTensor(ctx, Shape{B, T}, ki32);
     Tensor targets = createTensor(ctx, Shape{B, T}, ki32);
     Tensor gen_tokens = createTensor(ctx, Shape{B, T}, ki32);
+    int* gen_tokens_cpu = (int*)mallocCheck(B * T * sizeof(int));
     printf("Starting training\n");
     for (int step = 0; step <= 40; step++) {
         printf("Step %d\n", step);
@@ -937,7 +1017,10 @@ int main() {
         // once in a while do model inference to print generated text
         if (step > 0 && step % 20 == 0) {
             // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
-            toGPU(ctx, tokenizer.eot_token, gen_tokens);
+            for(int i = 0; i < B * T; ++i) {
+                gen_tokens_cpu[i] = tokenizer.eot_token;
+            }
+            toGPU(ctx, gen_tokens_cpu, gen_tokens);
             // now sample from the model autoregressively
             printf("generating:\n---\n");
             for (int t = 1; t < genT; t++) {
@@ -950,14 +1033,15 @@ int main() {
                 // we're in principle running B "inference streams" in parallel here
                 // but only using position 0
                 // get the Vp-dimensional vector probs[0, t-1, :]
-                float* probs = model.acts.probs.data + (t-1) * model.config.padded_vocab_size;
-                toCPU(ctx, model.acts_.data[21], probs, (t-1) * model.config.padded_vocab_size * sizeof(float));
+                toCPU(ctx, model.acts.probs, model.probs_buffer, B * T * model.config.padded_vocab_size * sizeof(float));
+                float* probs = model.probs_buffer + (t-1) * model.config.padded_vocab_size;
 
                 float coin = random_f32(&rng_state);
                 // note we're only sampling from the first V elements, ignoring padding
                 // (the probabilities in the padded region should be zero anyway)
                 int next_token = sample_mult(probs, model.config.vocab_size, coin);
-                gen_tokens[t] = next_token;
+                gen_tokens_cpu[t] = next_token;
+                toGPU(ctx, gen_tokens_cpu, gen_tokens);
                 // print the generated token, either using the Tokenizer or a fallback
                 if (tokenizer.init_ok) {
                     const char* token_str = tokenizer_decode(&tokenizer, next_token);
@@ -974,10 +1058,12 @@ int main() {
         // do a training step
         clock_gettime(CLOCK_MONOTONIC, &start);
         dataloader_next_batch(&train_loader);
-        gpt2_forward(ctx, &model, train_loader.inputs, train_loader.targets, B, T);
+        toGPU(ctx, train_loader.inputs, inputs);
+        toGPU(ctx, train_loader.targets, targets);
+        gpt2_forward(ctx, &model, inputs, targets, B, T);
         gpt2_zero_grad(&model);
         gpt2_backward(ctx, &model);
-        gpt2_update(&model, 1e-4f, 0.9f, 0.999f, 1e-8f, 0.0f, step+1);
+        gpt2_update(ctx, &model, 1e-4f, 0.9f, 0.999f, 1e-8f, 0.0f, step+1);
         clock_gettime(CLOCK_MONOTONIC, &end);
         double time_elapsed_s = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
         printf("step %d: train loss %f (took %f ms)\n", step, model.mean_loss, time_elapsed_s * 1000);
