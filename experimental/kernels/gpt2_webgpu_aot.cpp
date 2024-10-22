@@ -271,6 +271,9 @@ typedef struct {
     Tensor inputs; // the input tokens for the current forward pass
     Tensor targets; // the target tokens for the current forward pass
     float mean_loss; // after a forward pass with targets, will be populated with the mean loss
+    float* mean_loss_buffer;
+
+    Tensor nullTensor;
 
     // kernels
     Kernels kernels;
@@ -372,6 +375,8 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
     model->batch_size = 0;
     model->seq_len = 0;
     model->mean_loss = -1.0f; // -1.0f will designate no loss
+    // Allocate B * C buffer for mean loss
+    model->mean_loss_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len);
 
     printf("Model build complete\n");
 
@@ -474,6 +479,7 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
                                                         /*input=*/ model->acts.residual3[L-1], /*weight=*/ model->params.lnfw, /*bias=*/ model->params.lnfb,
                                                         B, T, C);
         Tensor nullTensor = createTensor(ctx, Shape{1}, kf32);
+        model->nullTensor = nullTensor;
         kernels.matmul_final_forward = matmul_forward(ctx, model->acts.logits, model->acts.lnf, model->params.wte, nullTensor, B, T, C, Vp);
         kernels.softmax_final_forward = softmax_forward(ctx, model->acts.probs, model->acts.logits, B, T, V, Vp);
         kernels.crossentropy_softmax_backward = crossentropy_softmax_backward(ctx, model->acts.logits, model->acts.losses, model->acts.probs, targets, B, T, V, Vp);
@@ -829,8 +835,9 @@ void gpt2_free(GPT2 *model) {
     free(model->v_memory);
     free(model->acts_memory);
     free(model->grads_acts_memory);
-    free(model->inputs);
-    free(model->targets);
+    //    free(model->inputs);
+    //    free(model->targets);
+    free(model->mean_loss_buffer);
 }
 
 #ifndef TESTING
@@ -874,9 +881,6 @@ int main() {
         .requiredLimits = &requiredLimits
     });
     
-Continue!
-
-```cpp
    // build the GPT-2 model from a checkpoint
     GPT2 model;
     gpt2_build_from_checkpoint(ctx, &model, "gpt2_124M.bin");
@@ -903,11 +907,14 @@ Continue!
 
     // some memory for generating samples from the model
     uint64_t rng_state = 1337;
-    int* gen_tokens = (int*)mallocCheck(B * T * sizeof(int));
+    // int* gen_tokens = (int*)mallocCheck(B * T * sizeof(int));
     const int genT = 64; // number of steps of inference we will do
 
     // train
     struct timespec start, end;
+    Tensor inputs = createTensor(ctx, Shape{B, T}, ki32);
+    Tensor targets = createTensor(ctx, Shape{B, T}, ki32);
+    Tensor gen_tokens = createTensor(ctx, Shape{B, T}, ki32);
     printf("Starting training\n");
     for (int step = 0; step <= 40; step++) {
         printf("Step %d\n", step);
@@ -918,7 +925,9 @@ Continue!
             dataloader_reset(&val_loader);
             for (int i = 0; i < val_num_batches; i++) {
                 dataloader_next_batch(&val_loader);
-                gpt2_forward(ctx, &model, val_loader.inputs, val_loader.targets, B, T);
+                toGPU(ctx, val_loader.inputs, inputs);
+                toGPU(ctx, val_loader.targets, targets);
+                gpt2_forward(ctx, &model, inputs, targets, B, T);
                 val_loss += model.mean_loss;
             }
             val_loss /= val_num_batches;
@@ -928,9 +937,7 @@ Continue!
         // once in a while do model inference to print generated text
         if (step > 0 && step % 20 == 0) {
             // fill up gen_tokens with the GPT2_EOT, which kicks off the generation
-            for(int i = 0; i < B * T; ++i) {
-                gen_tokens[i] = tokenizer.eot_token;
-            }
+            toGPU(ctx, tokenizer.eot_token, gen_tokens);
             // now sample from the model autoregressively
             printf("generating:\n---\n");
             for (int t = 1; t < genT; t++) {
@@ -938,7 +945,7 @@ Continue!
                 // we re-calculate the forward pass for all of (B,T) positions from scratch
                 // but the inference here is just for sanity checking anyway
                 // and we can maybe optimize a bit more later, with careful tests
-                gpt2_forward(ctx, &model, gen_tokens, NULL, B, T);
+                gpt2_forward(ctx, &model, gen_tokens, model.nullTensor, B, T);
                 // furthermore, below we're only using b=0 (i.e. the first row) of all B rows
                 // we're in principle running B "inference streams" in parallel here
                 // but only using position 0
@@ -981,7 +988,7 @@ Continue!
     dataloader_free(&val_loader);
     tokenizer_free(&tokenizer);
     gpt2_free(&model);
-    free(gen_tokens);
+    // free(gen_tokens);
     return 0;
 }
 #endif
