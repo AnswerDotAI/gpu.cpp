@@ -29,6 +29,10 @@ endif
 
 default: run-native
 
+build/reduce: reduce.cpp kernels.h
+	$(CC) $(CFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
+	$(LIBSPEC) && build/reduce
+
 run_llm.c: ./build/test_gpt2 dawnlib
 	$(LIBSPEC) && $<
 

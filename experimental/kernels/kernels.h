@@ -683,6 +683,78 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 }
 )";
 
+static const char *kSum = R"(
+@group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
+var<workgroup> buffer: array<{{precision}}, 1024>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+    @builtin(global_invocation_id) globalID : vec3<u32>,
+    @builtin(local_invocation_id) localID : vec3<u32>,
+    @builtin(workgroup_id) groupid : vec3<u32>,
+    @builtin(num_workgroups) numGroups : vec3<u32>) {
+    let blockSize3d: vec3<u32> = vec3({{workgroupSize}});
+    let blockSize: u32 = blockSize3d.x;
+    let threadId: u32 = localID.x;
+    let blockId: u32 = groupid.x + groupid.y * numGroups.x;
+    let blockStart = blockId * blockSize * 2 + threadId;
+
+    buffer[threadId] = inp[blockStart] + inp[blockStart + blockSize];
+    workgroupBarrier();
+    var stride: u32 = blockSize / 2;
+ 
+    if (blockSize >= 1024 && threadId < 512) {
+        buffer[threadId] += buffer[threadId + 512];
+    }
+    workgroupBarrier();
+   
+    if (blockSize >= 512 && threadId < 256) {
+        buffer[threadId] += buffer[threadId + 256];
+    }
+    workgroupBarrier();
+
+    if (blockSize >= 256 && threadId < 128) {
+        buffer[threadId] += buffer[threadId + 128];
+    }
+    workgroupBarrier();
+
+    if (threadId < 64) {
+        buffer[threadId] += buffer[threadId + 64];
+    }
+    workgroupBarrier();
+
+    if (threadId < 32) {
+        buffer[threadId] += buffer[threadId + 32];
+    }
+    workgroupBarrier();
+
+    if (threadId < 16) {
+        buffer[threadId] += buffer[threadId + 16];
+    }
+    workgroupBarrier();
+
+    if (threadId < 8) {
+        buffer[threadId] += buffer[threadId + 8];
+    }
+    workgroupBarrier();
+
+    if (threadId < 4) {
+        buffer[threadId] += buffer[threadId + 4];
+    }
+    workgroupBarrier();
+
+    if (threadId < 2) {
+        buffer[threadId] += buffer[threadId + 2];
+    }
+    workgroupBarrier();
+
+    if (threadId == 0) {
+        buffer[0] += buffer[1];
+        out[blockId] = buffer[0];
+    }
+}
+)";
+  
 } // namespace gpu
 
 #endif // KERNELS_H
