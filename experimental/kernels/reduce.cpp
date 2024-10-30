@@ -285,51 +285,55 @@ Kernel createSumKernel(Context& ctx, Tensor& input, Tensor& output, size_t size)
   return createKernel(ctx, {kSum, num_threads, kf32}, Bindings{input, output}, {size_x, size_y, 1});
 }
 
-float sum_gpu(Context& ctx, const float* data, const float* buffer, size_t size) {
-  WGPURequiredLimits requiredLimits = LIMITS;
-  uint32_t num_threads = 1024;
-  int nSum = round(log2(size) / log2(num_threads));
-  int input_size = size;
-  unsigned long output_size = size;
+struct SumKernel {
   std::vector<Tensor> outputs;
   std::vector<Kernel> ops;
-  outputs.push_back(createTensor(ctx, Shape{std::max(size, static_cast<unsigned long>(1024*2))}, kf32));
-  for(int i=size,j=0;i>0;i/=num_threads,j++){
-    output_size = (output_size + num_threads - 1) / num_threads;
-    outputs.push_back(createTensor(ctx, Shape{std::max(output_size, static_cast<unsigned long>(1024*2))}, kf32));
-    ops.push_back(createSumKernel(ctx, outputs[j], outputs[j+1], input_size));
-    // printf("size: %d\n", input_size);
-    input_size = output_size;
-  }
-  toGPU(ctx, data, outputs[0], size * sizeof(float));
-
-
-  {
+  SumKernel(Context& ctx, size_t size) {
+    uint32_t num_threads = 1024;
+    int nSum = round(log2(size) / log2(num_threads));
+    int input_size = size;
+    unsigned long output_size = size;
+    outputs.push_back(createTensor(ctx, Shape{std::max(size, static_cast<unsigned long>(num_threads*2))}, kf32));
     for(int i=size,j=0;i>0;i/=num_threads,j++){
-      std::promise<void> promise;
-      std::future<void> future = promise.get_future();
-      dispatchKernel(ctx, ops[j], promise);
-      wait(ctx, future);
-      resetCommandBuffer(ctx.device, ops[j]);
+      output_size = (output_size + num_threads - 1) / num_threads;
+      outputs.push_back(createTensor(ctx, Shape{std::max(output_size, static_cast<unsigned long>(num_threads*2))}, kf32));
+      ops.push_back(createSumKernel(ctx, outputs[j], outputs[j+1], input_size));
+      input_size = output_size;
     }
   }
+  void dispatchKernel(Context& ctx) {
+    for(int i=0;i<ops.size();i++){
+      std::promise<void> promise;
+      std::future<void> future = promise.get_future();
+      gpu::dispatchKernel(ctx, ops[i], promise);
+      wait(ctx, future);
+      resetCommandBuffer(ctx.device, ops[i]);
+    }
+  }
+  void toGPU(Context& ctx, const float* data, size_t size) {
+    gpu::toGPU(ctx, data, outputs[0], size);
+  }
+  void toCPU(Context& ctx, float* data, size_t size) {
+    gpu::toCPU(ctx, outputs[outputs.size()-1], data, size);
+  }
+};
+
+float sum_gpu(Context& ctx, const float* data, float* buffer, size_t size) {
+  WGPURequiredLimits requiredLimits = LIMITS;
+  SumKernel sumKernel(ctx, size);
+  sumKernel.toGPU(ctx, data, size * sizeof(float));
+  sumKernel.dispatchKernel(ctx);
   
   {
     int nIter = 100;
     DurationTime dt("GPU", true, nIter);
     for (int t = 0; t < nIter; t++){
-      for(int i=size,j=0;i>0;i/=num_threads,j++){
-        std::promise<void> promise;
-        std::future<void> future = promise.get_future();
-        dispatchKernel(ctx, ops[j], promise);
-        wait(ctx, future);
-        resetCommandBuffer(ctx.device, ops[j]);
-      }
+      sumKernel.dispatchKernel(ctx);
     }
   }
 
   float r = 0;
-  toCPU(ctx, outputs[outputs.size()-1], (void*)buffer, 4 * sizeof(float));
+  sumKernel.toCPU(ctx, buffer, 4 * sizeof(float));
 
   return buffer[0];
 }
@@ -362,6 +366,7 @@ float sum_gpu(Context& ctx, const float* data, const float* buffer, size_t size)
 //   }
 //   return r;
 // }
+
 
 int main(int argc, char **argv) {
   static constexpr size_t M = 4096*2;
