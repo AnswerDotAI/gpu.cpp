@@ -1187,6 +1187,18 @@ inline void toGPU(Context &ctx, const int *data, Tensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
 }
+ 
+inline void toGPU(Context &ctx, const float *data, Tensor &tensor, size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const half *data, Tensor &tensor, size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const int *data, Tensor &tensor, size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
 
 template <typename Params>
 inline void toGPU(Context &ctx, Params &params, Kernel &op) {
