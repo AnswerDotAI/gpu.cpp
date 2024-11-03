@@ -329,13 +329,13 @@ struct SumKernel2d {
     for(int j=0;output_size>1;j++){
       output_size = (output_size + (num_threads * 2) - 1) / (num_threads * 2);
       if (debug)
-        printf("size0: %d, num_threads: %d, output_size: %d\n", size0, num_threads, output_size);
+        printf("size0: %zu, num_threads: %d, output_size: %lu\n", size0, num_threads, output_size);
       outputs.push_back(createTensor(ctx, Shape{std::max(output_size, static_cast<unsigned long>(num_threads*2)), size1}, kf32));
       ops.push_back(createSumKernel2d(ctx, outputs[j], outputs[j+1], input_size, size1, num_threads));
       input_size = output_size;
     }
     if (debug)
-      printf("ops.size(): %d\n", ops.size());
+      printf("ops.size(): %zu\n", ops.size());
   }
   void dispatchKernel(Context& ctx) {
     for(int i=0;i<ops.size();i++){
