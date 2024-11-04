@@ -278,6 +278,7 @@ typedef struct {
 
     // kernels
     Kernels kernels;
+    bool backward_enabled;
 } GPT2;
 
 void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoint_path) {
@@ -379,6 +380,7 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
     // Allocate B * C buffer for mean loss
     model->mean_loss_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len);
     model->probs_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len * Vp);
+    model->backward_enabled = false;
 
     printf("Model build complete\n");
 
@@ -476,7 +478,8 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
         kernels.crossentropy_forward = crossentropy_forward(ctx, model->acts.losses, model->acts.probs, targets, B, T, Vp);
         
         kernels.encoder_forward = encoder_forward(ctx, model->acts.encoded, inputs, model->params.wte, model->params.wpe, B, T, C); // encoding goes into residual[0]
-        kernels.encoder_backward = encoder_backward(ctx, model->params.wte, model->params.wpe, model->acts.encoded, inputs, B, T, C);
+        if(model->backward_enabled)
+          kernels.encoder_backward = encoder_backward(ctx, model->params.wte, model->params.wpe, model->acts.encoded, inputs, B, T, C);
         kernels.layernorm_final_forward = layernorm_forward(ctx, model->acts.lnf, model->acts.lnf_mean, model->acts.lnf_rstd,
                                                         /*input=*/ model->acts.residual3[L-1], /*weight=*/ model->params.lnfw, /*bias=*/ model->params.lnfb,
                                                         B, T, C);
@@ -484,12 +487,15 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
         model->nullTensor = nullTensor;
         kernels.matmul_final_forward = matmul_forward(ctx, model->acts.logits, model->acts.lnf, model->params.wte, nullTensor, B, T, C, Vp);
         kernels.softmax_final_forward = softmax_forward(ctx, model->acts.probs, model->acts.logits, B, T, V, Vp);
-        kernels.crossentropy_softmax_backward = crossentropy_softmax_backward(ctx, model->acts.logits, model->acts.losses, model->acts.probs, targets, B, T, V, Vp);
-        kernels.matmul_final_backward = matmul_backward(ctx, model->acts.lnf, model->params.wte, nullTensor, model->acts.logits,
-                                                 model->acts.lnf, model->params.wte, B, T, C, Vp);
-        kernels.layernorm_final_backward = layernorm_backward(ctx, model->acts.residual3[L-1], model->params.lnfw, model->params.lnfb,
-                                                        model->acts.lnf, model->acts.residual3[L-1], model->params.lnfw,
-                                                        model->acts.lnf_mean, model->acts.lnf_rstd, B, T, C);
+        if(model->backward_enabled)
+          kernels.crossentropy_softmax_backward = crossentropy_softmax_backward(ctx, model->acts.logits, model->acts.losses, model->acts.probs, targets, B, T, V, Vp);
+        if(model->backward_enabled)
+          kernels.matmul_final_backward = matmul_backward(ctx, model->acts.lnf, model->params.wte, nullTensor, model->acts.logits,
+                                                          model->acts.lnf, model->params.wte, B, T, C, Vp);
+        if(model->backward_enabled)
+          kernels.layernorm_final_backward = layernorm_backward(ctx, model->acts.residual3[L-1], model->params.lnfw, model->params.lnfb,
+                                                                model->acts.lnf, model->acts.residual3[L-1], model->params.lnfw,
+                                                                model->acts.lnf_mean, model->acts.lnf_rstd, B, T, C);
         printf("Created Kernels\n");
     }
 
@@ -557,7 +563,7 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
         {
             std::promise<void> promise;
             std::future<void> future = promise.get_future();
-            dispatchKernel(ctx, model->kernels.layernorm2_backward[l], promise);
+            dispatchKernel(ctx, model->kernels.layernorm_forward[l], promise);
             wait(ctx, future);
         }
         printf("  [Forward] : FF Up\n");
@@ -1061,9 +1067,11 @@ int main() {
         toGPU(ctx, train_loader.inputs, inputs);
         toGPU(ctx, train_loader.targets, targets);
         gpt2_forward(ctx, &model, inputs, targets, B, T);
-        gpt2_zero_grad(&model);
-        gpt2_backward(ctx, &model);
-        gpt2_update(ctx, &model, 1e-4f, 0.9f, 0.999f, 1e-8f, 0.0f, step+1);
+        if (model.backward_enabled) {
+            gpt2_zero_grad(&model);
+            gpt2_backward(ctx, &model);
+            gpt2_update(ctx, &model, 1e-4f, 0.9f, 0.999f, 1e-8f, 0.0f, step+1);
+        }
         clock_gettime(CLOCK_MONOTONIC, &end);
         double time_elapsed_s = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
         printf("step %d: train loss %f (took %f ms)\n", step, model.mean_loss, time_elapsed_s * 1000);
