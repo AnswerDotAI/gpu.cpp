@@ -377,9 +377,8 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
     model->batch_size = 0;
     model->seq_len = 0;
     model->mean_loss = -1.0f; // -1.0f will designate no loss
-    // Allocate B * C buffer for mean loss
-    model->mean_loss_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len);
-    model->probs_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len * Vp);
+    model->mean_loss_buffer = NULL;
+    model->probs_buffer = NULL;
     model->backward_enabled = false;
 
     printf("Model build complete\n");
@@ -418,6 +417,8 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
         model->seq_len = T;
         // and now allocate the space
         fill_in_activation_sizes(model->act_sizes, model->config, B, T);
+        model->mean_loss_buffer = (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len);
+        model->probs_buffer =  (float*)mallocCheck(sizeof(float) * model->batch_size * model->seq_len * Vp);
 
         // TODO(avh): this is just a resource test for now, eventually deprecate CPU allocations
         size_t num_activations = 0;
@@ -635,7 +636,6 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
         }
         // for convenience also evaluate the mean loss
         float mean_loss = 0.0f;
-        //toCPU(ctx, model->acts_.data[22], model->acts.losses.data, model->act_sizes[22] * sizeof(float));
         toCPU(ctx, model->acts.losses, model->mean_loss_buffer, B*T * sizeof(float));
         for (int i=0; i<B*T; i++) { mean_loss += model->mean_loss_buffer[i]; }
         mean_loss /= B*T;
