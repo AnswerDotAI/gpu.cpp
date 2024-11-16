@@ -47,7 +47,6 @@ typedef struct {
 
 // the parameters of the model
 #define NUM_PARAMETER_TENSORS 16
-#define NUM_PARAMETER_LAYERS 12
 typedef struct {
     Tensor wte; // (V, C)
     Tensor wpe; // (maxT, C)
@@ -91,22 +90,36 @@ void fill_in_parameter_sizes(size_t* param_sizes, GPT2Config config) {
 }
 
 // allocate memory for the parameters and point the individual tensors to the right places
-void malloc_and_point_parameters(Context& ctx, ParameterTensors* params, size_t* param_sizes) {
+void malloc_and_point_parameters(Context& ctx, GPT2Config config, ParameterTensors* params, size_t* param_sizes) {
+    size_t L = config.num_layers;
     params->wte = createTensor(ctx, Shape{param_sizes[0]}, kf32);
     params->wpe = createTensor(ctx, Shape{param_sizes[1]}, kf32);
-    for(int l = 0; l < NUM_PARAMETER_LAYERS; l++) {
-      params->ln1w.push_back(createTensor(ctx, Shape{param_sizes[2]/NUM_PARAMETER_LAYERS}, kf32));
-      params->ln1b.push_back(createTensor(ctx, Shape{param_sizes[3]/NUM_PARAMETER_LAYERS}, kf32));
-      params->qkvw.push_back(createTensor(ctx, Shape{param_sizes[4]/NUM_PARAMETER_LAYERS}, kf32));
-      params->qkvb.push_back(createTensor(ctx, Shape{param_sizes[5]/NUM_PARAMETER_LAYERS}, kf32));
-      params->attprojw.push_back(createTensor(ctx, Shape{param_sizes[6]/NUM_PARAMETER_LAYERS}, kf32));
-      params->attprojb.push_back(createTensor(ctx, Shape{param_sizes[7]/NUM_PARAMETER_LAYERS}, kf32));
-      params->ln2w.push_back(createTensor(ctx, Shape{param_sizes[8]/NUM_PARAMETER_LAYERS}, kf32));
-      params->ln2b.push_back(createTensor(ctx, Shape{param_sizes[9]/NUM_PARAMETER_LAYERS}, kf32));
-      params->fcw.push_back(createTensor(ctx, Shape{param_sizes[10]/NUM_PARAMETER_LAYERS}, kf32));
-      params->fcb.push_back(createTensor(ctx, Shape{param_sizes[11]/NUM_PARAMETER_LAYERS}, kf32));
-      params->fcprojw.push_back(createTensor(ctx, Shape{param_sizes[12]/NUM_PARAMETER_LAYERS}, kf32));
-      params->fcprojb.push_back(createTensor(ctx, Shape{param_sizes[13]/NUM_PARAMETER_LAYERS}, kf32));
+
+    params->ln1w.resize(L);
+    params->ln1b.resize(L);
+    params->qkvw.resize(L);
+    params->qkvb.resize(L);
+    params->attprojw.resize(L);
+    params->attprojb.resize(L);
+    params->ln2w.resize(L);
+    params->ln2b.resize(L);
+    params->fcw.resize(L);
+    params->fcb.resize(L);
+    params->fcprojw.resize(L);
+    params->fcprojb.resize(L);
+    for(int l = 0; l < L ; l++) {
+      params->ln1w[l] = createTensor(ctx, Shape{param_sizes[2]/config.num_layers}, kf32);
+      params->ln1b[l] = createTensor(ctx, Shape{param_sizes[3]/config.num_layers}, kf32);
+      params->qkvw[l] = createTensor(ctx, Shape{param_sizes[4]/config.num_layers}, kf32);
+      params->qkvb[l] = createTensor(ctx, Shape{param_sizes[5]/config.num_layers}, kf32);
+      params->attprojw[l] = createTensor(ctx, Shape{param_sizes[6]/config.num_layers}, kf32);
+      params->attprojb[l] = createTensor(ctx, Shape{param_sizes[7]/config.num_layers}, kf32);
+      params->ln2w[l] = createTensor(ctx, Shape{param_sizes[8]/config.num_layers}, kf32);
+      params->ln2b[l] = createTensor(ctx, Shape{param_sizes[9]/config.num_layers}, kf32);
+      params->fcw[l] = createTensor(ctx, Shape{param_sizes[10]/config.num_layers}, kf32);
+      params->fcb[l] = createTensor(ctx, Shape{param_sizes[11]/config.num_layers}, kf32);
+      params->fcprojw[l] = createTensor(ctx, Shape{param_sizes[12]/config.num_layers}, kf32);
+      params->fcprojb[l] = createTensor(ctx, Shape{param_sizes[13]/config.num_layers}, kf32);
     }
     params->lnfw = createTensor(ctx, Shape{param_sizes[14]}, kf32);
     params->lnfb = createTensor(ctx, Shape{param_sizes[15]}, kf32);
@@ -201,25 +214,42 @@ void fill_in_activation_sizes(size_t* act_sizes, GPT2Config config, int B, int T
     act_sizes[22] = B * T; // losses
 }
 
-void malloc_and_point_activations(Context& ctx, ActivationTensors* acts, size_t* act_sizes) {
+void malloc_and_point_activations(Context& ctx, GPT2Config config, ActivationTensors* acts, size_t* act_sizes) {
+    size_t L = config.num_layers;
     acts->encoded = createTensor(ctx, Shape{act_sizes[0]}, kf32);
-    for (int l = 0; l < NUM_PARAMETER_LAYERS; l++) {
-        acts->ln1.push_back(createTensor(ctx, Shape{act_sizes[1]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->ln1_mean.push_back(createTensor(ctx, Shape{act_sizes[2]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->ln1_rstd.push_back(createTensor(ctx, Shape{act_sizes[3]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->qkv.push_back(createTensor(ctx, Shape{act_sizes[4]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->atty.push_back(createTensor(ctx, Shape{act_sizes[5]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->preatt.push_back(createTensor(ctx, Shape{act_sizes[6]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->att.push_back(createTensor(ctx, Shape{act_sizes[7]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->attproj.push_back(createTensor(ctx, Shape{act_sizes[8]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->residual2.push_back(createTensor(ctx, Shape{act_sizes[9]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->ln2.push_back(createTensor(ctx, Shape{act_sizes[10]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->ln2_mean.push_back(createTensor(ctx, Shape{act_sizes[11]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->ln2_rstd.push_back(createTensor(ctx, Shape{act_sizes[12]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->fch.push_back(createTensor(ctx, Shape{act_sizes[13]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->fch_gelu.push_back(createTensor(ctx, Shape{act_sizes[14]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->fcproj.push_back(createTensor(ctx, Shape{act_sizes[15]/NUM_PARAMETER_LAYERS}, kf32));
-        acts->residual3.push_back(createTensor(ctx, Shape{act_sizes[16]/NUM_PARAMETER_LAYERS}, kf32));
+    acts->ln1.resize(L);
+    acts->ln1_mean.resize(L);
+    acts->ln1_rstd.resize(L);
+    acts->qkv.resize(L);
+    acts->atty.resize(L);
+    acts->preatt.resize(L);
+    acts->att.resize(L);
+    acts->attproj.resize(L);
+    acts->residual2.resize(L);
+    acts->ln2.resize(L);
+    acts->ln2_mean.resize(L);
+    acts->ln2_rstd.resize(L);
+    acts->fch.resize(L);
+    acts->fch_gelu.resize(L);
+    acts->fcproj.resize(L);
+    acts->residual3.resize(L);
+    for (int l = 0; l < L; l++) {
+        acts->ln1[l] = createTensor(ctx, Shape{act_sizes[1]/config.num_layers}, kf32);
+        acts->ln1_mean[l] = createTensor(ctx, Shape{act_sizes[2]/config.num_layers}, kf32);
+        acts->ln1_rstd[l] = createTensor(ctx, Shape{act_sizes[3]/config.num_layers}, kf32);
+        acts->qkv[l] = createTensor(ctx, Shape{act_sizes[4]/config.num_layers}, kf32);
+        acts->atty[l] = createTensor(ctx, Shape{act_sizes[5]/config.num_layers}, kf32);
+        acts->preatt[l] = createTensor(ctx, Shape{act_sizes[6]/config.num_layers}, kf32);
+        acts->att[l] = createTensor(ctx, Shape{act_sizes[7]/config.num_layers}, kf32);
+        acts->attproj[l] = createTensor(ctx, Shape{act_sizes[8]/config.num_layers}, kf32);
+        acts->residual2[l] = createTensor(ctx, Shape{act_sizes[9]/config.num_layers}, kf32);
+        acts->ln2[l] = createTensor(ctx, Shape{act_sizes[10]/config.num_layers}, kf32);
+        acts->ln2_mean[l] = createTensor(ctx, Shape{act_sizes[11]/config.num_layers}, kf32);
+        acts->ln2_rstd[l] = createTensor(ctx, Shape{act_sizes[12]/config.num_layers}, kf32);
+        acts->fch[l] = createTensor(ctx, Shape{act_sizes[13]/config.num_layers}, kf32);
+        acts->fch_gelu[l] = createTensor(ctx, Shape{act_sizes[14]/config.num_layers}, kf32);
+        acts->fcproj[l] = createTensor(ctx, Shape{act_sizes[15]/config.num_layers}, kf32);
+        acts->residual3[l] = createTensor(ctx, Shape{act_sizes[16]/config.num_layers}, kf32);
     }
     acts->lnf = createTensor(ctx, Shape{act_sizes[17]}, kf32);
     acts->lnf_mean = createTensor(ctx, Shape{act_sizes[18]}, kf32);
@@ -228,15 +258,6 @@ void malloc_and_point_activations(Context& ctx, ActivationTensors* acts, size_t*
     acts->probs = createTensor(ctx, Shape{act_sizes[21]}, kf32);
     acts->losses = createTensor(ctx, Shape{act_sizes[22]}, kf32);
 }
-
-struct GPUParameters {
-  Tensor data[NUM_PARAMETER_TENSORS];
-};
-
-struct GPUActivations {
-  Tensor data[NUM_ACTIVATION_TENSORS];
-};
-
 
 void gpu_alloc(Context& ctx, Tensor* tensors, size_t* sizes, size_t n) { 
     for (size_t i = 0; i < n; i++) {
@@ -325,7 +346,7 @@ void gpt2_build_from_checkpoint(Context& ctx, GPT2 *model, const char* checkpoin
     model->num_parameters = num_parameters;
 
     // read in all the parameters from file
-    malloc_and_point_parameters(ctx, &model->params, model->param_sizes);
+    malloc_and_point_parameters(ctx, model->config, &model->params, model->param_sizes);
     model->params_memory = (float*)mallocCheck(num_parameters * sizeof(float));
     freadCheck(model->params_memory, sizeof(float), num_parameters, model_file);
     fcloseCheck(model_file);
@@ -428,7 +449,7 @@ void gpt2_forward(Context& ctx, GPT2 *model, Tensor& inputs, Tensor& targets, si
         printf("num_activations: %zu\n", num_activations);
         model->num_activations = num_activations;
         printf("Allocating %.2f MB for activations\n", num_activations * sizeof(float) / (1024.0f * 1024.0f));
-        malloc_and_point_activations(ctx, &model->acts, model->act_sizes);
+        malloc_and_point_activations(ctx, model->config, &model->acts, model->act_sizes);
         // also create memory for caching inputs and targets
         //model->inputs = (int*)mallocCheck(B * T * sizeof(int));
         //model->targets = (int*)mallocCheck(B * T * sizeof(int)); // might be unused if we never have targets but it's small
@@ -664,8 +685,8 @@ void gpt2_backward(Context& ctx, GPT2 *model) {
     // lazily allocate the memory for gradients of the weights and activations, if needed
     if (model->grads_memory == NULL) {
         printf("Allocating %.2f MB for gradients\n", model->num_parameters * sizeof(float) / (1024.0f * 1024.0f));
-        malloc_and_point_parameters(ctx, &model->grads, model->param_sizes);
-        malloc_and_point_activations(ctx, &model->grads_acts, model->act_sizes);
+        malloc_and_point_parameters(ctx, model->config, &model->grads, model->param_sizes);
+        malloc_and_point_activations(ctx, model->config, &model->grads_acts, model->act_sizes);
         gpt2_zero_grad(model);
     }
 
