@@ -16,7 +16,7 @@ CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_l
 CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
 # CFLAGS=-O2 -march=native -I. -Iunittest_llmc
 
-LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn
+LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn -fsanitize=address
 FLAGS=$(CXXFLAGS) $(LDFLAGS)
 
 ifeq ($(shell [ -d /opt/homebrew/opt/libomp/lib ] && echo "exists"), exists)
@@ -103,6 +103,10 @@ build/gpt2_webgpu: llm.c gpt2_124M.bin llm.c gpt2_webgpu.cpp ops.cpp
 	mkdir -p build
 	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
 
+build/gpt2_webgpu_aot: llm.c gpt2_124M.bin llm.c gpt2_webgpu_aot.cpp ops_aot.cpp
+	mkdir -p build
+	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu_aot.cpp ops_aot.cpp -g
+
 build/gpt2_webgpu.html: check-emsdk gpt2_webgpu.cpp term.html llm.c
 	em++ gpt2_webgpu.cpp ops.cpp \
 		--preload-file gpt2_tokenizer.bin@/gpt2_tokenizer.bin \
@@ -120,8 +124,8 @@ watch-web:
 watch-native:
 	ls *.cpp *.c *.hpp *.h | entr -s "rm -f build/gpt2_webgpu && rm -f build/ops.o && make build/gpt2_webgpu"
 
-run-native: build/gpt2_webgpu
-	. $(GPUCPP)/source && ./build/gpt2_webgpu
+run-native: build/gpt2_webgpu_aot
+	. $(GPUCPP)/source && ./build/gpt2_webgpu_aot
 
 # server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
 server: build/gpt2_webgpu.html
