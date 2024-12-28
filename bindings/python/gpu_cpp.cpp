@@ -75,7 +75,6 @@ void py_toGPU_float(Context *ctx, py::array_t<float> array, Tensor *tensor) {
   toGPU(*ctx, ptr, *tensor);
 }
 
-
 struct GpuAsync {
   std::promise<void> promise;
   std::future<void> future ;
