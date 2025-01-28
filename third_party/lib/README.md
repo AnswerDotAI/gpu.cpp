@@ -6,7 +6,7 @@ to building from the dawn repository:
 https://github.com/google/dawn
 
 Commit hash:
-5a00ab1fbc22d6ebbab39c901c1f90144e9b71e9 
+556f960f44690b3b808c779c08b44d48d4292925
 
 Build with clang (assumes running from out/Release)
 
