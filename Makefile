@@ -27,17 +27,17 @@ HEADER_PATH ?= /usr/include
 ifeq ($(OS), Linux)
 OS_TYPE ?= Linux
 GPU_CPP_LIB_NAME ?= libgpucpp.so
-DAWN_LIB_NAME ?= libdawn.so
+DAWN_LIB_NAME ?= libwebgpu_dawn.so
 else ifeq ($(OS), Darwin)
 OS_TYPE ?= macOS
 GPU_CPP_LIB_NAME ?= libgpucpp.dylib
-DAWN_LIB_NAME ?= libdawn.dylib
+DAWN_LIB_NAME ?= libwebgpu_dawn.dylib
 else
 OS_TYPE ?= unknown
 endif
 
 lib: check-clang dawnlib
-	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/$(GPU_CPP_LIB_NAME)
+	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -L$(LIBDIR) -lwebgpu_dawn -ldl -shared -fPIC gpu.cpp -o build/$(GPU_CPP_LIB_NAME)
 	python3 build.py
 	cp third_party/lib/$(DAWN_LIB_NAME) build/
 
@@ -54,7 +54,7 @@ uninstall:
 examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
 	$(LIBSPEC) && cd examples/hello_world && make build/hello_world && ./build/hello_world
 
-dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dylib),,run_setup)
+dawnlib: $(if $(wildcard third_party/lib/libwebgpu_dawn.so third_party/lib/libwebgpu_dawn.dylib),,run_setup)
 
 run_setup: check-python
 	python3 setup.py
@@ -71,7 +71,7 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 
 # Test 16-bit floating point type
 test-half: dawnlib check-clang
-	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -ldawn -ldl -o build/half && ./build/half
+	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -lwebgpu_dawn -ldl -o build/half && ./build/half
 
 docs: Doxyfile
 	doxygen Doxyfile
@@ -102,7 +102,7 @@ all-cmake: check-clang check-cmake
 ################################################################################
 
 clean-dawnlib:
-	rm -f third_party/lib/libdawn.so third_party/lib/libdawn.dylib
+	rm -f third_party/lib/libwebgpu_dawn.so third_party/lib/libwebgpu_dawn.dylib
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
@@ -119,7 +119,7 @@ clean:
 	rm -f build/half
 
 clean-all:
-	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/* third_party/gpu-build third_party/gpu-subbuild third_party/gpu-src third_party/lib/libdawn.so third_party/lib/libdawn.dylib
+	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/* third_party/gpu-build third_party/gpu-subbuild third_party/gpu-src third_party/lib/libwebgpu_dawn.so third_party/lib/libwebgpu_dawn.dylib
 
 ################################################################################
 # Checks

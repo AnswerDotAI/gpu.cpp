@@ -26,8 +26,6 @@
 
 #ifdef USE_DAWN_API
 #include "dawn/native/DawnNative.h"
-
-typedef WGPUBufferUsage WGPUBufferUsageFlags;
 #endif
 
 namespace gpu {
@@ -37,7 +35,7 @@ namespace gpu {
  */
 struct Array {
   WGPUBuffer buffer;
-  WGPUBufferUsageFlags usage;
+  WGPUBufferUsage usage;
   size_t size; // in bytes
 };
 
@@ -580,7 +578,7 @@ struct Context {
 inline Tensor
 createTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
              NumType dtype,
-             WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
+             WGPUBufferUsage usage = WGPUBufferUsage_Storage |
                                           WGPUBufferUsage_CopyDst |
                                           WGPUBufferUsage_CopySrc) {
   LOG(kDefLog, kTrace, "Creating tensor");
@@ -603,7 +601,7 @@ createTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
  * the GPU with a given shape and data type.
  *
  * Instead of taking the TensoPool and raw WebGPU API WGPUDevice and
- * WGPUBufferUsageFlags arguments, this is a convenience wrapper around the
+ * WGPUBufferUsage arguments, this is a convenience wrapper around the
  * core createTensor function which has default usage flags for a storage
  * buffer, and also takes in the Context object.
  *
@@ -782,8 +780,6 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
   Context context;
   {
 #ifdef __EMSCRIPTEN__
-    // Emscripten does not support the instance descriptor
-    // and throws an assertion error if it is not nullptr.
     context.instance = wgpuCreateInstance(nullptr);
 #else
     context.instance = wgpuCreateInstance(&desc);
@@ -798,30 +794,37 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
       bool requestEnded = false;
     };
     AdapterData adapterData;
+
     auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status,
-                                    WGPUAdapter adapter, char const *message,
-                                    void *pUserData) {
-      AdapterData &adapterData = *reinterpret_cast<AdapterData *>(pUserData);
+                                    WGPUAdapter adapter, WGPUStringView message,
+                                    void *pUserData, void *) {
+        AdapterData &adapterData = *reinterpret_cast<AdapterData *>(pUserData);
 #ifdef __EMSCRIPTEN__
-      if (status != WGPURequestAdapterStatus_Success) {
-        LOG(kDefLog, kError, "Could not get WebGPU adapter: %s", message);
-        LOG(kDefLog, kError,
-            "\n\nA common reason is that the browser does not have WebGPU "
-            "enabled, particularly on Linux.\n"
-            "- Open `chrome://flags/` in the browser and make sure "
-            "\"WebGPU Support\" is enabled.\n"
-            "- Chrome is launched with vulkan enabled. From the command line "
-            "launch chrome as `google-chrome --enable-features=Vulkan`\n");
-      }
+        if (status != WGPURequestAdapterStatus_Success) {
+            LOG(kDefLog, kError, "Could not get WebGPU adapter: %.*s", 
+                static_cast<int>(message.length), message.data);
+            LOG(kDefLog, kError,
+                "\n\nA common reason is that the browser does not have WebGPU "
+                "enabled, particularly on Linux.\n"
+                "- Open `chrome://flags/` in the browser and make sure "
+                "\"WebGPU Support\" is enabled.\n"
+                "- Chrome is launched with vulkan enabled. From the command line "
+                "launch chrome as `google-chrome --enable-features=Vulkan`\n");
+        }
 #endif
-      check(status == WGPURequestAdapterStatus_Success,
-            "Request WebGPU adapter", __FILE__, __LINE__);
-      adapterData.adapter = adapter;
-      adapterData.requestEnded = true;
+        check(status == WGPURequestAdapterStatus_Success,
+              "Request WebGPU adapter", __FILE__, __LINE__);
+        adapterData.adapter = adapter;
+        adapterData.requestEnded = true;
     };
 
-    wgpuInstanceRequestAdapter(context.instance, &adapterOpts,
-                               onAdapterRequestEnded, (void *)&adapterData);
+    WGPURequestAdapterCallbackInfo callbackInfo = {
+        .mode = WGPUCallbackMode_AllowSpontaneous,
+        .callback = onAdapterRequestEnded,
+        .userdata1 = &adapterData,
+        .userdata2 = nullptr
+    };
+    wgpuInstanceRequestAdapter(context.instance, &adapterOpts, callbackInfo);
 
     while (!adapterData.requestEnded) {
       processEvents(context.instance);
@@ -837,19 +840,27 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
       bool requestEnded = false;
     };
     DeviceData devData;
+
     auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, char const *message,
-                                   void *pUserData) {
-      DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
-      check(status == WGPURequestDeviceStatus_Success,
-            "Could not get WebGPU device.", __FILE__, __LINE__);
-      LOG(kDefLog, kTrace, "Device Request succeeded %x",
-          static_cast<void *>(device));
-      devData.device = device;
-      devData.requestEnded = true;
+                                   WGPUDevice device, WGPUStringView message,
+                                   void *pUserData, void *) {
+        DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
+        check(status == WGPURequestDeviceStatus_Success,
+              "Could not get WebGPU device.", __FILE__, __LINE__);
+        LOG(kDefLog, kTrace, "Device Request succeeded %x",
+            static_cast<void *>(device));
+        devData.device = device;
+        devData.requestEnded = true;
     };
-    wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
-                             onDeviceRequestEnded, (void *)&devData);
+
+    WGPURequestDeviceCallbackInfo deviceCallbackInfo = {
+        .mode = WGPUCallbackMode_AllowSpontaneous,
+         .callback = onDeviceRequestEnded,
+         .userdata1 = &devData,
+         .userdata2 = nullptr
+     };
+     wgpuAdapterRequestDevice(context.adapter, &devDescriptor, deviceCallbackInfo);
+
     LOG(kDefLog, kInfo, "Waiting for device request to end");
     while (!devData.requestEnded) {
       processEvents(context.instance);
@@ -857,13 +868,18 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
     LOG(kDefLog, kInfo, "Device request ended");
     assert(devData.requestEnded);
     context.device = devData.device;
-    wgpuDeviceSetUncapturedErrorCallback(
-        context.device,
-        [](WGPUErrorType type, char const *message, void *devData) {
-          LOG(kDefLog, kError, "Device uncaptured error: %s", message);
-          throw std::runtime_error("Device uncaptured exception.");
+
+    WGPULoggingCallbackInfo loggingCallbackInfo = {
+        .callback = [](WGPULoggingType type, WGPUStringView message, void* userdata1, void* userdata2) {
+            LOG(kDefLog, kError, "Device logging callback: %.*s", (int)message.length, message.data);
+            if (type == WGPULoggingType_Error) {
+                throw std::runtime_error("Device error logged.");
+            }
         },
-        nullptr);
+        .userdata1 = nullptr,
+        .userdata2 = nullptr
+    };
+    wgpuDeviceSetLoggingCallback(context.device, loggingCallbackInfo);
   }
   context.queue = wgpuDeviceGetQueue(context.device);
   return context;
@@ -947,19 +963,28 @@ inline Context createContextByGpuIdx(int gpuIdx,
       bool requestEnded = false;
     };
     DeviceData devData;
+
     auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, char const *message,
-                                   void *pUserData) {
-      DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
-      check(status == WGPURequestDeviceStatus_Success,
-            "Could not get WebGPU device.", __FILE__, __LINE__);
-      LOG(kDefLog, kTrace, "Device Request succeeded %x",
-          static_cast<void *>(device));
-      devData.device = device;
-      devData.requestEnded = true;
+                               WGPUDevice device, WGPUStringView message,
+                               void *pUserData, void *) {
+    DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
+    check(status == WGPURequestDeviceStatus_Success,
+          "Could not get WebGPU device.", __FILE__, __LINE__);
+    LOG(kDefLog, kTrace, "Device Request succeeded %x",
+        static_cast<void *>(device));
+    devData.device = device;
+    devData.requestEnded = true;
+};
+
+    WGPURequestDeviceCallbackInfo deviceCallbackInfo = {
+        .mode = WGPUCallbackMode_AllowSpontaneous,
+        .callback = onDeviceRequestEnded,
+        .userdata1 = &devData,
+        .userdata2 = nullptr
     };
-    wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
-                             onDeviceRequestEnded, (void *)&devData);
+    wgpuAdapterRequestDevice(context.adapter, &devDescriptor, deviceCallbackInfo);
+
+
     LOG(kDefLog, kInfo, "Waiting for device request to end");
     while (!devData.requestEnded) {
       processEvents(context.instance);
@@ -967,13 +992,19 @@ inline Context createContextByGpuIdx(int gpuIdx,
     LOG(kDefLog, kInfo, "Device request ended");
     assert(devData.requestEnded);
     context.device = devData.device;
-    wgpuDeviceSetUncapturedErrorCallback(
-        context.device,
-        [](WGPUErrorType type, char const *message, void *devData) {
-          LOG(kDefLog, kError, "Device uncaptured error: %s", message);
-          throw std::runtime_error("Device uncaptured exception.");
+
+    WGPULoggingCallbackInfo loggingCallbackInfo = {
+        .callback = [](WGPULoggingType type, WGPUStringView message, void* userdata1, void* userdata2) {
+            LOG(kDefLog, kError, "Device logging callback: %.*s", (int)message.length, message.data);
+            if (type == WGPULoggingType_Error) {
+                throw std::runtime_error("Device error logged.");
+            }
         },
-        nullptr);
+        .userdata1 = nullptr,
+        .userdata2 = nullptr
+    };
+    wgpuDeviceSetLoggingCallback(context.device, loggingCallbackInfo);
+
   }
   context.queue = wgpuDeviceGetQueue(context.device);
   return context;
@@ -1005,28 +1036,36 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
   wgpuCommandBufferRelease(op.commandBuffer);
   CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
                                &op.future};
-  wgpuQueueOnSubmittedWorkDone(
-      ctx.queue,
-      [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-              __FILE__, __LINE__);
-        const auto *data = static_cast<CallbackData *>(callbackData);
-        wgpuBufferMapAsync(
-            data->buffer, WGPUMapMode_Read, 0, data->bufferSize,
-            [](WGPUBufferMapAsyncStatus status, void *captureData) {
-              const auto *data = static_cast<CallbackData *>(captureData);
-              check(status == WGPUBufferMapAsyncStatus_Success,
-                    "Map readbackBuffer", __FILE__, __LINE__);
-              const void *mappedData = wgpuBufferGetConstMappedRange(
-                  data->buffer, /*offset=*/0, data->bufferSize);
-              check(mappedData, "Get mapped range", __FILE__, __LINE__);
-              memcpy(data->output, mappedData, data->bufferSize);
-              wgpuBufferUnmap(data->buffer);
-              data->promise->set_value();
-            },
-            callbackData);
+
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = [](WGPUQueueWorkDoneStatus status, void* userdata1, void* userdata2) {
+          check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+                __FILE__, __LINE__);
+          const auto *data = static_cast<CallbackData *>(userdata1);
+          WGPUBufferMapCallbackInfo mapCallbackInfo = {
+              .mode = WGPUCallbackMode_AllowSpontaneous,
+              .callback = [](WGPUMapAsyncStatus status, WGPUStringView message, void* userdata1, void* userdata2) {
+                  const auto *data = static_cast<CallbackData *>(userdata1);
+                  check(status == WGPUMapAsyncStatus_Success,
+                        "Map readbackBuffer", __FILE__, __LINE__);
+                  const void *mappedData = wgpuBufferGetConstMappedRange(
+                      data->buffer, /*offset=*/0, data->bufferSize);
+                  check(mappedData, "Get mapped range", __FILE__, __LINE__);
+                  memcpy(data->output, mappedData, data->bufferSize);
+                  wgpuBufferUnmap(data->buffer);
+                  data->promise->set_value();
+              },
+              .userdata1 = const_cast<CallbackData*>(data),
+              .userdata2 = nullptr
+          };
+          wgpuBufferMapAsync(data->buffer, WGPUMapMode_Read, 0, data->bufferSize, mapCallbackInfo);
       },
-      &callbackData);
+      .userdata1 = &callbackData,
+      .userdata2 = nullptr
+  };
+  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
   wait(ctx, op.future);
 }
 
@@ -1113,28 +1152,36 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data,
   wgpuCommandBufferRelease(op.commandBuffer);
   CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
                                &op.future};
-  wgpuQueueOnSubmittedWorkDone(
-      ctx.queue,
-      [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-              __FILE__, __LINE__);
-        const auto *data = static_cast<CallbackData *>(callbackData);
-        wgpuBufferMapAsync(
-            data->buffer, WGPUMapMode_Read, 0, data->bufferSize,
-            [](WGPUBufferMapAsyncStatus status, void *captureData) {
-              const auto *data = static_cast<CallbackData *>(captureData);
-              check(status == WGPUBufferMapAsyncStatus_Success,
-                    "Map readbackBuffer", __FILE__, __LINE__);
-              const void *mappedData = wgpuBufferGetConstMappedRange(
-                  data->buffer, /*offset=*/0, data->bufferSize);
-              check(mappedData, "Get mapped range", __FILE__, __LINE__);
-              memcpy(data->output, mappedData, data->bufferSize);
-              wgpuBufferUnmap(data->buffer);
-              data->promise->set_value();
-            },
-            callbackData);
-      },
-      &callbackData);
+
+      WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+          .mode = WGPUCallbackMode_AllowSpontaneous,
+          .callback = [](WGPUQueueWorkDoneStatus status, void* userdata1, void* userdata2) {
+              check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+                    __FILE__, __LINE__);
+              const auto *data = static_cast<CallbackData *>(userdata1);
+              WGPUBufferMapCallbackInfo mapCallbackInfo = {
+                  .mode = WGPUCallbackMode_AllowSpontaneous,
+                  .callback = [](WGPUMapAsyncStatus status, WGPUStringView message, void* userdata1, void* userdata2) {
+                      const auto *data = static_cast<CallbackData *>(userdata1);
+                      check(status == WGPUMapAsyncStatus_Success,
+                            "Map readbackBuffer", __FILE__, __LINE__);
+                      const void *mappedData = wgpuBufferGetConstMappedRange(
+                          data->buffer, /*offset=*/0, data->bufferSize);
+                      check(mappedData, "Get mapped range", __FILE__, __LINE__);
+                      memcpy(data->output, mappedData, data->bufferSize);
+                      wgpuBufferUnmap(data->buffer);
+                      data->promise->set_value();
+                  },
+                  .userdata1 = const_cast<CallbackData*>(data),
+                  .userdata2 = nullptr
+              };
+              wgpuBufferMapAsync(data->buffer, WGPUMapMode_Read, 0, data->bufferSize, mapCallbackInfo);
+          },
+          .userdata1 = &callbackData,
+          .userdata2 = nullptr
+      };
+      wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
   wait(ctx, op.future);
   if (op.readbackBuffer) {
     wgpuBufferRelease(op.readbackBuffer);
@@ -1412,47 +1459,59 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   };
   WGPUPipelineLayout pipelineLayout =
       wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
-  WGPUShaderModuleWGSLDescriptor wgslDesc = {
-      .code = code.data.c_str(),
+
+  WGPUShaderSourceWGSL wgslDesc = {
+      .chain = {.sType = WGPUSType_ShaderSourceWGSL},
+      .code = {.data = code.data.c_str(), .length = code.data.length()}
   };
-  wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+
   WGPUShaderModuleDescriptor shaderModuleDesc = {};
   shaderModuleDesc.nextInChain = &wgslDesc.chain;
-  shaderModuleDesc.label = code.label.c_str();
+  shaderModuleDesc.label = {code.label.c_str(), code.label.length()};
+
   WGPUComputePipelineDescriptor computePipelineDesc = {};
   computePipelineDesc.layout = pipelineLayout;
   computePipelineDesc.compute.module =
       wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
 
-  computePipelineDesc.compute.entryPoint = code.entryPoint.c_str();
-  computePipelineDesc.label = code.label.c_str();
+  computePipelineDesc.compute.entryPoint = {code.entryPoint.c_str(), code.entryPoint.length()};
+  computePipelineDesc.label = {code.label.c_str(), code.label.length()};
+
   op->computePipeline =
       wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
   op->totalWorkgroups = {totalWorkgroups[0], totalWorkgroups[1], totalWorkgroups[2]};
   resetCommandBuffer(device, op);
   if (cacheKey != nullptr)
     ctx.kernelPool.data[cacheKey]=op;
-  
-  WGPUCompilationInfoCallback cb =
-      [](WGPUCompilationInfoRequestStatus status,
-         WGPUCompilationInfo const *compilationInfo, void *userData) {
-        CompilationInfo *result = static_cast<CompilationInfo *>(userData);
-        if (compilationInfo && result) {
+
+  auto compilationInfoCallback = [](WGPUCompilationInfoRequestStatus status,
+                                    WGPUCompilationInfo const *compilationInfo,
+                                    void *userdata1, void *userdata2) {
+      CompilationInfo *result = static_cast<CompilationInfo *>(userdata1);
+      if (compilationInfo && result) {
           result->status = status;
           for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
-            printf("Message %d: %s\n", i, compilationInfo->messages[i].message);
-            result->messages.push_back(compilationInfo->messages[i].message);
-            result->lineNums.push_back(compilationInfo->messages[i].lineNum);
-            result->linePos.push_back(compilationInfo->messages[i].linePos);
+              printf("Message %d: %.*s\n", i, 
+                     static_cast<int>(compilationInfo->messages[i].message.length),
+                     compilationInfo->messages[i].message.data);
+              result->messages.push_back(std::string(
+                  compilationInfo->messages[i].message.data,
+                  compilationInfo->messages[i].message.length));
+              result->lineNums.push_back(compilationInfo->messages[i].lineNum);
+              result->linePos.push_back(compilationInfo->messages[i].linePos);
           }
           result->finished = true;
-        } else {
+      } else {
           LOG(kDefLog, kTrace, "No compilation info or result");
-        }
-      };
+      }
+  };
 
-  wgpuShaderModuleGetCompilationInfo(
-      computePipelineDesc.compute.module, cb, static_cast<void *>(compilationInfo));
+  WGPUCompilationInfoCallbackInfo compilationCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = compilationInfoCallback,
+      .userdata1 = static_cast<void *>(compilationInfo),
+      .userdata2 = nullptr
+  };
 
   while (compilationInfo && !compilationInfo->finished) {
     processEvents(ctx.instance);
@@ -1524,22 +1583,25 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
  */
 inline void dispatchKernel(Context &ctx, Kernel &kernel,
                            std::promise<void> &promise) {
-  // Submit the command buffer
   if (kernel->used) {
     resetCommandBuffer(ctx.device, kernel);
   }
   wgpuQueueSubmit(ctx.queue, 1, &kernel->commandBuffer);
   wgpuCommandBufferRelease(kernel->commandBuffer);
   kernel->used = true;
-  wgpuQueueOnSubmittedWorkDone(
-      ctx.queue,
-      [](WGPUQueueWorkDoneStatus status, void *data) {
-        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-              __FILE__, __LINE__);
-        auto *promise = static_cast<std::promise<void> *>(data);
-        promise->set_value();
+
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = [](WGPUQueueWorkDoneStatus status, void* userdata1, void* userdata2) {
+          check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+                __FILE__, __LINE__);
+          auto *promise = static_cast<std::promise<void> *>(userdata1);
+          promise->set_value();
       },
-      &promise);
+      .userdata1 = &promise,
+      .userdata2 = nullptr
+  };
+  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
 }
 
 } // namespace gpu
