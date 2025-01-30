@@ -530,7 +530,6 @@ struct Context {
   // Default constructor
   Context() = default;
 
-  // Move constructor: steals GPU handles so the source destructor won't free them.
   Context(Context&& other) noexcept
       : instance(other.instance),
         adapter(other.adapter),
@@ -542,6 +541,7 @@ struct Context {
         adapterStatus(other.adapterStatus),
         deviceStatus(other.deviceStatus)
   {
+    LOG(kDefLog, kTrace, "Moving Context ownership");
     // Move over the resources in the pools:
     pool.data       = std::move(other.pool.data);
     kernelPool.data = std::move(other.kernelPool.data);
@@ -555,7 +555,6 @@ struct Context {
     // other.deviceStatus = 0;
   }
 
-  // Optional move‐assignment operator, similarly stealing resources:
   Context& operator=(Context&& other) noexcept {
     if (this != &other) {
       // Free any existing resources. In most cases, this should be a no-op
@@ -573,26 +572,26 @@ struct Context {
     if (queue) {
       wgpuQueueRelease(queue);
     } else {
-      LOG(kDefLog, kWarn, "Queue is null");
+      LOG(kDefLog, kTrace, "Queue is null");
     }
     if (device) {
       wgpuDeviceRelease(device);
       processEvents(instance);
     } else {
-      LOG(kDefLog, kWarn, "Device is null");
+      LOG(kDefLog, kTrace, "Device is null");
     }
     if (adapter) {
       wgpuAdapterRelease(adapter);
       processEvents(instance);
     } else {
-      LOG(kDefLog, kWarn, "Adapter is null");
+      LOG(kDefLog, kTrace, "Adapter is null");
     }
     if (instance) {
       wgpuInstanceRelease(instance);
     } else {
-      LOG(kDefLog, kWarn, "Instance is null");
+      LOG(kDefLog, kTrace, "Instance is null");
     }
-    LOG(kDefLog, kInfo, "Context destroyed");
+    LOG(kDefLog, kTrace, "Context destroyed");
   }
 };
 
@@ -827,7 +826,7 @@ inline Context createContext(
 #endif
   check(ctx.instance, "Initialize WebGPU", __FILE__, __LINE__);
 
-  LOG(kDefLog, kInfo, "Requesting adapter");
+  LOG(kDefLog, kTrace, "Requesting adapter");
   {
     struct AdapterData {
       WGPUAdapter adapter = nullptr;
@@ -869,7 +868,7 @@ inline Context createContext(
     ctx.adapterStatus = adapterData.status;
   }
 
-  LOG(kDefLog, kInfo, "Requesting device");
+  LOG(kDefLog, kTrace, "Requesting device");
   {
     struct DeviceData {
       WGPUDevice device = nullptr;
@@ -900,11 +899,11 @@ inline Context createContext(
     };
     wgpuAdapterRequestDevice(ctx.adapter, &devDescriptor, deviceCallbackInfo);
 
-    LOG(kDefLog, kInfo, "Waiting for device request to end");
+    LOG(kDefLog, kTrace, "Waiting for device request to end");
     while (!devData.requestEnded) {
       processEvents(ctx.instance);
     }
-    LOG(kDefLog, kInfo, "Device request ended");
+    LOG(kDefLog, kTrace, "Device request ended");
 
     ctx.device = devData.device;
     ctx.deviceStatus = devData.status;
