@@ -518,12 +518,56 @@ inline void processEvents(const WGPUInstance &instance) {
  * to simplify lifetime management of GPU resources.
  */
 struct Context {
-  WGPUInstance instance;
-  WGPUAdapter adapter;
-  WGPUDevice device;
-  WGPUQueue queue;
+  WGPUInstance instance = nullptr;
+  WGPUAdapter adapter = nullptr;
+  WGPUDevice device = nullptr;
+  WGPUQueue queue = nullptr;
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
+  WGPURequestAdapterStatus adapterStatus;
+  WGPURequestDeviceStatus deviceStatus;
+
+  // Default constructor
+  Context() = default;
+
+  // Move constructor: steals GPU handles so the source destructor won't free them.
+  Context(Context&& other) noexcept
+      : instance(other.instance),
+        adapter(other.adapter),
+        device(other.device),
+        queue(other.queue),
+        // Re‐initialize pools to point to *this*:
+        pool(this),
+        kernelPool(this),
+        adapterStatus(other.adapterStatus),
+        deviceStatus(other.deviceStatus)
+  {
+    // Move over the resources in the pools:
+    pool.data       = std::move(other.pool.data);
+    kernelPool.data = std::move(other.kernelPool.data);
+
+    // Null out handles in the source so its destructor won't release them.
+    other.instance = nullptr;
+    other.adapter  = nullptr;
+    other.device   = nullptr;
+    other.queue    = nullptr;
+    // other.adapterStatus = 0;
+    // other.deviceStatus = 0;
+  }
+
+  // Optional move‐assignment operator, similarly stealing resources:
+  Context& operator=(Context&& other) noexcept {
+    if (this != &other) {
+      // Free any existing resources. In most cases, this should be a no-op
+      // since we typically shouldn't have two active initialized Context
+      // instances with resources acquired.
+      this->~Context();
+      // Then placement‐new a move‐constructed copy in-place:
+      new (this) Context(std::move(other));
+    }
+    return *this;
+  }
+
   ~Context() {
     LOG(kDefLog, kTrace, "Destroying context");
     if (queue) {
@@ -582,6 +626,7 @@ inline Tensor createTensor(TensorPool &pool, WGPUDevice &device,
   size_t numElements = size(shape);
   size_t size = sizeBytes(dtype) * numElements;
   WGPUBufferDescriptor bufferDesc = {
+      .label = {.data = nullptr, .length = 0}, 
       .usage = usage,
       .size = size,
   };
@@ -767,66 +812,61 @@ inline void check(bool condition, const char *message,
  * @param[in] devDescriptor Device descriptor for the WebGPU device (optional)
  * @return Context instance representing the created GPU context
  *
- * @code
- * Context ctx = createContext();
- * @endcode
  */
-inline Context createContext(const WGPUInstanceDescriptor &desc = {},
-                             const WGPURequestAdapterOptions &adapterOpts = {},
-                             const WGPUDeviceDescriptor &devDescriptor = {}) {
-  Context context;
-  {
+inline Context createContext(
+    const WGPUInstanceDescriptor &desc = {},
+    const WGPURequestAdapterOptions &adapterOpts = {},
+    const WGPUDeviceDescriptor &devDescriptor = {}) 
+{
+  Context ctx; // stack-allocated
+
 #ifdef __EMSCRIPTEN__
-    context.instance = wgpuCreateInstance(nullptr);
+  ctx.instance = wgpuCreateInstance(nullptr);
 #else
-    context.instance = wgpuCreateInstance(&desc);
+  ctx.instance = wgpuCreateInstance(&desc);
 #endif
-    check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
-  }
+  check(ctx.instance, "Initialize WebGPU", __FILE__, __LINE__);
 
   LOG(kDefLog, kInfo, "Requesting adapter");
   {
     struct AdapterData {
       WGPUAdapter adapter = nullptr;
       bool requestEnded = false;
+      WGPURequestAdapterStatus status;
     };
     AdapterData adapterData;
 
     auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status,
-                                    WGPUAdapter adapter, WGPUStringView message,
+                                    WGPUAdapter adapter, 
+                                    WGPUStringView message,
                                     void *pUserData, void *) {
-      AdapterData &adapterData = *reinterpret_cast<AdapterData *>(pUserData);
+      auto &ad = *reinterpret_cast<AdapterData*>(pUserData);
+      ad.status = status;
 #ifdef __EMSCRIPTEN__
       if (status != WGPURequestAdapterStatus_Success) {
         LOG(kDefLog, kError, "Could not get WebGPU adapter: %.*s",
             static_cast<int>(message.length), message.data);
-        LOG(kDefLog, kError,
-            "\n\nA common reason is that the browser does not have WebGPU "
-            "enabled, particularly on Linux.\n"
-            "- Open `chrome://flags/` in the browser and make sure "
-            "\"WebGPU Support\" is enabled.\n"
-            "- Chrome is launched with vulkan enabled. From the command line "
-            "launch chrome as `google-chrome --enable-features=Vulkan`\n");
       }
 #endif
       check(status == WGPURequestAdapterStatus_Success,
             "Request WebGPU adapter", __FILE__, __LINE__);
-      adapterData.adapter = adapter;
-      adapterData.requestEnded = true;
+      ad.adapter      = adapter;
+      ad.requestEnded = true;
     };
 
-    WGPURequestAdapterCallbackInfo callbackInfo = {
-        .mode = WGPUCallbackMode_AllowSpontaneous,
-        .callback = onAdapterRequestEnded,
-        .userdata1 = &adapterData,
-        .userdata2 = nullptr};
-    wgpuInstanceRequestAdapter(context.instance, &adapterOpts, callbackInfo);
+    WGPURequestAdapterCallbackInfo callbackInfo {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = onAdapterRequestEnded,
+      .userdata1 = &adapterData,
+      .userdata2 = nullptr
+    };
+    wgpuInstanceRequestAdapter(ctx.instance, &adapterOpts, callbackInfo);
 
     while (!adapterData.requestEnded) {
-      processEvents(context.instance);
+      processEvents(ctx.instance);
     }
-    assert(adapterData.requestEnded);
-    context.adapter = adapterData.adapter;
+    ctx.adapter = adapterData.adapter;
+    ctx.adapterStatus = adapterData.status;
   }
 
   LOG(kDefLog, kInfo, "Requesting device");
@@ -834,54 +874,65 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
     struct DeviceData {
       WGPUDevice device = nullptr;
       bool requestEnded = false;
+      WGPURequestDeviceStatus status;
     };
     DeviceData devData;
 
     auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, WGPUStringView message,
+                                   WGPUDevice device, 
+                                   WGPUStringView message,
                                    void *pUserData, void *) {
-      DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
+      auto &dd = *reinterpret_cast<DeviceData*>(pUserData);
+      dd.status = status;
       check(status == WGPURequestDeviceStatus_Success,
             "Could not get WebGPU device.", __FILE__, __LINE__);
-      LOG(kDefLog, kTrace, "Device Request succeeded %x",
-          static_cast<void *>(device));
-      devData.device = device;
-      devData.requestEnded = true;
+      LOG(kDefLog, kTrace, "Device Request succeeded %p", 
+          static_cast<void*>(device));
+      dd.device      = device;
+      dd.requestEnded= true;
     };
 
-    WGPURequestDeviceCallbackInfo deviceCallbackInfo = {
-        .mode = WGPUCallbackMode_AllowSpontaneous,
-        .callback = onDeviceRequestEnded,
-        .userdata1 = &devData,
-        .userdata2 = nullptr};
-    wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
-                             deviceCallbackInfo);
+    WGPURequestDeviceCallbackInfo deviceCallbackInfo {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = onDeviceRequestEnded,
+      .userdata1= &devData,
+      .userdata2= nullptr
+    };
+    wgpuAdapterRequestDevice(ctx.adapter, &devDescriptor, deviceCallbackInfo);
 
     LOG(kDefLog, kInfo, "Waiting for device request to end");
     while (!devData.requestEnded) {
-      processEvents(context.instance);
+      processEvents(ctx.instance);
     }
     LOG(kDefLog, kInfo, "Device request ended");
-    assert(devData.requestEnded);
-    context.device = devData.device;
 
-    WGPULoggingCallbackInfo loggingCallbackInfo = {
+    ctx.device = devData.device;
+    ctx.deviceStatus = devData.status;
+
+    // If the device was created, set up logging and fetch the queue
+    if (devData.status == WGPURequestDeviceStatus_Success) {
+      WGPULoggingCallbackInfo loggingCallbackInfo {
+        .nextInChain = nullptr,
         .callback =
-            [](WGPULoggingType type, WGPUStringView message, void *userdata1,
-               void *userdata2) {
-              LOG(kDefLog, kError, "Device logging callback: %.*s",
-                  (int)message.length, message.data);
-              if (type == WGPULoggingType_Error) {
-                throw std::runtime_error("Device error logged.");
-              }
-            },
+          [](WGPULoggingType type, WGPUStringView message, 
+             void *, void *) {
+            LOG(kDefLog, kError, "Device logging callback: %.*s",
+                static_cast<int>(message.length), message.data);
+            if (type == WGPULoggingType_Error) {
+              throw std::runtime_error("Device error logged.");
+            }
+          },
         .userdata1 = nullptr,
-        .userdata2 = nullptr};
-    wgpuDeviceSetLoggingCallback(context.device, loggingCallbackInfo);
+        .userdata2 = nullptr
+      };
+      wgpuDeviceSetLoggingCallback(ctx.device, loggingCallbackInfo);
+      ctx.queue = wgpuDeviceGetQueue(ctx.device);
+    }
   }
-  context.queue = wgpuDeviceGetQueue(context.device);
-  return context;
+
+  return std::move(ctx);
 }
+
 
 #ifdef USE_DAWN_API
 /**
@@ -995,11 +1046,12 @@ createContextByGpuIdx(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
     context.device = devData.device;
 
     WGPULoggingCallbackInfo loggingCallbackInfo = {
+        .nextInChain = nullptr,
         .callback =
             [](WGPULoggingType type, WGPUStringView message, void *userdata1,
                void *userdata2) {
               LOG(kDefLog, kError, "Device logging callback: %.*s",
-                  (int)message.length, message.data);
+                  static_cast<int>(message.length), message.data);
               if (type == WGPULoggingType_Error) {
                 throw std::runtime_error("Device error logged.");
               }
@@ -1093,6 +1145,7 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
   op.future = op.promise.get_future();
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
+        .label = {.data = nullptr, .length = 0}, 
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
         .size = bufferSize,
     };
@@ -1136,6 +1189,7 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size) {
   op.future = op.promise.get_future();
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
+        .label = {.data = nullptr, .length = 0}, 
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
         .size = bufferSize,
     };
@@ -1348,7 +1402,7 @@ inline Shape cdiv(Shape total, Shape group) {
  * @endcode
  * output, nThreads, params, paramsSize);
  */
-inline Kernel createKernel(Context &ctx, const KernelCode &code,
+inline Kernel createKernel(Context& ctx, const KernelCode &code,
                            const Tensor *dataBindings, size_t numTensors,
                            const size_t *viewOffsets,
                            const Shape &totalWorkgroups,
@@ -1422,6 +1476,7 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   // Create a buffer for the Params struct
   if (paramsSize > 0) {
     WGPUBufferDescriptor paramsBufferDesc = {
+        .label = {.data = nullptr, .length = 0}, 
         .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
         .size = paramsSize,
         .mappedAtCreation = false,

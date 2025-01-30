@@ -792,13 +792,40 @@ void runTest(int version, size_t M, size_t K, size_t N,
   }
 
   // Allocate GPU buffers and copy data
-  Context ctx = createContext(
-      {}, {},
-      /*device descriptor, enabling f16 in WGSL*/
-      {
+  WGPUDeviceDescriptor devDescriptor = {};
+  devDescriptor.requiredFeatureCount = 1;
+  devDescriptor.requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data();
+
+  Context ctx;
+  if (numtype == kf16) {
+    ctx = createContext(
+        {}, {},
+        /*device descriptor, enabling f16 in WGSL*/
+        {
           .requiredFeatureCount = 1,
-          .requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data(),
-      });
+          .requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data()
+        });
+    if (ctx.adapterStatus != WGPURequestAdapterStatus_Success) {
+      LOG(kDefLog, kError, "Failed to create adapter with f16 support, try running an f32 test instead (`export MATMUL_VERSION=9).");
+      exit(1);
+    }
+    if (ctx.deviceStatus != WGPURequestDeviceStatus_Success) {
+      LOG(kDefLog, kError, "Failed to create device with f16 support, try running an f32 test instead. (`export MATMUL_VERSION=9)");
+      exit(1);
+    }
+  }
+
+  if (numtype == kf32) {
+    ctx = createContext({}, {}, {});
+    if (ctx.adapterStatus != WGPURequestAdapterStatus_Success ||
+        ctx.deviceStatus != WGPURequestDeviceStatus_Success) {
+      LOG(kDefLog, kError, "Failed to create adapter or device");
+      // stop execution
+      exit(1);
+    } else {
+      LOG(kDefLog, kInfo, "Successfully created adapter and device");
+    }
+  } 
 
   Tensor input = createTensor(ctx, Shape{M, K}, numtype, inputPtr.get());
   Tensor weights = createTensor(ctx, Shape{N, K}, numtype, weightsPtr.get()); // column-major
@@ -810,8 +837,6 @@ void runTest(int version, size_t M, size_t K, size_t N,
 #endif
 
   // Initialize Kernel and bind GPU buffers
-
-
   // pre-allocate for async dispatch
   std::array<std::promise<void>, nIter> promises;
   std::array<std::future<void>, nIter> futures;
@@ -823,10 +848,6 @@ void runTest(int version, size_t M, size_t K, size_t N,
     kernels[i] = selectMatmul(ctx, version, {input, weights, outputs[i]}, M, K, N, numtype);
   }
 
-#ifndef METAL_PROFILER
-  printf("[ Press enter to start tests ... ]\n");
-  getchar();
-#endif
   LOG(kDefLog, kInfo, "Dispatching Kernel version %d: %s, %d iterations ...",
       version, versionToStr(version).c_str(), nIter);
 
