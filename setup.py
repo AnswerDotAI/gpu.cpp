@@ -61,8 +61,8 @@ def download_dawn(os_name):
         "Linux": "third_party/lib/libwebgpu_dawn.so",
     }
     url_map = {
-        "macOS": "https://github.com/austinvhuang/dawn-artifacts/releases/download/0.2.0/libwebgpu_dawn.dylib",
-        "Linux": "https://github.com/austinvhuang/dawn-artifacts/releases/download/0.2.0/libwebgpu_dawn.so",
+        "macOS": "https://github.com/austinvhuang/dawn-artifacts/releases/download/0.2.0-pre2/libwebgpu_dawn.dylib",
+        "Linux": "https://github.com/austinvhuang/dawn-artifacts/releases/download/0.2.0-pre2/libwebgpu_dawn.so",
     }
 
     outfile = outfile_map.get(os_name)
