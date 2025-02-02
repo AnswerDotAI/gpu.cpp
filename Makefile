@@ -69,6 +69,15 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/shadertui && make build/shadertui
 	cd examples/transpose && make build/transpose
 
+all-portable: dawnlib check-clang check-linux-vulkan lib pch
+	cd examples/gpu_puzzles && make build/gpu_puzzles
+	cd examples/hello_world && make build/hello_world
+	cd examples/matmul && export MATMUL_VERSION=9 && make build/matmul
+	cd examples/physics && make build/physics
+	cd examples/render && make build/render
+	cd examples/shadertui && make build/shadertui
+	cd examples/transpose && make build/transpose
+
 # Test 16-bit floating point type
 test-half: dawnlib check-clang
 	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -lwebgpu_dawn -ldl -o build/half && ./build/half
