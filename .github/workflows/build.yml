@@ -30,7 +30,7 @@ jobs:
         sudo apt-get install -y libxrandr-dev
 
     - name: Build
-      run: make all-portable
+      run: make all
 
     - name: Run hello world
       run: make
