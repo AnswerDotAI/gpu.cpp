@@ -18,7 +18,6 @@ directory of the repository.
 | [shadertui](shadertui) | An example of runtime live reloading of WGSL - demonstrated using a terminal shadertoy-like scii rendering. |
 | [render](render) | GPU ascii rendering of a signed distance function for two rotating 3D spheres. |
 | [physics](physics) | Parallel physics simulation of a double pendulum with each thread starting at a different initial condition. |
-| [web](web) | A minimal example of how to use gpu.cpp to build a WebAssembly module that runs in the browser. Before building this example, make sure you've installed the emscripten sdk by following the [instructions here](https://emscripten.org/docs/getting_started/downloads.html) and run `source emsdk_env.sh` from the `emsdk/` directory that was created when you cloned the emscripten repository. |
 
 ## Advanced Examples
 
@@ -27,4 +26,3 @@ directory of the repository.
 | [float16](float16) | Hello World example using the float16 WebGPU extension, instead of the default float32. |
 | [matmul](matmul) | Tiled matrix multiplication. |
 | [transpose](transpose) | Tiled matrix transpose. |
-| [webgpu_from_scratch](webgpu_from_scratch) | A minimal from-scratch example of how to use WebGPU directly without this library. This is useful to understand the code internals of gpu.cpp. Note this takes a while to build as it compiles the WebGPU C API implementation. |
