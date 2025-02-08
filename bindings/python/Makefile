@@ -10,15 +10,14 @@ else
     STDLIB := -stdlib=libc++
 endif
 
-FLAGS=-shared -fPIC -std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -ldawn \
+FLAGS=-shared -fPIC -std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -lwebgpu_dawn \
   `python3 -m pybind11 --includes` \
-  `python3-config --include --ldflags --embed`
+  `python3-config --includes --ldflags`
 
 SUFFIX=$(shell $(PYTHON)-config --extension-suffix)
 
 gpu_cpp$(SUFFIX): gpu_cpp.cpp 
 	$(CXX) $(FLAGS) -o $@ $<
-	install_name_tool -change @rpath/libdawn.dylib $(LIBDIR)/libdawn.dylib gpu_cpp$(SUFFIX)
 
 test: test_gpu_cpp.py gpu_cpp$(SUFFIX)
 	$(PYTHON) test_gpu_cpp.py

@@ -40,7 +40,7 @@ KernelCode* py_createKernelCode(const std::string &pData, size_t workgroupSize, 
   return new KernelCode(pData, workgroupSize, (NumType)precision);
 }
 
-Kernel* py_createKernel(Context *ctx, const KernelCode *code,
+Kernel py_createKernel(Context *ctx, const KernelCode *code,
                         // const Tensor *dataBindings, size_t numTensors,
                         const py::list& dataBindings_py,
                         // const size_t *viewOffsets,
@@ -54,7 +54,7 @@ Kernel* py_createKernel(Context *ctx, const KernelCode *code,
   for (auto item : viewOffsets_py) {
     viewOffsets.push_back(item.cast<size_t>());
   }
-  return new Kernel(createKernel(*ctx, *code, bindings.data(), bindings.size(), viewOffsets.data(), vector_to_shape(totalWorkgroups)));
+  return createKernel(*ctx, *code, bindings.data(), bindings.size(), viewOffsets.data(), vector_to_shape(totalWorkgroups));
 }
 
 Tensor* py_createTensor(Context *ctx, const std::vector<int> &dims, int dtype) {
@@ -82,9 +82,9 @@ struct GpuAsync {
   }
 };
 
-GpuAsync* py_dispatchKernel(Context *ctx, Kernel *kernel) {
+GpuAsync* py_dispatchKernel(Context *ctx, Kernel kernel) {
   auto async = new GpuAsync();
-  dispatchKernel(*ctx, *kernel, async->promise);
+  dispatchKernel(*ctx, kernel, async->promise);
   return async;
 }
 
@@ -96,12 +96,12 @@ PYBIND11_MODULE(gpu_cpp, m) {
     m.doc() = "gpu.cpp plugin";
     py::class_<Context>(m, "Context");
     py::class_<Tensor>(m, "Tensor");
-    py::class_<Kernel>(m, "Kernel");
+    py::class_<RawKernel, std::shared_ptr<RawKernel>>(m, "Kernel");
     py::class_<KernelCode>(m, "KernelCode");
     py::class_<GpuAsync>(m, "GpuAsync");
     m.def("create_context", &py_createContext, py::return_value_policy::take_ownership);
     m.def("create_tensor", &py_createTensor, py::return_value_policy::take_ownership);
-    m.def("create_kernel", &py_createKernel, py::return_value_policy::take_ownership);
+    m.def("create_kernel", &py_createKernel);
     m.def("create_kernel_code", &py_createKernelCode, py::return_value_policy::take_ownership);
     m.def("dispatch_kernel", &py_dispatchKernel, py::return_value_policy::take_ownership);
     m.def("wait", &py_wait, "Wait for GPU");
