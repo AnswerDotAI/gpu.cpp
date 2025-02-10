@@ -10,7 +10,7 @@ ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/nu
 else
     STDLIB := -stdlib=libc++
 endif
-FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn
+FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -lwebgpu_dawn
 
 run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)
@@ -28,7 +28,7 @@ build/$(TARGET): run.cpp
 
 build/$(TARGET)_with_metal_profiler: run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -o ./build/$(TARGET)_with_metal_profiler $(GPUCPP)/experimental/profiler/metal.mm -framework metal -framework Foundation -DMETAL_PROFILER -g
-	install_name_tool -change @rpath/libdawn.dylib $(GPUCPP)/third_party/lib/libdawn.dylib ./build/$(TARGET)_with_metal_profiler
+	install_name_tool -change @rpath/libwebgpu_dawn.dylib $(GPUCPP)/third_party/lib/libwebgpu_dawn.dylib ./build/$(TARGET)_with_metal_profiler
 
 watch: 
 	@command -v entr >/dev/null 2>&1 || { echo >&2 "Please install entr with 'brew install entr' or 'sudo apt-get install entr'"; exit 1; }

@@ -1,0 +1,49 @@
+cabal-version:      3.0
+name:               gpu-cpp
+version:            0.1.0.0
+license:            BSD-3-Clause
+author:             Junji Hashimoto
+maintainer:         junji.hashimoto@gmail.com
+category:           Math
+build-type:         Simple
+
+extra-doc-files:    CHANGELOG.md
+
+common warnings
+    ghc-options: -Wall
+
+library
+    import:           warnings
+    exposed-modules:  GpuCpp
+                    , GpuCpp.Types
+    build-depends:    base ^>=4.18.1.0
+                    , inline-c
+                    , inline-c-cpp
+                    , containers
+                    , template-haskell
+                    , safe-exceptions
+                    , vector
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    ghc-options:      -optcxx-std=c++17
+    extra-libraries:  webgpu_dawn
+
+executable gpu-cpp
+    import:           warnings
+    main-is:          Main.hs
+    build-depends:    base ^>=4.18.1.0
+                    , gpu-cpp
+                    , vector
+    hs-source-dirs:   app
+    default-language: Haskell2010
+
+test-suite gpu-cpp-test
+    import:           warnings
+    default-language: Haskell2010
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:    base ^>=4.18.1.0
+                    , gpu-cpp
+                    , vector
+                    , hspec

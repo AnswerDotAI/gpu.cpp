@@ -26,8 +26,6 @@
 
 #ifdef USE_DAWN_API
 #include "dawn/native/DawnNative.h"
-
-typedef WGPUBufferUsage WGPUBufferUsageFlags;
 #endif
 
 namespace gpu {
@@ -37,7 +35,7 @@ namespace gpu {
  */
 struct Array {
   WGPUBuffer buffer;
-  WGPUBufferUsageFlags usage;
+  WGPUBufferUsage usage;
   size_t size; // in bytes
 };
 
@@ -325,19 +323,22 @@ struct KernelCode {
    * the y and z dimensions.
    *
    * @param[in] pData Shader template string with placeholders @param[in]
-   * workgroupSize 3D Workgroup size 
+   * workgroupSize 3D Workgroup size
    * @param[in] precision Data type precision for the shader
    *
    * @code KernelCode code = {kPuzzle1, 256, kf32}; @endcode
    */
-  inline KernelCode(const std::string &pData, const Shape &workgroupSize =
-      {256, 1, 1}, NumType precision = kf32) : data(pData),
-  workgroupSize(workgroupSize), precision(precision) { if (precision == kf16) {
-    data = "enable f16;\n" + data; } replaceAll(data, "{{workgroupSize}}",
-        toString(workgroupSize)); replaceAll(data, "{{precision}}",
-        toString(precision)); LOG(kDefLog, kInfo, "Shader code:\n%s",
-        data.c_str()); }
-
+  inline KernelCode(const std::string &pData,
+                    const Shape &workgroupSize = {256, 1, 1},
+                    NumType precision = kf32)
+      : data(pData), workgroupSize(workgroupSize), precision(precision) {
+    if (precision == kf16) {
+      data = "enable f16;\n" + data;
+    }
+    replaceAll(data, "{{workgroupSize}}", toString(workgroupSize));
+    replaceAll(data, "{{precision}}", toString(precision));
+    LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
+  }
 
   /**
    * @brief Overload of the constructor, adding totalWorkgroups parameter to
@@ -353,10 +354,8 @@ struct KernelCode {
    * KernelCode code = {kPuzzle1, {256, 1, 1}, kf32, {2, 2, 1}};
    * @endcode
    */
-  inline KernelCode(const std::string &pData,
-                    const Shape &workgroupSize,
-                    NumType precision,
-                    const Shape &totalWorkgroups)
+  inline KernelCode(const std::string &pData, const Shape &workgroupSize,
+                    NumType precision, const Shape &totalWorkgroups)
       : data(pData), workgroupSize(workgroupSize), precision(precision) {
     if (precision == kf16) {
       data = "enable f16;\n" + data;
@@ -366,7 +365,6 @@ struct KernelCode {
     replaceAll(data, "{{totalWorkgroups}}", toString(totalWorkgroups));
     LOG(kDefLog, kInfo, "Shader code:\n%s", data.c_str());
   }
-
 
   /**
    * @brief Overload of the constructor, adding totalWorkgroups parameter as
@@ -381,11 +379,10 @@ struct KernelCode {
    * KernelCode code = {kPuzzle1, {256, 1, 1}, kf32, {2, 2, 1}};
    * @endcode
    */
-  inline KernelCode(const std::string &pData,
-                    const size_t &workgroupSize,
-                    NumType precision,
-                    const Shape &totalWorkgroups)
-      : data(pData), workgroupSize({workgroupSize, 1, 1}), precision(precision) {
+  inline KernelCode(const std::string &pData, const size_t &workgroupSize,
+                    NumType precision, const Shape &totalWorkgroups)
+      : data(pData), workgroupSize({workgroupSize, 1, 1}),
+        precision(precision) {
     if (precision == kf16) {
       data = "enable f16;\n" + data;
     }
@@ -415,12 +412,14 @@ struct KernelCode {
  * @endcode
  * "f32"}});
  */
-inline void
+inline const std::string
 replaceAll(std::string &str,
            const std::vector<std::pair<std::string, std::string>> &reps) {
   for (const auto &rep : reps) {
     replaceAll(str, rep.first, rep.second);
   }
+
+  return str;
 }
 
 /**
@@ -452,7 +451,7 @@ struct CopyData {
  * The struct members can be divided into "consumed upon dispatch"
  * (commandBuffer) and reusable ahead-of-time setup (all other members).
  */
-struct Kernel {
+struct RawKernel {
   std::unique_ptr<WGPUBuffer[]> buffers; // non-owning
   std::unique_ptr<size_t[]> bufferSizes;
   size_t numBindings;
@@ -460,8 +459,10 @@ struct Kernel {
   WGPUBindGroup bindGroup;             // persists between submission
   WGPUComputePipeline computePipeline; // persists between submission
   WGPUCommandBuffer commandBuffer;     // destroyed upon submission
+  bool used;
 };
 
+typedef std::shared_ptr<RawKernel> Kernel;
 
 /**
  * @brief A struct to package the result of a WGSL code compilation.
@@ -481,7 +482,7 @@ struct CompilationInfo {
  * @return True if lhs < rhs, false otherwise
  */
 inline bool operator<(const Kernel &lhs, const Kernel &rhs) {
-  return lhs.commandBuffer < rhs.commandBuffer;
+  return lhs->commandBuffer < rhs->commandBuffer;
 }
 
 /**
@@ -492,7 +493,7 @@ inline bool operator<(const Kernel &lhs, const Kernel &rhs) {
 struct KernelPool {
   inline KernelPool(Context *ctx) : ctx(ctx), data() {}
   Context *ctx;
-  std::set<Kernel *> data;
+  std::unordered_map<std::string, Kernel> data;
   inline ~KernelPool() {
     // Note : Some kernel resources such as commandBuffer are harvested by
     // queue submission, explicitly destroying readback and callback buffers
@@ -517,37 +518,80 @@ inline void processEvents(const WGPUInstance &instance) {
  * to simplify lifetime management of GPU resources.
  */
 struct Context {
-  WGPUInstance instance;
-  WGPUAdapter adapter;
-  WGPUDevice device;
-  WGPUQueue queue;
+  WGPUInstance instance = nullptr;
+  WGPUAdapter adapter = nullptr;
+  WGPUDevice device = nullptr;
+  WGPUQueue queue = nullptr;
   TensorPool pool = TensorPool(this);
   KernelPool kernelPool = KernelPool(this);
+  WGPURequestAdapterStatus adapterStatus;
+  WGPURequestDeviceStatus deviceStatus;
+
+  // Default constructor
+  Context() = default;
+
+  Context(Context&& other) noexcept
+      : instance(other.instance),
+        adapter(other.adapter),
+        device(other.device),
+        queue(other.queue),
+        // Re‐initialize pools to point to *this*:
+        pool(this),
+        kernelPool(this),
+        adapterStatus(other.adapterStatus),
+        deviceStatus(other.deviceStatus)
+  {
+    LOG(kDefLog, kTrace, "Moving Context ownership");
+    // Move over the resources in the pools:
+    pool.data       = std::move(other.pool.data);
+    kernelPool.data = std::move(other.kernelPool.data);
+
+    // Null out handles in the source so its destructor won't release them.
+    other.instance = nullptr;
+    other.adapter  = nullptr;
+    other.device   = nullptr;
+    other.queue    = nullptr;
+    // other.adapterStatus = 0;
+    // other.deviceStatus = 0;
+  }
+
+  Context& operator=(Context&& other) noexcept {
+    if (this != &other) {
+      // Free any existing resources. In most cases, this should be a no-op
+      // since we typically shouldn't have two active initialized Context
+      // instances with resources acquired.
+      this->~Context();
+      // Then placement‐new a move‐constructed copy in-place:
+      new (this) Context(std::move(other));
+    }
+    return *this;
+  }
+
   ~Context() {
     LOG(kDefLog, kTrace, "Destroying context");
     if (queue) {
       wgpuQueueRelease(queue);
     } else {
-      LOG(kDefLog, kWarn, "Queue is null");
+      LOG(kDefLog, kTrace, "Queue is null");
     }
     if (device) {
       wgpuDeviceRelease(device);
       processEvents(instance);
     } else {
-      LOG(kDefLog, kWarn, "Device is null");
+      LOG(kDefLog, kTrace, "Device is null");
     }
     if (adapter) {
       wgpuAdapterRelease(adapter);
       processEvents(instance);
     } else {
-      LOG(kDefLog, kWarn, "Adapter is null");
+      LOG(kDefLog, kTrace, "Adapter is null");
     }
     if (instance) {
       wgpuInstanceRelease(instance);
     } else {
-      LOG(kDefLog, kWarn, "Instance is null");
+      LOG(kDefLog, kTrace, "Instance is null");
     }
-    LOG(kDefLog, kInfo, "Context destroyed");
+    LOG(kDefLog, kTrace, "Context destroyed");
   }
 };
 
@@ -572,16 +616,16 @@ struct Context {
  * Tensor tensor = createTensor(pool, device, {256, 256}, kf32);
  * @endcode
  */
-inline Tensor
-createTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
-             NumType dtype,
-             WGPUBufferUsageFlags usage = WGPUBufferUsage_Storage |
-                                          WGPUBufferUsage_CopyDst |
-                                          WGPUBufferUsage_CopySrc) {
+inline Tensor createTensor(TensorPool &pool, WGPUDevice &device,
+                           const Shape &shape, NumType dtype,
+                           WGPUBufferUsage usage = WGPUBufferUsage_Storage |
+                                                   WGPUBufferUsage_CopyDst |
+                                                   WGPUBufferUsage_CopySrc) {
   LOG(kDefLog, kTrace, "Creating tensor");
   size_t numElements = size(shape);
   size_t size = sizeBytes(dtype) * numElements;
   WGPUBufferDescriptor bufferDesc = {
+      .label = {.data = nullptr, .length = 0}, 
       .usage = usage,
       .size = size,
   };
@@ -598,7 +642,7 @@ createTensor(TensorPool &pool, WGPUDevice &device, const Shape &shape,
  * the GPU with a given shape and data type.
  *
  * Instead of taking the TensoPool and raw WebGPU API WGPUDevice and
- * WGPUBufferUsageFlags arguments, this is a convenience wrapper around the
+ * WGPUBufferUsage arguments, this is a convenience wrapper around the
  * core createTensor function which has default usage flags for a storage
  * buffer, and also takes in the Context object.
  *
@@ -767,101 +811,125 @@ inline void check(bool condition, const char *message,
  * @param[in] devDescriptor Device descriptor for the WebGPU device (optional)
  * @return Context instance representing the created GPU context
  *
- * @code
- * Context ctx = createContext();
- * @endcode
  */
-inline Context createContext(const WGPUInstanceDescriptor &desc = {},
-                             const WGPURequestAdapterOptions &adapterOpts = {},
-                             const WGPUDeviceDescriptor &devDescriptor = {}) {
-  Context context;
-  {
-#ifdef __EMSCRIPTEN__
-    // Emscripten does not support the instance descriptor
-    // and throws an assertion error if it is not nullptr.
-    context.instance = wgpuCreateInstance(nullptr);
-#else
-    context.instance = wgpuCreateInstance(&desc);
-#endif
-    check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
-  }
+inline Context createContext(
+    const WGPUInstanceDescriptor &desc = {},
+    const WGPURequestAdapterOptions &adapterOpts = {},
+    const WGPUDeviceDescriptor &devDescriptor = {}) 
+{
+  Context ctx; // stack-allocated
 
-  LOG(kDefLog, kInfo, "Requesting adapter");
+#ifdef __EMSCRIPTEN__
+  ctx.instance = wgpuCreateInstance(nullptr);
+#else
+  ctx.instance = wgpuCreateInstance(&desc);
+#endif
+  check(ctx.instance, "Initialize WebGPU", __FILE__, __LINE__);
+
+  LOG(kDefLog, kTrace, "Requesting adapter");
   {
     struct AdapterData {
       WGPUAdapter adapter = nullptr;
       bool requestEnded = false;
+      WGPURequestAdapterStatus status;
     };
     AdapterData adapterData;
+
     auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status,
-                                    WGPUAdapter adapter, char const *message,
-                                    void *pUserData) {
-      AdapterData &adapterData = *reinterpret_cast<AdapterData *>(pUserData);
+                                    WGPUAdapter adapter, 
+                                    WGPUStringView message,
+                                    void *pUserData, void *) {
+      auto &ad = *reinterpret_cast<AdapterData*>(pUserData);
+      ad.status = status;
 #ifdef __EMSCRIPTEN__
       if (status != WGPURequestAdapterStatus_Success) {
-        LOG(kDefLog, kError, "Could not get WebGPU adapter: %s", message);
-        LOG(kDefLog, kError,
-            "\n\nA common reason is that the browser does not have WebGPU "
-            "enabled, particularly on Linux.\n"
-            "- Open `chrome://flags/` in the browser and make sure "
-            "\"WebGPU Support\" is enabled.\n"
-            "- Chrome is launched with vulkan enabled. From the command line "
-            "launch chrome as `google-chrome --enable-features=Vulkan`\n");
+        LOG(kDefLog, kError, "Could not get WebGPU adapter: %.*s",
+            static_cast<int>(message.length), message.data);
       }
 #endif
       check(status == WGPURequestAdapterStatus_Success,
             "Request WebGPU adapter", __FILE__, __LINE__);
-      adapterData.adapter = adapter;
-      adapterData.requestEnded = true;
+      ad.adapter      = adapter;
+      ad.requestEnded = true;
     };
 
-    wgpuInstanceRequestAdapter(context.instance, &adapterOpts,
-                               onAdapterRequestEnded, (void *)&adapterData);
+    WGPURequestAdapterCallbackInfo callbackInfo {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = onAdapterRequestEnded,
+      .userdata1 = &adapterData,
+      .userdata2 = nullptr
+    };
+    wgpuInstanceRequestAdapter(ctx.instance, &adapterOpts, callbackInfo);
 
     while (!adapterData.requestEnded) {
-      processEvents(context.instance);
+      processEvents(ctx.instance);
     }
-    assert(adapterData.requestEnded);
-    context.adapter = adapterData.adapter;
+    ctx.adapter = adapterData.adapter;
+    ctx.adapterStatus = adapterData.status;
   }
 
-  LOG(kDefLog, kInfo, "Requesting device");
+  LOG(kDefLog, kTrace, "Requesting device");
   {
     struct DeviceData {
       WGPUDevice device = nullptr;
       bool requestEnded = false;
+      WGPURequestDeviceStatus status;
     };
     DeviceData devData;
+
     auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, char const *message,
-                                   void *pUserData) {
-      DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
+                                   WGPUDevice device, 
+                                   WGPUStringView message,
+                                   void *pUserData, void *) {
+      auto &dd = *reinterpret_cast<DeviceData*>(pUserData);
+      dd.status = status;
       check(status == WGPURequestDeviceStatus_Success,
             "Could not get WebGPU device.", __FILE__, __LINE__);
-      LOG(kDefLog, kTrace, "Device Request succeeded %x",
-          static_cast<void *>(device));
-      devData.device = device;
-      devData.requestEnded = true;
+      LOG(kDefLog, kTrace, "Device Request succeeded %p", 
+          static_cast<void*>(device));
+      dd.device      = device;
+      dd.requestEnded= true;
     };
-    wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
-                             onDeviceRequestEnded, (void *)&devData);
-    LOG(kDefLog, kInfo, "Waiting for device request to end");
+
+    WGPURequestDeviceCallbackInfo deviceCallbackInfo {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = onDeviceRequestEnded,
+      .userdata1= &devData,
+      .userdata2= nullptr
+    };
+    wgpuAdapterRequestDevice(ctx.adapter, &devDescriptor, deviceCallbackInfo);
+
+    LOG(kDefLog, kTrace, "Waiting for device request to end");
     while (!devData.requestEnded) {
-      processEvents(context.instance);
+      processEvents(ctx.instance);
     }
-    LOG(kDefLog, kInfo, "Device request ended");
-    assert(devData.requestEnded);
-    context.device = devData.device;
-    wgpuDeviceSetUncapturedErrorCallback(
-        context.device,
-        [](WGPUErrorType type, char const *message, void *devData) {
-          LOG(kDefLog, kError, "Device uncaptured error: %s", message);
-          throw std::runtime_error("Device uncaptured exception.");
-        },
-        nullptr);
+    LOG(kDefLog, kTrace, "Device request ended");
+
+    ctx.device = devData.device;
+    ctx.deviceStatus = devData.status;
+
+    // If the device was created, set up logging and fetch the queue
+    if (devData.status == WGPURequestDeviceStatus_Success) {
+      WGPULoggingCallbackInfo loggingCallbackInfo {
+        .nextInChain = nullptr,
+        .callback =
+          [](WGPULoggingType type, WGPUStringView message, 
+             void *, void *) {
+            LOG(kDefLog, kError, "Device logging callback: %.*s",
+                static_cast<int>(message.length), message.data);
+            if (type == WGPULoggingType_Error) {
+              throw std::runtime_error("Device error logged.");
+            }
+          },
+        .userdata1 = nullptr,
+        .userdata2 = nullptr
+      };
+      wgpuDeviceSetLoggingCallback(ctx.device, loggingCallbackInfo);
+      ctx.queue = wgpuDeviceGetQueue(ctx.device);
+    }
   }
-  context.queue = wgpuDeviceGetQueue(context.device);
-  return context;
+
+  return std::move(ctx);
 }
 
 
@@ -872,7 +940,8 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
  * queue.
  *
  * The function takes gpu index to support for multi GPUs.
- * To activate this function, it needs not only webgpu's headers but also DAWN's headers.
+ * To activate this function, it needs not only webgpu's headers but also DAWN's
+ * headers.
  *
  * If dawn is used, it also sets up an error callback for device loss.
  *
@@ -885,9 +954,9 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
  * Context ctx = createContextByGpuIdx(1);
  * @endcode
  */
-inline Context createContextByGpuIdx(int gpuIdx,
-				     const WGPUInstanceDescriptor &desc = {},
-				     const WGPUDeviceDescriptor &devDescriptor = {}) {
+inline Context
+createContextByGpuIdx(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
+                      const WGPUDeviceDescriptor &devDescriptor = {}) {
   Context context;
   {
 #ifdef __EMSCRIPTEN__
@@ -904,12 +973,15 @@ inline Context createContextByGpuIdx(int gpuIdx,
   LOG(kDefLog, kInfo, "Requesting adapter");
   {
     std::vector<dawn::native::Adapter> adapters =
-      dawn::native::Instance(reinterpret_cast<dawn::native::InstanceBase*>(context.instance))
-      .EnumerateAdapters();
+        dawn::native::Instance(
+            reinterpret_cast<dawn::native::InstanceBase *>(context.instance))
+            .EnumerateAdapters();
     LOG(kDefLog, kInfo, "The number of GPUs=%d\n", adapters.size());
-    // Note: Second gpu is not available on Macos, but the number of GPUs is 2 on Macos.
-    //       Calling wgpuAdapterGetInfo function for the second gpu becomes segfault.
-    //       When you check all GPUs on linux, uncomment out following codes.
+    // Note: Second gpu is not available on Macos, but the number of GPUs is 2
+    // on Macos.
+    //       Calling wgpuAdapterGetInfo function for the second gpu becomes
+    //       segfault. When you check all GPUs on linux, uncomment out following
+    //       codes.
     //
     // for (size_t i = 0; i < adapters.size(); i++) {
     //   WGPUAdapterInfo info {};
@@ -918,18 +990,19 @@ inline Context createContextByGpuIdx(int gpuIdx,
     //     wgpuAdapterGetInfo(ptr, &info);
     //     LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", i, info.description);
     //     wgpuAdapterInfoFreeMembers(info);
-    //   } 
+    //   }
     // }
 
     {
       LOG(kDefLog, kInfo, "Use GPU(Adapter)[%d]\n", gpuIdx);
       auto ptr = adapters[gpuIdx].Get();
       if (ptr) {
-	WGPUAdapterInfo info {};
-	wgpuAdapterGetInfo(ptr, &info);
-	LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", gpuIdx, info.description);
-	wgpuAdapterInfoFreeMembers(info);
-      } 
+        WGPUAdapterInfo info{};
+        wgpuAdapterGetInfo(ptr, &info);
+        LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", gpuIdx,
+            info.description);
+        wgpuAdapterInfoFreeMembers(info);
+      }
       context.adapter = adapters[gpuIdx].Get();
       dawn::native::GetProcs().adapterAddRef(context.adapter);
     }
@@ -942,9 +1015,10 @@ inline Context createContextByGpuIdx(int gpuIdx,
       bool requestEnded = false;
     };
     DeviceData devData;
+
     auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, char const *message,
-                                   void *pUserData) {
+                                   WGPUDevice device, WGPUStringView message,
+                                   void *pUserData, void *) {
       DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
       check(status == WGPURequestDeviceStatus_Success,
             "Could not get WebGPU device.", __FILE__, __LINE__);
@@ -953,8 +1027,15 @@ inline Context createContextByGpuIdx(int gpuIdx,
       devData.device = device;
       devData.requestEnded = true;
     };
+
+    WGPURequestDeviceCallbackInfo deviceCallbackInfo = {
+        .mode = WGPUCallbackMode_AllowSpontaneous,
+        .callback = onDeviceRequestEnded,
+        .userdata1 = &devData,
+        .userdata2 = nullptr};
     wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
-                             onDeviceRequestEnded, (void *)&devData);
+                             deviceCallbackInfo);
+
     LOG(kDefLog, kInfo, "Waiting for device request to end");
     while (!devData.requestEnded) {
       processEvents(context.instance);
@@ -962,13 +1043,21 @@ inline Context createContextByGpuIdx(int gpuIdx,
     LOG(kDefLog, kInfo, "Device request ended");
     assert(devData.requestEnded);
     context.device = devData.device;
-    wgpuDeviceSetUncapturedErrorCallback(
-        context.device,
-        [](WGPUErrorType type, char const *message, void *devData) {
-          LOG(kDefLog, kError, "Device uncaptured error: %s", message);
-          throw std::runtime_error("Device uncaptured exception.");
-        },
-        nullptr);
+
+    WGPULoggingCallbackInfo loggingCallbackInfo = {
+        .nextInChain = nullptr,
+        .callback =
+            [](WGPULoggingType type, WGPUStringView message, void *userdata1,
+               void *userdata2) {
+              LOG(kDefLog, kError, "Device logging callback: %.*s",
+                  static_cast<int>(message.length), message.data);
+              if (type == WGPULoggingType_Error) {
+                throw std::runtime_error("Device error logged.");
+              }
+            },
+        .userdata1 = nullptr,
+        .userdata2 = nullptr};
+    wgpuDeviceSetLoggingCallback(context.device, loggingCallbackInfo);
   }
   context.queue = wgpuDeviceGetQueue(context.device);
   return context;
@@ -997,30 +1086,41 @@ inline void wait(Context &ctx, std::future<void> &future) {
 inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
                   CopyData &op) {
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
+  wgpuCommandBufferRelease(op.commandBuffer);
   CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
                                &op.future};
-  wgpuQueueOnSubmittedWorkDone(
-      ctx.queue,
-      [](WGPUQueueWorkDoneStatus status, void *callbackData) {
-        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-              __FILE__, __LINE__);
-        const auto *data = static_cast<CallbackData *>(callbackData);
-        wgpuBufferMapAsync(
-            data->buffer, WGPUMapMode_Read, 0, data->bufferSize,
-            [](WGPUBufferMapAsyncStatus status, void *captureData) {
-              const auto *data = static_cast<CallbackData *>(captureData);
-              check(status == WGPUBufferMapAsyncStatus_Success,
-                    "Map readbackBuffer", __FILE__, __LINE__);
-              const void *mappedData = wgpuBufferGetConstMappedRange(
-                  data->buffer, /*offset=*/0, data->bufferSize);
-              check(mappedData, "Get mapped range", __FILE__, __LINE__);
-              memcpy(data->output, mappedData, data->bufferSize);
-              wgpuBufferUnmap(data->buffer);
-              data->promise->set_value();
-            },
-            callbackData);
-      },
-      &callbackData);
+
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback =
+          [](WGPUQueueWorkDoneStatus status, void *userdata1, void *userdata2) {
+            check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+                  __FILE__, __LINE__);
+            const auto *data = static_cast<CallbackData *>(userdata1);
+            WGPUBufferMapCallbackInfo mapCallbackInfo = {
+                .mode = WGPUCallbackMode_AllowSpontaneous,
+                .callback =
+                    [](WGPUMapAsyncStatus status, WGPUStringView message,
+                       void *userdata1, void *userdata2) {
+                      const auto *data = static_cast<CallbackData *>(userdata1);
+                      check(status == WGPUMapAsyncStatus_Success,
+                            "Map readbackBuffer", __FILE__, __LINE__);
+                      const void *mappedData = wgpuBufferGetConstMappedRange(
+                          data->buffer, /*offset=*/0, data->bufferSize);
+                      check(mappedData, "Get mapped range", __FILE__, __LINE__);
+                      memcpy(data->output, mappedData, data->bufferSize);
+                      wgpuBufferUnmap(data->buffer);
+                      data->promise->set_value();
+                    },
+                .userdata1 = const_cast<CallbackData *>(data),
+                .userdata2 = nullptr};
+            wgpuBufferMapAsync(data->buffer, WGPUMapMode_Read, 0,
+                               data->bufferSize, mapCallbackInfo);
+          },
+      .userdata1 = &callbackData,
+      .userdata2 = nullptr};
+  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
   wait(ctx, op.future);
 }
 
@@ -1044,6 +1144,7 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
   op.future = op.promise.get_future();
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
+        .label = {.data = nullptr, .length = 0}, 
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
         .size = bufferSize,
     };
@@ -1052,14 +1153,17 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
   }
   {
     WGPUCommandEncoder commandEncoder;
-    WGPUComputePassEncoder computePassEncoder;
     commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
     wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
                                          op.readbackBuffer, 0, bufferSize);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
   toCPU(ctx, tensor, data, bufferSize, op);
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
 }
 
 /**
@@ -1076,6 +1180,70 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
 template <size_t N>
 void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data) {
   toCPU(ctx, tensor, data.data(), sizeof(data));
+}
+
+inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size) {
+  uint64_t bufferSize = size;
+  CopyData op;
+  op.future = op.promise.get_future();
+  {
+    WGPUBufferDescriptor readbackBufferDescriptor = {
+        .label = {.data = nullptr, .length = 0}, 
+        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
+        .size = bufferSize,
+    };
+    op.readbackBuffer =
+        wgpuDeviceCreateBuffer(ctx.device, &readbackBufferDescriptor);
+  }
+  {
+    WGPUCommandEncoder commandEncoder;
+    commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
+    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, buffer, 0,
+                                         op.readbackBuffer, 0, bufferSize);
+    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
+    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
+  }
+  wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
+  wgpuCommandBufferRelease(op.commandBuffer);
+  CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
+                               &op.future};
+
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback =
+          [](WGPUQueueWorkDoneStatus status, void *userdata1, void *userdata2) {
+            check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+                  __FILE__, __LINE__);
+            const auto *data = static_cast<CallbackData *>(userdata1);
+            WGPUBufferMapCallbackInfo mapCallbackInfo = {
+                .mode = WGPUCallbackMode_AllowSpontaneous,
+                .callback =
+                    [](WGPUMapAsyncStatus status, WGPUStringView message,
+                       void *userdata1, void *userdata2) {
+                      const auto *data = static_cast<CallbackData *>(userdata1);
+                      check(status == WGPUMapAsyncStatus_Success,
+                            "Map readbackBuffer", __FILE__, __LINE__);
+                      const void *mappedData = wgpuBufferGetConstMappedRange(
+                          data->buffer, /*offset=*/0, data->bufferSize);
+                      check(mappedData, "Get mapped range", __FILE__, __LINE__);
+                      memcpy(data->output, mappedData, data->bufferSize);
+                      wgpuBufferUnmap(data->buffer);
+                      data->promise->set_value();
+                    },
+                .userdata1 = const_cast<CallbackData *>(data),
+                .userdata2 = nullptr};
+            wgpuBufferMapAsync(data->buffer, WGPUMapMode_Read, 0,
+                               data->bufferSize, mapCallbackInfo);
+          },
+      .userdata1 = &callbackData,
+      .userdata2 = nullptr};
+  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
+  wait(ctx, op.future);
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
 }
 
 /**
@@ -1119,13 +1287,31 @@ inline void toGPU(Context &ctx, const half *data, Tensor &tensor) {
                        tensor.data.size);
 }
 
+inline void toGPU(Context &ctx, const int *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const float *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const half *data, Tensor &tensor, size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const int *data, Tensor &tensor, size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
 template <typename Params>
 inline void toGPU(Context &ctx, Params &params, Kernel &op) {
   // TODO(avh): Maintain params metadata in Kernel and check for consistency.
   // If a kernel does not have parameters this will quietly overwrite
   // the last buffer in the bind group with the parameters buffer.
-  if (op.numBindings > 0) {
-    wgpuQueueWriteBuffer(ctx.queue, op.buffers[op.numBindings - 1], 0,
+  if (op->numBindings > 0) {
+    wgpuQueueWriteBuffer(ctx.queue, op->buffers[op->numBindings - 1], 0,
                          static_cast<void *>(&params), sizeof(params));
   }
 }
@@ -1148,14 +1334,17 @@ inline void resetCommandBuffer(WGPUDevice &device, Kernel &op) {
         wgpuDeviceCreateCommandEncoder(device, nullptr);
     WGPUComputePassEncoder computePassEncoder =
         wgpuCommandEncoderBeginComputePass(commandEncoder, nullptr);
-    wgpuComputePassEncoderSetPipeline(computePassEncoder, op.computePipeline);
-    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op.bindGroup, 0,
+    wgpuComputePassEncoderSetPipeline(computePassEncoder, op->computePipeline);
+    wgpuComputePassEncoderSetBindGroup(computePassEncoder, 0, op->bindGroup, 0,
                                        nullptr);
     wgpuComputePassEncoderDispatchWorkgroups(
-        computePassEncoder, op.totalWorkgroups[0], op.totalWorkgroups[1],
-        op.totalWorkgroups[2]);
+        computePassEncoder, op->totalWorkgroups[0], op->totalWorkgroups[1],
+        op->totalWorkgroups[2]);
     wgpuComputePassEncoderEnd(computePassEncoder);
-    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuComputePassEncoderRelease(computePassEncoder);
+    op->commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
+    wgpuCommandEncoderRelease(commandEncoder);
+    op->used = false;
   }
 }
 
@@ -1212,16 +1401,26 @@ inline Shape cdiv(Shape total, Shape group) {
  * @endcode
  * output, nThreads, params, paramsSize);
  */
-inline Kernel createKernel(Context &ctx, const KernelCode &code,
+inline Kernel createKernel(Context& ctx, const KernelCode &code,
                            const Tensor *dataBindings, size_t numTensors,
-                           const size_t *viewOffsets, const Shape &totalWorkgroups,
-                           const void *params = nullptr,
-                           size_t paramsSize = 0,
-                           CompilationInfo* compilationInfo = nullptr) {
+                           const size_t *viewOffsets,
+                           const Shape &totalWorkgroups,
+                           const void *params = nullptr, size_t paramsSize = 0,
+                           CompilationInfo *compilationInfo = nullptr,
+                           const char *cacheKey = nullptr) {
+  // Create a cache key by the pointer values of the data bindings and the
+  // kernel code
+  if (cacheKey != nullptr &&
+      ctx.kernelPool.data.find(cacheKey) != ctx.kernelPool.data.end()) {
+    LOG(kDefLog, kInfo, "Kernel cache hit");
+    return ctx.kernelPool.data[cacheKey];
+  }
+
   assert(totalWorkgroups.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
-  Kernel op;
+  Kernel op(new RawKernel());
+
   // paramIndex is the index into bgLayoutEntries for the parameters buffer If
   // there are no parameters for the kernel, paramsSize == 0 and paramIndex is
   // effectively undefined (== -1)
@@ -1234,9 +1433,9 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
                                   // op.buffers, op.bufferSizes and
                                   // bgLayoutEntries
   }
-  op.buffers = std::make_unique<WGPUBuffer[]>(numBindings);
-  op.bufferSizes = std::make_unique<size_t[]>(numBindings);
-  op.numBindings = numBindings;
+  op->buffers = std::make_unique<WGPUBuffer[]>(numBindings);
+  op->bufferSizes = std::make_unique<size_t[]>(numBindings);
+  op->numBindings = numBindings;
   std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBindings);
   // Create layout entries for input buffers
   for (size_t i = 0; i < numTensors; ++i) {
@@ -1270,19 +1469,20 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   WGPUBindGroupLayout bgLayout =
       wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
   for (size_t i = 0; i < numTensors; ++i) {
-    op.buffers[i] = dataBindings[i].data.buffer;
-    op.bufferSizes[i] = dataBindings[i].data.size;
+    op->buffers[i] = dataBindings[i].data.buffer;
+    op->bufferSizes[i] = dataBindings[i].data.size;
   }
   // Create a buffer for the Params struct
   if (paramsSize > 0) {
     WGPUBufferDescriptor paramsBufferDesc = {
+        .label = {.data = nullptr, .length = 0}, 
         .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
         .size = paramsSize,
         .mappedAtCreation = false,
     };
-    op.buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
-    op.bufferSizes[paramIndex] = paramsSize;
-    wgpuQueueWriteBuffer(queue, op.buffers[paramIndex], 0, params, paramsSize);
+    op->buffers[paramIndex] = wgpuDeviceCreateBuffer(device, &paramsBufferDesc);
+    op->bufferSizes[paramIndex] = paramsSize;
+    wgpuQueueWriteBuffer(queue, op->buffers[paramIndex], 0, params, paramsSize);
     LOG(kDefLog, kTrace, "Params buffer written");
   } else {
     LOG(kDefLog, kTrace, "No params buffer needed");
@@ -1291,9 +1491,9 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   for (size_t i = 0; i < numTensors; ++i) {
     bindGroupEntries[i] = WGPUBindGroupEntry{
         .binding = static_cast<uint32_t>(i),
-        .buffer = op.buffers[i],
+        .buffer = op->buffers[i],
         .offset = viewOffsets[i],
-        .size = op.bufferSizes[i],
+        .size = op->bufferSizes[i],
     };
   }
   if (paramsSize > 0) {
@@ -1301,7 +1501,7 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
     LOG(kDefLog, kInfo, "paramIndex: %d", paramIndex);
     bindGroupEntries[paramIndex] = WGPUBindGroupEntry{
         .binding = static_cast<uint32_t>(paramIndex),
-        .buffer = op.buffers[paramIndex],
+        .buffer = op->buffers[paramIndex],
         .offset = 0,
         .size = paramsSize,
     };
@@ -1312,7 +1512,7 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
       .entryCount = static_cast<uint32_t>(numBindings),
       .entries = bindGroupEntries.data(),
   };
-  op.bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
+  op->bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
 
   WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
       .bindGroupLayoutCount = 1,
@@ -1320,52 +1520,64 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
   };
   WGPUPipelineLayout pipelineLayout =
       wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
-  WGPUShaderModuleWGSLDescriptor wgslDesc = {
-      .code = code.data.c_str(),
-  };
-  wgslDesc.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
+
+  WGPUShaderSourceWGSL wgslDesc = {
+      .chain = {.sType = WGPUSType_ShaderSourceWGSL},
+      .code = {.data = code.data.c_str(), .length = code.data.length()}};
+
   WGPUShaderModuleDescriptor shaderModuleDesc = {};
   shaderModuleDesc.nextInChain = &wgslDesc.chain;
-  shaderModuleDesc.label = code.label.c_str();
+  shaderModuleDesc.label = {code.label.c_str(), code.label.length()};
+
   WGPUComputePipelineDescriptor computePipelineDesc = {};
   computePipelineDesc.layout = pipelineLayout;
   computePipelineDesc.compute.module =
       wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
 
-  computePipelineDesc.compute.entryPoint = code.entryPoint.c_str();
-  computePipelineDesc.label = code.label.c_str();
-  op.computePipeline =
+  computePipelineDesc.compute.entryPoint = {code.entryPoint.c_str(),
+                                            code.entryPoint.length()};
+  computePipelineDesc.label = {code.label.c_str(), code.label.length()};
+
+  op->computePipeline =
       wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
-  op.totalWorkgroups = {totalWorkgroups[0], totalWorkgroups[1], totalWorkgroups[2]};
+  op->totalWorkgroups = {totalWorkgroups[0], totalWorkgroups[1],
+                         totalWorkgroups[2]};
   resetCommandBuffer(device, op);
-  ctx.kernelPool.data.insert(&op);
+  if (cacheKey != nullptr)
+    ctx.kernelPool.data[cacheKey] = op;
 
-  WGPUCompilationInfoCallback cb =
-      [](WGPUCompilationInfoRequestStatus status,
-         WGPUCompilationInfo const *compilationInfo, void *userData) {
-        CompilationInfo *result = static_cast<CompilationInfo *>(userData);
-        if (compilationInfo && result) {
-          result->status = status;
-          for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
-            printf("Message %d: %s\n", i, compilationInfo->messages[i].message);
-            result->messages.push_back(compilationInfo->messages[i].message);
-            result->lineNums.push_back(compilationInfo->messages[i].lineNum);
-            result->linePos.push_back(compilationInfo->messages[i].linePos);
-          }
-          result->finished = true;
-        } else {
-          LOG(kDefLog, kTrace, "No compilation info or result");
-        }
-      };
+  auto compilationInfoCallback = [](WGPUCompilationInfoRequestStatus status,
+                                    WGPUCompilationInfo const *compilationInfo,
+                                    void *userdata1, void *userdata2) {
+    CompilationInfo *result = static_cast<CompilationInfo *>(userdata1);
+    if (compilationInfo && result) {
+      result->status = status;
+      for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
+        printf("Message %d: %.*s\n", i,
+               static_cast<int>(compilationInfo->messages[i].message.length),
+               compilationInfo->messages[i].message.data);
+        result->messages.push_back(
+            std::string(compilationInfo->messages[i].message.data,
+                        compilationInfo->messages[i].message.length));
+        result->lineNums.push_back(compilationInfo->messages[i].lineNum);
+        result->linePos.push_back(compilationInfo->messages[i].linePos);
+      }
+      result->finished = true;
+    } else {
+      LOG(kDefLog, kTrace, "No compilation info or result");
+    }
+  };
 
-  wgpuShaderModuleGetCompilationInfo(
-      computePipelineDesc.compute.module, cb, static_cast<void *>(compilationInfo));
+  WGPUCompilationInfoCallbackInfo compilationCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = compilationInfoCallback,
+      .userdata1 = static_cast<void *>(compilationInfo),
+      .userdata2 = nullptr};
 
   while (compilationInfo && !compilationInfo->finished) {
     processEvents(ctx.instance);
   }
   return op;
-
 }
 
 /**
@@ -1378,8 +1590,8 @@ inline Kernel createKernel(Context &ctx, const KernelCode &code,
  * @param[in] code WGSL code for the kernel
  * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
  * to the kernel as inputs and outputs.
- * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be a
- * Shape of rank == 3.
+ * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be
+ * a Shape of rank == 3.
  * @param[in] params Optional parameters for the kernel. If the kernel does
  * not have any parameters, use NoParam.
  * @return Kernel instance representing the created kernel
@@ -1394,17 +1606,17 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
                     const Bindings<numInputs> &dataBindings,
                     const Shape &totalWorkgroups,
                     const ParamsType &params = ParamsType{},
-                    CompilationInfo* compilationInfo = nullptr 
-                    ) {
+                    CompilationInfo *compilationInfo = nullptr,
+                    const char *cacheKey = nullptr) {
   if constexpr (!IsNoParam<ParamsType>) {
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
                         dataBindings.viewOffsets.data(), totalWorkgroups,
                         reinterpret_cast<const void *>(&params),
-                        sizeof(ParamsType), compilationInfo);
+                        sizeof(ParamsType), compilationInfo, cacheKey);
   } else {
     return createKernel(ctx, code, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), totalWorkgroups, nullptr,
-                        0, compilationInfo);
+                        dataBindings.viewOffsets.data(), totalWorkgroups,
+                        nullptr, 0, compilationInfo, cacheKey);
   }
 }
 
@@ -1428,17 +1640,25 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
  */
 inline void dispatchKernel(Context &ctx, Kernel &kernel,
                            std::promise<void> &promise) {
-  // Submit the command buffer
-  wgpuQueueSubmit(ctx.queue, 1, &kernel.commandBuffer);
-  wgpuQueueOnSubmittedWorkDone(
-      ctx.queue,
-      [](WGPUQueueWorkDoneStatus status, void *data) {
-        check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-              __FILE__, __LINE__);
-        auto *promise = static_cast<std::promise<void> *>(data);
-        promise->set_value();
-      },
-      &promise);
+  if (kernel->used) {
+    resetCommandBuffer(ctx.device, kernel);
+  }
+  wgpuQueueSubmit(ctx.queue, 1, &kernel->commandBuffer);
+  wgpuCommandBufferRelease(kernel->commandBuffer);
+  kernel->used = true;
+
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback =
+          [](WGPUQueueWorkDoneStatus status, void *userdata1, void *userdata2) {
+            check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
+                  __FILE__, __LINE__);
+            auto *promise = static_cast<std::promise<void> *>(userdata1);
+            promise->set_value();
+          },
+      .userdata1 = &promise,
+      .userdata2 = nullptr};
+  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
 }
 
 } // namespace gpu

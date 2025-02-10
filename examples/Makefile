@@ -14,7 +14,7 @@ else
 endif
 
 FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib
-LFLAGS=-ldl -ldawn
+LFLAGS=-ldl -lwebgpu_dawn
 
 .PHONY: default all_release all_debug dawnlib run_setup check-python
 .PHONY: $(addsuffix _release, $(TARGETS))

@@ -19,13 +19,42 @@ pch:
 	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -x c++-header gpu.hpp -o build/gpu.hpp.pch
 
 # TODO(avh): change extension based on platform
-lib:
-	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -L$(LIBDIR) -ldawn -ldl -shared -fPIC gpu.cpp -o build/libgpucpp.dylib
+# Get the current OS name
+OS = $(shell uname | tr -d '\n')
+# Set the specific variables for each platform
+LIB_PATH ?= /usr/lib
+HEADER_PATH ?= /usr/include
+ifeq ($(OS), Linux)
+OS_TYPE ?= Linux
+GPU_CPP_LIB_NAME ?= libgpucpp.so
+DAWN_LIB_NAME ?= libwebgpu_dawn.so
+else ifeq ($(OS), Darwin)
+OS_TYPE ?= macOS
+GPU_CPP_LIB_NAME ?= libgpucpp.dylib
+DAWN_LIB_NAME ?= libwebgpu_dawn.dylib
+else
+OS_TYPE ?= unknown
+endif
+
+lib: check-clang dawnlib
+	mkdir -p build && $(CXX) -std=c++17 $(INCLUDES) -L$(LIBDIR) -lwebgpu_dawn -ldl -shared -fPIC gpu.cpp -o build/$(GPU_CPP_LIB_NAME)
+	python3 build.py
+	cp third_party/lib/$(DAWN_LIB_NAME) build/
+
+install:
+	cp build/$(GPU_CPP_LIB_NAME) $(LIB_PATH)
+	cp build/$(DAWN_LIB_NAME) $(LIB_PATH)
+	cp build/gpu.hpp $(HEADER_PATH)
+
+uninstall:
+	rm $(LIB_PATH)/$(GPU_CPP_LIB_NAME)
+	rm $(LIB_PATH)/$(DAWN_LIB_NAME)
+	rm $(HEADER_PATH)/gpu.hpp
 
 examples/hello_world/build/hello_world: check-clang dawnlib examples/hello_world/run.cpp check-linux-vulkan
 	$(LIBSPEC) && cd examples/hello_world && make build/hello_world && ./build/hello_world
 
-dawnlib: $(if $(wildcard third_party/lib/libdawn.so third_party/lib/libdawn.dylib),,run_setup)
+dawnlib: $(if $(wildcard third_party/lib/libwebgpu_dawn.so third_party/lib/libwebgpu_dawn.dylib),,run_setup)
 
 run_setup: check-python
 	python3 setup.py
@@ -42,7 +71,7 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 
 # Test 16-bit floating point type
 test-half: dawnlib check-clang
-	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -ldawn -ldl -o build/half && ./build/half
+	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -lwebgpu_dawn -ldl -o build/half && ./build/half
 
 docs: Doxyfile
 	doxygen Doxyfile
@@ -73,7 +102,7 @@ all-cmake: check-clang check-cmake
 ################################################################################
 
 clean-dawnlib:
-	rm -f third_party/lib/libdawn.so third_party/lib/libdawn.dylib
+	rm -f third_party/lib/libwebgpu_dawn.so third_party/lib/libwebgpu_dawn.dylib
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
@@ -90,21 +119,30 @@ clean:
 	rm -f build/half
 
 clean-all:
-	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/* third_party/gpu-build third_party/gpu-subbuild third_party/gpu-src third_party/lib/libdawn.so third_party/lib/libdawn.dylib
+	read -r -p "This will delete the contents of build/* and third_party/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/* third_party/fetchcontent/* third_party/gpu-build third_party/gpu-subbuild third_party/gpu-src third_party/lib/libwebgpu_dawn.so third_party/lib/libwebgpu_dawn.dylib
 
 ################################################################################
 # Checks
 ################################################################################
 
+# Check all
+check-all: check-os check-clang check-cmake check-python
+
+# check the os
+check-os:
+ifeq ($(OS_TYPE), unknown)
+$(error Unsupported operating system)
+endif
+
 # check for the existence of clang++ and cmake
 check-clang:
-	@command -v clang++ >/dev/null 2>&1 || { echo >&2 "Please install clang++ with 'sudo apt-get install clang' or 'brew install llvm'"; exit 1; }
+	@command -v clang++ >/dev/null 2>&1 || { echo -e >&2 "Clang++ is not installed. Please install clang++ to continue.\nOn Debian / Ubuntu: 'sudo apt-get install clang' or 'brew install llvm'\nOn Centos: 'sudo yum install clang'"; exit 1; }
 
 check-cmake:
-	@command -v cmake >/dev/null 2>&1 || { echo >&2 "Please install cmake with 'sudo apt-get install cmake' or 'brew install cmake'"; exit 1; }
+	@command -v cmake >/dev/null 2>&1 || { echo -e >&2 "Cmake is not installed. Please install cmake to continue.\nOn Debian / Ubuntu: 'sudo apt-get install cmake' or 'brew install cmake'\nOn Centos: 'sudo yum install cmake'"; exit 1; }
 
 check-python:
-	@command -v python3 >/dev/null 2>&1 || { echo >&2 "Python needs to be installed and in your path."; exit 1; } 
+	@command -v python3 >/dev/null 2>&1 || { echo -e >&2 "Python is not installed. Please install python to continue.\nOn Debian / Ubuntu: 'sudo apt-get install python'\nOn Centos: 'sudo yum install python'"; exit 1; } 
 
 check-linux-vulkan:
 	@echo "Checking system type and Vulkan availability..."
@@ -113,7 +151,7 @@ check-linux-vulkan:
 	        echo "Vulkan is installed."; \
 	        vulkaninfo; \
 	    else \
-		echo "Vulkan is not installed. Please install Vulkan drivers to continue. On Debian / Ubuntu: sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools"; \
+		echo -e "Vulkan is not installed. Please install Vulkan drivers to continue.\nOn Debian / Ubuntu: 'sudo apt install libvulkan1 mesa-vulkan-drivers vulkan-tools'.\nOn Centos: 'sudo yum install vulkan vulkan-tools.'"; \
 	        exit 1; \
 	    fi \
 	else \

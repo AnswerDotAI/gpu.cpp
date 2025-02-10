@@ -3,9 +3,7 @@
 #include <cstdio>
 #include <future>
 
-using namespace gpu; // createContext, createTensor, createKernel,
-                     // createShader, dispatchKernel, wait, toCPU
-                     // Tensor, Kernel, Context, Shape, kf32
+using namespace gpu;
 
 static const char *kGelu = R"(
 const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
@@ -29,6 +27,7 @@ int main(int argc, char **argv) {
   printf("\nHello gpu.cpp!\n");
   printf("--------------\n\n");
 
+  // std::unique_ptr<Context> ctx = createContext();
   Context ctx = createContext();
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
@@ -41,7 +40,7 @@ int main(int argc, char **argv) {
   std::future<void> future = promise.get_future();
   Kernel op = createKernel(ctx, {kGelu, 256, kf32},
                            Bindings{input, output},
-                           /* nWorkgroups */ {cdiv(N, 256), 1, 1});
+                           {cdiv(N, 256), 1, 1});
   dispatchKernel(ctx, op, promise);
   wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
@@ -50,5 +49,4 @@ int main(int argc, char **argv) {
   }
   printf("  ...\n\n");
   printf("Computed %zu values of GELU(x)\n\n", N);
-  return 0;
 }

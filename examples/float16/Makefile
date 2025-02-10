@@ -9,12 +9,12 @@ ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/nu
 else
     STDLIB := -stdlib=libc++
 endif
-FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -ldawn
+FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -lwebgpu_dawn
 
 run: ./build/$(TARGET) dawnlib
 	$(LIBSPEC) && ./build/$(TARGET)
 
-dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
+dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libwebgpu_dawn.so $(GPUCPP)/third_party/lib/libwebgpu_dawn.dylib),,run_setup)
 
 run_setup: check-python
 	cd $(GPUCPP) && python3 setup.py

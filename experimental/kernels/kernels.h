@@ -309,6 +309,104 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
       }
     }
 }
+
+)";
+
+
+static const char *kShaderMatmul2DTiling = R"(
+@group(0) @binding(0) var<storage, read_write> inp : array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> weight : array<{{precision}}>;
+@group(0) @binding(2) var<storage, read_write> bias : array<{{precision}}>;
+@group(0) @binding(3) var<storage, read_write> out : array<{{precision}}>;
+@group(0) @binding(4) var<uniform> params : Params;
+struct Params {
+    B: u32,
+    T: u32,
+    C: u32,
+    OC: u32,
+};
+var<workgroup> tileInp: array<{{precision}}, {{BT}} * {{BC}}>;
+var<workgroup> tileWeight: array<{{precision}}, {{BOC}} * {{BC}}>;
+
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+    @builtin(local_invocation_id) localID : vec3<u32>,
+    @builtin(workgroup_id) groupid : vec3<u32>) {
+    let B : u32 = params.B;
+    let T : u32 = params.T;
+    let C : u32 = params.C;
+    let OC : u32 = params.OC;
+
+    var localT: array<{{precision}}, {{TT}}>;
+    var localOC: array<{{precision}}, {{TOC}}>;
+
+    let outB: u32 = groupid.x;
+    let outT: u32 = groupid.y;
+    let outOC: u32 = groupid.z;
+    let numThread: u32 = ({{BT}} * {{BOC}}) / ({{TT}} * {{TOC}});
+
+    // position of the first c element computed by the thread
+    let threadRow: u32 = (localID.x / ({{BOC}} / {{TOC}})) * {{TT}};
+    let threadCol: u32 = (localID.x % ({{BOC}} / {{TOC}})) * {{TOC}};
+
+    // inpPtr and weightPtr are the starting positions of the tiles in a and b,
+    // incremented in the bkidx loop. 
+    // outPtr is the starting position of the tile in c which is fixed.
+
+    var inpPtr = (outB * T + outT * {{BT}}) * C; // BTC 
+    var weightPtr = outOC * {{BOC}} * C; //OCC
+    var threadResults: array<{{precision}}, {{TT}} * {{TOC}}>;
+    let outPtr = (outB * T + outT * {{BT}}) * OC + outOC * {{BOC}}; //BTOC
+    let biasPtr = outOC * {{BOC}};
+
+    for (var bkidx: u32 = 0; bkidx < C; bkidx += {{BC}}) {
+      // Load BC x BOC by numThread(BT * BOC / (TT * TOC))
+      // The number of iteration == BC * BOC / (BT * BOC / (TT * TOC))
+      for (var idx: u32 = 0; idx < {{NUM_TILEW}}; idx++) {
+        tileWeight[localID.x + idx * numThread] = weight[weightPtr + ((localID.x + idx * numThread) / {{BC}}) * C + ((localID.x + idx * numThread) % {{BC}})];
+      }
+      weightPtr += {{BC}};
+    
+      // Load tile
+      // Load BT x BC by numThread(BT * BOC / (TT * TOC))
+      // The number of iteration == BT * BC / (BT * BOC / (TT * TOC))
+      for (var idx: u32 = 0; idx < {{NUM_TILEI}}; idx++) {
+        tileInp[localID.x + idx * numThread] = inp[inpPtr + ((localID.x + idx * numThread) / {{BC}}) * C + (localID.x + idx * numThread) % {{BC}}];
+      }
+      inpPtr += {{BC}};
+    
+      workgroupBarrier();
+      // Compute tile
+      for (var dotIdx: u32 = 0; dotIdx < {{BC}}; dotIdx = dotIdx + 1) {
+        for (var idx: u32 = 0; idx < {{TT}}; idx++) {
+          localT[idx] = tileInp[(threadRow + idx) * {{BC}} + dotIdx];
+        }
+        for (var idx: u32 = 0; idx < {{TOC}}; idx++) {
+          localOC[idx] = tileWeight[(threadCol + idx) * {{BC}} + dotIdx];
+        }
+        for (var resIdxT: u32 = 0; resIdxT < {{TT}}; resIdxT++) {
+          for (var resIdxOC: u32 = 0; resIdxOC < {{TOC}}; resIdxOC++) {
+            threadResults[resIdxT * {{TOC}} + resIdxOC] += localT[resIdxT] * localOC[resIdxOC];
+          }
+        }
+      }
+      workgroupBarrier();
+    }
+    
+    if (arrayLength(&bias) == 1) {
+      for (var resIdxT: u32 = 0; resIdxT < {{TT}}; resIdxT++) {
+        for (var resIdxOC: u32 = 0; resIdxOC < {{TOC}}; resIdxOC++) {
+          out[outPtr + (threadRow + resIdxT) * OC + threadCol + resIdxOC] = threadResults[resIdxT * {{TOC}} + resIdxOC];
+        }
+      }
+    } else {
+      for (var resIdxT: u32 = 0; resIdxT < {{TT}}; resIdxT++) {
+        for (var resIdxOC: u32 = 0; resIdxOC < {{TOC}}; resIdxOC++) {
+          out[outPtr + (threadRow + resIdxT) * OC + threadCol + resIdxOC] = threadResults[resIdxT * {{TOC}} + resIdxOC] + bias[biasPtr + threadCol + resIdxOC];
+        }
+      }
+    }
+}
 )";
 
 static const char *kShaderMatmulBackward = R"(
@@ -683,6 +781,78 @@ fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
 }
 )";
 
+static const char *kSum = R"(
+@group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
+var<workgroup> buffer: array<{{precision}}, 1024>;
+@compute @workgroup_size({{workgroupSize}})
+fn main(
+    @builtin(global_invocation_id) globalID : vec3<u32>,
+    @builtin(local_invocation_id) localID : vec3<u32>,
+    @builtin(workgroup_id) groupid : vec3<u32>,
+    @builtin(num_workgroups) numGroups : vec3<u32>) {
+    let blockSize3d: vec3<u32> = vec3({{workgroupSize}});
+    let blockSize: u32 = blockSize3d.x;
+    let threadId: u32 = localID.x;
+    let blockId: u32 = groupid.x + groupid.y * numGroups.x;
+    let blockStart = blockId * blockSize * 2 + threadId;
+
+    buffer[threadId] = inp[blockStart] + inp[blockStart + blockSize];
+    workgroupBarrier();
+    var stride: u32 = blockSize / 2;
+ 
+    if (blockSize >= 1024 && threadId < 512) {
+        buffer[threadId] += buffer[threadId + 512];
+    }
+    workgroupBarrier();
+   
+    if (blockSize >= 512 && threadId < 256) {
+        buffer[threadId] += buffer[threadId + 256];
+    }
+    workgroupBarrier();
+
+    if (blockSize >= 256 && threadId < 128) {
+        buffer[threadId] += buffer[threadId + 128];
+    }
+    workgroupBarrier();
+
+    if (threadId < 64) {
+        buffer[threadId] += buffer[threadId + 64];
+    }
+    workgroupBarrier();
+
+    if (threadId < 32) {
+        buffer[threadId] += buffer[threadId + 32];
+    }
+    workgroupBarrier();
+
+    if (threadId < 16) {
+        buffer[threadId] += buffer[threadId + 16];
+    }
+    workgroupBarrier();
+
+    if (threadId < 8) {
+        buffer[threadId] += buffer[threadId + 8];
+    }
+    workgroupBarrier();
+
+    if (threadId < 4) {
+        buffer[threadId] += buffer[threadId + 4];
+    }
+    workgroupBarrier();
+
+    if (threadId < 2) {
+        buffer[threadId] += buffer[threadId + 2];
+    }
+    workgroupBarrier();
+
+    if (threadId == 0) {
+        buffer[0] += buffer[1];
+        out[blockId] = buffer[0];
+    }
+}
+)";
+  
 } // namespace gpu
 
 #endif // KERNELS_H

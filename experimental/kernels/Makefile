@@ -16,7 +16,7 @@ CXXFLAGS=-std=c++17 -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I. -Iunittest_l
 CFLAGS=-Ofast -march=native -I. -Iunittest_llmc
 # CFLAGS=-O2 -march=native -I. -Iunittest_llmc
 
-LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -ldawn
+LDFLAGS=$(STDLIB) -L$(GPUCPP)/third_party/lib -ldl -lwebgpu_dawn -fsanitize=address
 FLAGS=$(CXXFLAGS) $(LDFLAGS)
 
 ifeq ($(shell [ -d /opt/homebrew/opt/libomp/lib ] && echo "exists"), exists)
@@ -28,6 +28,10 @@ else
 endif
 
 default: run-native
+
+build/reduce: reduce.cpp kernels.h
+	$(CC) $(CFLAGS) $(CXXFLAGS) $(LDFLAGS) -o $@ $<
+	$(LIBSPEC) && build/reduce
 
 run_llm.c: ./build/test_gpt2 dawnlib
 	$(LIBSPEC) && $<
@@ -85,7 +89,7 @@ build/test_gpt2_with_metal_profiler: llm.c build/unittest_kernels.o gpt2_124M.bi
 	mkdir -p build
 	$(call preprocess_file)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ llm.c/test_gpt2.c build/unittest_kernels.o -I$(GPUCPP) $(GPUCPP)/experimental/profiler/metal.mm -framework metal -framework Foundation -DMETAL_PROFILER -g
-	install_name_tool -change @rpath/libdawn.dylib $(GPUCPP)/third_party/lib/libdawn.dylib $@
+	install_name_tool -change @rpath/libwebgpu_dawn.dylib $(GPUCPP)/third_party/lib/libwebgpu_dawn.dylib $@
 
 build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 	mkdir -p build
@@ -95,9 +99,13 @@ build/train_gpt2: llm.c build/unittest_kernels.o gpt2_124M.bin
 build/ops.o: ops.cpp ops.hpp kernels.h llm.c
 	mkdir -p build && $(CXX) $(CXXFLAGS) -c -o $@ $<
 
-build/gpt2_webgpu: llm.c gpt2_124M.bin llm.c
+build/gpt2_webgpu: llm.c gpt2_124M.bin llm.c gpt2_webgpu.cpp ops.cpp
 	mkdir -p build
 	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu.cpp ops.cpp
+
+build/gpt2_webgpu_aot: llm.c gpt2_124M.bin llm.c gpt2_webgpu_aot.cpp ops_aot.cpp
+	mkdir -p build
+	$(CC) $(CXXFLAGS) -Illm.c $(LDFLAGS) -o $@ gpt2_webgpu_aot.cpp ops_aot.cpp
 
 build/gpt2_webgpu.html: check-emsdk gpt2_webgpu.cpp term.html llm.c
 	em++ gpt2_webgpu.cpp ops.cpp \
@@ -116,8 +124,8 @@ watch-web:
 watch-native:
 	ls *.cpp *.c *.hpp *.h | entr -s "rm -f build/gpt2_webgpu && rm -f build/ops.o && make build/gpt2_webgpu"
 
-run-native: build/gpt2_webgpu
-	. $(GPUCPP)/source && ./build/gpt2_webgpu
+run-native: build/gpt2_webgpu_aot
+	. $(GPUCPP)/source && ./build/gpt2_webgpu_aot
 
 # server: build/train_gpt2.html build/test_gpt2.html build/gpt2_gpucpp.html
 server: build/gpt2_webgpu.html
@@ -131,7 +139,7 @@ server: build/gpt2_webgpu.html
 build/unittest_kernels.o: unittest_llmc/unittest_kernels.cpp unittest_llmc/unittest_kernels.h kernels.h
 	mkdir -p build && $(CXX) $(CXXFLAGS) -DNDEBUG -c -o $@ $<
 
-dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
+dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libwebgpu_dawn.so $(GPUCPP)/third_party/lib/libwebgpu_dawn.dylib),,run_setup)
 
 run_setup: check-python
 	cd $(GPUCPP) && python3 setup.py

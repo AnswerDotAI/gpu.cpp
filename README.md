@@ -8,7 +8,7 @@ GPU code in C++ projects and have it run on Nvidia, Intel, AMD, and other GPUs.
 The same C++ code can work on a wide variety of laptops, workstations, mobile
 devices or virtually any hardware with Vulkan, Metal, or DirectX support.
 
-## Technical Objectives: Lightweight, Fast Iteration, and Low Boilerplate
+## Objectives: Lightweight, Fast Iteration, and Low Boilerplate
 
 With gpu.cpp we want to enable a high-leverage library for individual developers and researchers to incorporate GPU computation into programs relying on nothing more than a standard C++ compiler as tooling. Our goals are:
 
@@ -189,7 +189,7 @@ illustrate how to use gpu.cpp as a library.
 
 After you have run `make` in the top-level directory which retrieves the prebuilt Dawn shared library, you can run each example by navigating to its directory and running `make` from the example's directory.
 
-An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It currently runs at ~ 2.5+ TFLOPs on a Macbook Pro M1 Max laptop, which has a theoretical peak of 10.4 TFLOPs. Contributions to optimize this further are welcome.
+An example of tiled matrix multiplication is in [examples/matmul](https://github.com/AnswerDotAI/gpu.cpp/blob/main/examples/matmul/). This implements a WebGPU version of the first few kernels of Simon Boehm's [How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog](https://siboehm.com/articles/22/CUDA-MMM) post. It currently runs at ~ 3.5+ TFLOPs on a Macbook Pro M1 Max laptop. Contributions to optimize this further are welcome.
 
 A parallel physics simulation of an ensemble of double pendulums simulated in parallel with different initial conditions on the GPU is shown in [examples/physics](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/physics).
 
@@ -198,9 +198,7 @@ A parallel physics simulation of an ensemble of double pendulums simulated in pa
 <img src="docs/images/pendulum.gif" alt="physics example animated gif" width=42%>
 </div>
 
-We also show some examples of signed distance function computations, rendered in the terminal as ascii. A 3D SDF of spheres is shown in [examples/render](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/render]) and a shadertoy-like live-reloading example is in [examples/shadertui](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/shadertui).
-
-Interestingly, given a starting example, LLMs such as Claude 3.5 Sonnet can be quite capable at writing low-level WGSL code for you - the other shaders in the shadertui example are written by the LLM.
+We also show some examples of signed distance function computations, rendered in the terminal as ascii. A 3D SDF of spheres is shown in [examples/render](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/render) and a shadertoy-like live-reloading example is in [examples/shadertui](https://github.com/AnswerDotAI/gpu.cpp/tree/main/examples/shadertui).
 
 <div align="center">
   <img src="docs/images/shadertui.gif" alt="shadertui example animated gif" width=88%>
@@ -232,21 +230,15 @@ gpu.cpp lets us implement and drop-in any algorithm with fine-grained control of
 
 gpu.cpp is meant for developers with some familiarity with C++ and GPU programming. It is not a high-level numerical computing or machine learning framework or inference engine, though it can be used in support of such implementations.
 
-Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. gpu.cpp leverages WebGPU as a portable _native_ GPU API first and foremost, with the possibility of running in the browser being a convenient additional benefit in the future.
-
-If you find it counterintuitive, as many do, that WebGPU is a native technology and not just for the web, watch Elie Michel's excellent talk ["WebGPU is Not Just About the Web"](https://www.youtube.com/watch?v=qHrx41aOTUQ).
+Second, in spite of the name, WebGPU has native implementations decoupled from the web and the browser. If you find it counterintuitive, watch Elie Michel's excellent talk ["WebGPU is Not Just About the Web"](https://www.youtube.com/watch?v=qHrx41aOTUQ).
 
 Finally, the focus of gpu.cpp is general-purpose GPU computation rather than rendering/graphics on the GPU, although it can be useful for offline rendering or video processing use cases. We may explore directions with graphics in the future, but for now our focus is GPU compute.
 
 ## Limitations and Upcoming Features
 
-_API Improvements_ - gpu.cpp is a work-in-progress and there are many features and improvements to come. At this early stage, we expect the API design to evolve as we identify improvements / needs from use cases. In particular, the handling of structured parameters and asynchronous dispatch will undergo refinement and maturation in the short-term.
-
 _Browser Targets_ - In spite of using WebGPU we haven't tested builds targeting the browser yet though this is a short-term priority.
 
 _Reusable Kernel Library_ - Currently the core library is strictly the operations and types for interfacing with the WebGPU API, with some specific use case example WGSL implementations in `examples/`. Over time, as kernel implementations mature we may migrate some of the reusable operations from specific examples into a small reusable kernel library.
-
-_More Use Case Examples and Tests_ - Expect an iteration loop of use cases to design tweaks and improvements, which in turn make the use cases cleaner and easier to write. One short term use cases to flesh out the kernels from [llm.c](https://github.com/karpathy/llm.c) in WebGPU form. As these mature into a reusable kernel library, we hope to help realize the potential for WebGPU compute in AI.
 
 ## Troubleshooting
 

@@ -57,12 +57,12 @@ def download_dawn(os_name):
     print("=====================\n")
 
     outfile_map = {
-        "macOS": "third_party/lib/libdawn.dylib",
-        "Linux": "third_party/lib/libdawn.so",
+        "macOS": "third_party/lib/libwebgpu_dawn.dylib",
+        "Linux": "third_party/lib/libwebgpu_dawn.so",
     }
     url_map = {
-        "macOS": "https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.dylib",
-        "Linux": "https://github.com/austinvhuang/dawn-artifacts/releases/download/prerelease/libdawn.so",
+        "macOS": "https://github.com/austinvhuang/dawn-artifacts/releases/download/0.2.0/libwebgpu_dawn.dylib",
+        "Linux": "https://github.com/austinvhuang/dawn-artifacts/releases/download/0.2.0/libwebgpu_dawn.so",
     }
 
     outfile = outfile_map.get(os_name)
