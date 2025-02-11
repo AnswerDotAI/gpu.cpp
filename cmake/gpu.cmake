@@ -6,7 +6,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
 else()
     get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
     get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
-
     set(PROJECT_ROOT "${PROJECT_ROOT}/")
 endif()
 
@@ -21,7 +20,6 @@ set(DAWN_INSTALL_PREFIX "${FETCHCONTENT_BASE_DIR}/dawn-build/out/${CMAKE_BUILD_T
 
 # Before fetching, set configuration options for Dawn.
 set(DCMAKE_INSTALL_PREFIX   ${DAWN_INSTALL_PREFIX} CACHE INTERNAL "Dawn install location" FORCE)
-set(CMAKE_CONFIGURATION_TYPES ${CMAKE_BUILD_TYPE} CACHE INTERNAL "Dawn configuration types" FORCE)
 
 # Dawn options for more,
 # see https://dawn.googlesource.com/dawn/+/refs/heads/main/CMakeLists.txt
@@ -98,11 +96,18 @@ add_library(gpu STATIC ${GPU_SOURCES} ${GPU_HEADERS})
 target_include_directories(gpu PUBLIC "${PROJECT_ROOT}")
 target_include_directories(gpu PUBLIC "${PROJECT_ROOT}/third_party/headers")
 
-# Find the monolithic library for Dawn
-find_library(WEBGPU_DAWN_MONOLITHIC
+# find_library, windows adds extra folder
+if(MSVC)
+    find_library(WEBGPU_DAWN_MONOLITHIC
     NAMES webgpu_dawn
-    HINTS "${DAWN_INSTALL_PREFIX}/src/dawn/native/${CMAKE_BUILD_TYPE}"
-)
+    PATHS "${DAWN_INSTALL_PREFIX}/src/dawn/native/${CMAKE_BUILD_TYPE}"
+    )
+else()
+    find_library(WEBGPU_DAWN_MONOLITHIC
+    NAMES webgpu_dawn
+    PATHS "${DAWN_INSTALL_PREFIX}/src/dawn/native"
+    )
+endif()
 
 # Link the monolithic library
 target_link_libraries(gpu PRIVATE ${WEBGPU_DAWN_MONOLITHIC})
