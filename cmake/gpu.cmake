@@ -41,6 +41,8 @@ set(BUILD_SHARED_LIBS       OFF CACHE INTERNAL "Build shared libraries" FORCE)
 
 
 # Fetch Setup
+# Add a commit hash to pin the version of Dawn.
+# git fetch --depth=1 url <commit hash>
 FetchContent_Declare(
     dawn
     DOWNLOAD_COMMAND
