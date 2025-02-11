@@ -1,3 +1,5 @@
+# This only builds a shared lib, see cmake/example.cmake
+# and cmake/gpu.cmake for more details
 cmake_minimum_required(VERSION 3.28)
 project(gpu)
 
