@@ -149,11 +149,12 @@ int main(int argc, char **argv) {
 
     std::array<char, screen.size()> raster;
     for (size_t i = 0; i < screen.size(); ++i) {
-      size_t index =
-          std::min(sizeof(intensity) - 2,
-                   std::max(0ul, static_cast<size_t>(screen[i] *
-                                                     (sizeof(intensity) - 2))));
-      raster[i] = intensity[index];
+        // Convert all values to size_t to ensure proper type matching
+        const size_t intensity_max = sizeof(intensity) - 2;
+        const size_t scaled_value = static_cast<size_t>(screen[i] * intensity_max);
+        size_t index = std::min(intensity_max, 
+                               std::max(static_cast<size_t>(0), scaled_value));
+        raster[i] = intensity[index];
     }
 
     char buffer[(NROWS + 2) * (NCOLS + 2)];

@@ -1,17 +1,17 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with
                                       # LSP
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
 get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
 
 # Construct potential paths
-set(FILEPATH_CURRENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
-set(FILEPATH_PROJECT_ROOT "${PROJECT_ROOT}/${FILENAME}")
+set(FILEPATH_CURRENT_DIR "${DIRECTORY}/")
+set(FILEPATH_PROJECT_ROOT "${PROJECT_ROOT}/")
 
 # Include file finding utility script
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_gpu.cmake")
+include("${FILEPATH_PROJECT_ROOT}/cmake/find_gpu.cmake")
 
 # Check if the file exists in the current directory
 find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${FILENAME}
@@ -49,20 +49,19 @@ endif()
 
 if(NOT TARGET gpu)
     message(STATUS "GPU_LIB not found")
-    include("${TARGET_FILE_PATH}/cmake/webgpu.cmake")
     include("${TARGET_FILE_PATH}/cmake/gpu.cmake")
 endif()
-
 add_executable(${PROJECT_NAME} run.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE gpu)
-target_link_libraries(${PROJECT_NAME} PRIVATE wgpu)
-target_link_libraries(${PROJECT_NAME} PRIVATE webgpu)
+target_link_libraries(${PROJECT_NAME} PRIVATE ${WEBGPU_DAWN})
 
-if(WIN32)
-    # Ensure DLL is copied if on Windows
+if(MSVC)
+# Copy webgpu_dawn.dll to the build directory
     add_custom_command(
-        TARGET ${PROJECT_NAME}
-        POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${DLL_PATH}
-                $<TARGET_FILE_DIR:${PROJECT_NAME}>)
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+                ${DAWN_INSTALL_PREFIX}/${CMAKE_BUILD_TYPE}/webgpu_dawn.dll
+                $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
 endif()
+

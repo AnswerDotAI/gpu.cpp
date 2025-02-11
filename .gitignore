@@ -20,3 +20,6 @@ build
 .cache
 compile_commands.json
 
+# editor specific
+.vscode/*
+
