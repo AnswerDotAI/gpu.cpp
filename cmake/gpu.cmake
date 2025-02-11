@@ -100,7 +100,7 @@ target_include_directories(gpu PUBLIC "${PROJECT_ROOT}/third_party/headers")
 if(MSVC)
     find_library(WEBGPU_DAWN_MONOLITHIC
     NAMES webgpu_dawn
-    PATHS "${DAWN_INSTALL_PREFIX}/src/dawn/native/${CMAKE_BUILD_TYPE}"
+    HINTS "${DAWN_INSTALL_PREFIX}/src/dawn/native/${CMAKE_BUILD_TYPE}"
     REQUIRED
     )
 else()
