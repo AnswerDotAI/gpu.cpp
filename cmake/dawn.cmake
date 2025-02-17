@@ -8,34 +8,6 @@ if(EMSCRIPTEN)
     set(DAWN_BUILD_DIR "${DAWN_DIR}/build_web" CACHE INTERNAL "")
 endif()
 
-function(find_dawn_library)
-    if(MSVC)
-        find_library(WEBGPU_DAWN_DEBUG webgpu_dawn
-            NAMES webgpu_dawn
-            HINTS "${DAWN_BUILD_DIR}/src/dawn/native/Debug"
-        )
-        find_library(WEBGPU_DAWN_RELEASE webgpu_dawn
-            NAMES webgpu_dawn
-            HINTS "${DAWN_BUILD_DIR}/src/dawn/native/Release"
-        )
-    elseif(NOT EMSCRIPTEN AND NOT MSVC)
-        find_library(WEBGPU_DAWN_LIB
-            NAMES webgpu_dawn
-            PATHS "${DAWN_BUILD_DIR}/src/dawn/native"
-            REQUIRED
-        )
-    endif()
-    
-    # Set result variables in parent scope
-    set(DAWN_BUILD_FOUND ON PARENT_SCOPE)
-    if(MSVC)
-        set(WEBGPU_DAWN_DEBUG ${WEBGPU_DAWN_DEBUG} PARENT_SCOPE)
-        set(WEBGPU_DAWN_RELEASE ${WEBGPU_DAWN_RELEASE} PARENT_SCOPE)
-    else()
-        set(WEBGPU_DAWN_LIB ${WEBGPU_DAWN_LIB} PARENT_SCOPE)
-    endif()
-endfunction()
-
 # Enable find for no dawn rebuilds with flutter run
 set(ENABLE_DAWN_FIND OFF CACHE BOOL "Enable finding Dawn" FORCE)
 set(DAWN_BUILD_FOUND OFF CACHE BOOL "Dawn build found" FORCE)
