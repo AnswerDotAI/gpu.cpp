@@ -9,6 +9,7 @@
 #   or for emscripten
 #   emcmake cmake -S . -B ./build_web -DCMAKE_BUILD_TYPE=Release
 #   cmake --build build_web --config Release
+#   python3 -m http.server 8080 --d build_web
 
 if(NOT MSVC)
     set(CMAKE_CXX_STANDARD 17)
@@ -50,14 +51,13 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=_main,_malloc,_free,_memcpy \
         -sEXPORTED_RUNTIME_METHODS=ccall \
         -sUSE_GLFW=3 \
-        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=10000000 \
+        -sALLOW_MEMORY_GROWTH=1 \
         -sASYNCIFY \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_enum_tables.js \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_generated_struct_info.js \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_generated_sig_info.js \
         --js-library=${DAWN_DIR}/third_party/emdawnwebgpu/library_webgpu.js \
         --closure-args=--externs=${EMSCRIPTEN_DIR}/src/closure-externs/webgpu-externs.js \
-        -O3 \
     ")
 
 else()
