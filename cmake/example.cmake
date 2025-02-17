@@ -51,7 +51,7 @@ if(EMSCRIPTEN)
         -sEXPORTED_FUNCTIONS=_main,_malloc,_free,_memcpy \
         -sEXPORTED_RUNTIME_METHODS=ccall \
         -sUSE_GLFW=3 \
-        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=10000000 \
+        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB \
         -sASYNCIFY \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_enum_tables.js \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_generated_struct_info.js \
