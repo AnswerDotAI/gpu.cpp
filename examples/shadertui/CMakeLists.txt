@@ -1,3 +1,4 @@
+# Not working yet needs update with libs for emscripten
 cmake_minimum_required(VERSION 3.28)
 project(shadertui)
 

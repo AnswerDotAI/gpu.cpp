@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>@PROJECT_NAME@</title>
+  </head>
+  <body>
+    <!-- The generated JS file loads the WASM module -->
+    <script src="@PROJECT_NAME@.js"></script>
+    <script>
+      // When the Emscripten runtime is ready, call main.
+      if (typeof Module !== 'undefined') {
+        Module.onRuntimeInitialized = function() {
+          // Optionally, pass arguments to main in an array.
+          Module._main([]);
+        };
+      } else {
+        console.error('Module is undefined. Check that your generated JS file is loaded properly.');
+      }
+    </script>
+  </body>
+</html>

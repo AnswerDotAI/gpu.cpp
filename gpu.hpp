@@ -15,7 +15,7 @@
 #include <utility> // std::pair
 #include <vector>
 
-#include "webgpu/webgpu.h"
+#include "webgpu.h"
 
 #include "numeric_types/half.hpp"
 #include "utils/logging.hpp"
@@ -910,6 +910,7 @@ inline Context createContext(
 
     // If the device was created, set up logging and fetch the queue
     if (devData.status == WGPURequestDeviceStatus_Success) {
+      #ifndef __EMSCRIPTEN__
       WGPULoggingCallbackInfo loggingCallbackInfo {
         .nextInChain = nullptr,
         .callback =
@@ -925,6 +926,7 @@ inline Context createContext(
         .userdata2 = nullptr
       };
       wgpuDeviceSetLoggingCallback(ctx.device, loggingCallbackInfo);
+      #endif
       ctx.queue = wgpuDeviceGetQueue(ctx.device);
     }
   }
@@ -1206,7 +1208,7 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size) {
   }
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
   wgpuCommandBufferRelease(op.commandBuffer);
-  CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
+  CallbackData callbackData = {op.readbackBuffer, static_cast<size_t>(bufferSize), data, &op.promise,
                                &op.future};
 
   WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {

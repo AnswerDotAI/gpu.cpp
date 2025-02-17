@@ -20,6 +20,7 @@ if(DEBUG)
     set(CMAKE_CXX_FLAGS "-O0 -g")
 endif()
 
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dawn.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/gpu.cmake")
 
 add_library(gpud SHARED gpu.hpp)
