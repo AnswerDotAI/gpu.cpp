@@ -38,12 +38,14 @@ int main(int argc, char **argv) {
   Tensor output = createTensor(ctx, Shape{N}, kf32);
   std::promise<void> promise;
   std::future<void> future = promise.get_future();
-  Kernel op = createKernel(ctx, {kGelu, 256, kf32},
+  std::future<Kernel> kernelFuture = createKernel(ctx, {kGelu, 256, kf32},
                            Bindings{input, output},
                            {cdiv(N, 256), 1, 1});
-  dispatchKernel(ctx, op, promise);
-  wait(ctx, future);
-  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  Kernel op = waitForFuture(ctx.instance, kernelFuture);
+  std::future<void> dispatchFuture = dispatchKernel(ctx, op);
+  waitForFuture(ctx.instance, dispatchFuture);
+  std::future<void> cpuFuture = toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  waitForFuture(ctx.instance, cpuFuture);
   for (int i = 0; i < 12; ++i) {
     printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }
