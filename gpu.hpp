@@ -807,11 +807,10 @@ inline void check(bool condition, const char *message,
  *
  * @code
  * std::future<WGPUDevice> deviceFuture = requestDeviceAsync(adapter,
- * devDescriptor); WGPUDevice device = waitForFuture(instance, deviceFuture);
+ * devDescriptor); WGPUDevice device = wait(instance, deviceFuture);
  * @endcode
  */
-template <typename T>
-T waitForFuture(WGPUInstance instance, std::future<T> &f) {
+template <typename T> T wait(Context &ctx, std::future<T> &f) {
 #ifdef __EMSCRIPTEN__
   // Poll until the future is ready.
   while (f.wait_for(std::chrono::milliseconds(0)) !=
@@ -823,7 +822,7 @@ T waitForFuture(WGPUInstance instance, std::future<T> &f) {
 #else
   while (f.wait_for(std::chrono::milliseconds(0)) !=
          std::future_status::ready) {
-    wgpuInstanceProcessEvents(instance);
+    wgpuInstanceProcessEvents(ctx.instance);
   }
   return f.get();
 #endif
@@ -832,12 +831,15 @@ T waitForFuture(WGPUInstance instance, std::future<T> &f) {
 // Context Callbacks & Helpers
 
 /**
- * @brief Waits for the provided std::future<T> to become ready by polling its status.
+ * @brief Waits for the provided std::future<T> to become ready by polling its
+ * status.
  *
- * This helper template function continuously checks the status of the provided std::future<T> until it is ready.
- * On Emscripten builds, it yields control to the JavaScript event loop using emscripten_sleep(1) for smooth asynchronous behavior.
- * On non-Emscripten platforms, it sleeps for a short duration (10 milliseconds) between checks.
- * Once the future is ready, its value is returned.
+ * This helper template function continuously checks the status of the provided
+ * std::future<T> until it is ready. On Emscripten builds, it yields control to
+ * the JavaScript event loop using emscripten_sleep(1) for smooth asynchronous
+ * behavior. On non-Emscripten platforms, it sleeps for a short duration (10
+ * milliseconds) between checks. Once the future is ready, its value is
+ * returned.
  *
  * @tparam T The type of the value contained in the future.
  * @param f The future to wait on.
@@ -849,20 +851,20 @@ T waitForFuture(WGPUInstance instance, std::future<T> &f) {
  * @endcode
  */
 template <typename T> T waitForContextFuture(std::future<T> &f) {
-  #ifdef __EMSCRIPTEN__
-    while (f.wait_for(std::chrono::milliseconds(0)) !=
-           std::future_status::ready) {
-      emscripten_sleep(1); // Yield back to the JS event loop.
-    }
-    return f.get();
-  #else
-    while (f.wait_for(std::chrono::milliseconds(0)) !=
-           std::future_status::ready) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    return f.get();
-  #endif
+#ifdef __EMSCRIPTEN__
+  while (f.wait_for(std::chrono::milliseconds(0)) !=
+         std::future_status::ready) {
+    emscripten_sleep(1); // Yield back to the JS event loop.
   }
+  return f.get();
+#else
+  while (f.wait_for(std::chrono::milliseconds(0)) !=
+         std::future_status::ready) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return f.get();
+#endif
+}
 
 /**
  * @brief Adapter callback function invoked upon completion of an asynchronous
@@ -1013,9 +1015,9 @@ requestDeviceAsync(WGPUAdapter adapter,
  *
  */
 inline std::future<Context>
-createContext(const WGPUInstanceDescriptor &desc = {},
-              const WGPURequestAdapterOptions &adapterOpts = {},
-              const WGPUDeviceDescriptor &devDescriptor = {}) {
+createContextAsync(const WGPUInstanceDescriptor &desc = {},
+                   const WGPURequestAdapterOptions &adapterOpts = {},
+                   const WGPUDeviceDescriptor &devDescriptor = {}) {
 
   auto promise = std::make_shared<std::promise<Context>>();
 
@@ -1030,7 +1032,7 @@ createContext(const WGPUInstanceDescriptor &desc = {},
   }
   try {
     auto adapterFuture = requestAdapterAsync(ctx.instance, adapterOpts);
-    ctx.adapter = waitForFuture(ctx.instance, adapterFuture);
+    ctx.adapter = wait(ctx, adapterFuture);
     ctx.adapterStatus = WGPURequestAdapterStatus_Success;
   } catch (const std::exception &ex) {
     promise->set_exception(std::make_exception_ptr(ex));
@@ -1038,7 +1040,7 @@ createContext(const WGPUInstanceDescriptor &desc = {},
   }
   try {
     auto deviceFuture = requestDeviceAsync(ctx.adapter, devDescriptor);
-    ctx.device = waitForFuture(ctx.instance, deviceFuture);
+    ctx.device = wait(ctx, deviceFuture);
     ctx.deviceStatus = WGPURequestDeviceStatus_Success;
   } catch (const std::exception &ex) {
     promise->set_exception(std::make_exception_ptr(ex));
@@ -1053,10 +1055,11 @@ createContext(const WGPUInstanceDescriptor &desc = {},
 /**
  * @brief Synchronously waits for and returns the created GPU context.
  *
- * This function invokes the asynchronous createContext() factory function to create a GPU
- * context, then waits for its completion using waitForContextFuture. The returned Context
- * holds handles to the WebGPU instance, adapter, device, and queue, and is used for subsequent
- * GPU operations.
+ * This function invokes the asynchronous createContext() factory function to
+ * create a GPU context, then waits for its completion using
+ * waitForContextFuture. The returned Context holds handles to the WebGPU
+ * instance, adapter, device, and queue, and is used for subsequent GPU
+ * operations.
  *
  * @return Context The fully initialized GPU context.
  *
@@ -1065,8 +1068,11 @@ createContext(const WGPUInstanceDescriptor &desc = {},
  * // Now ctx can be used for GPU operations.
  * @endcode
  */
-inline Context waitForContext() {
-  std::future<Context> contextFuture = createContext();
+inline Context createContext(const WGPUInstanceDescriptor &desc = {},
+                             const WGPURequestAdapterOptions &adapterOpts = {},
+                             const WGPUDeviceDescriptor &devDescriptor = {}) {
+  std::future<Context> contextFuture =
+      createContextAsync(desc, adapterOpts, devDescriptor);
   return waitForContextFuture<Context>(contextFuture);
 }
 
@@ -1294,8 +1300,8 @@ inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
  * toCPU(ctx, tensor, data, bufferSize);
  * @endcode
  */
-inline std::future<void> toCPU(Context &ctx, Tensor &tensor, void *data,
-                               size_t bufferSize, CopyData &op) {
+inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
+                                    size_t bufferSize, CopyData &op) {
   // Submit the command buffer and release it.
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
   wgpuCommandBufferRelease(op.commandBuffer);
@@ -1340,8 +1346,8 @@ inline std::future<void> toCPU(Context &ctx, Tensor &tensor, void *data,
  * @param[in] bufferSize Size of the data buffer in bytes
  * @param[out] data Pointer to the CPU memory to copy the data to
  */
-inline std::future<void> toCPU(Context &ctx, Tensor &tensor, void *data,
-                               size_t bufferSize) {
+inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
+                                    size_t bufferSize) {
   // Create a promise that will later be satisfied when the async copy
   // completes.
   auto promise = std::make_shared<std::promise<void>>();
@@ -1395,26 +1401,8 @@ inline std::future<void> toCPU(Context &ctx, Tensor &tensor, void *data,
   return promise->get_future();
 }
 
-/**
- * @brief Overload of the toCPU function to copy data from a GPU buffer to CPU
- * memory for an array of floats instead of a pointer to a float buffer.
- * @param[in] ctx Context instance to manage the operation
- * @param[in] tensor Tensor instance representing the GPU buffer to copy from
- * @param[out] data Array of floats to copy the data to
- *
- * @code
- * std::future<void> toCPUFuture = toCPU(ctx, tensor, data);
- * WaitForFuture(ctx.instance, toCPUFuture);
- * @endcode
- */
-template <size_t N>
-inline std::future<void> toCPU(Context &ctx, Tensor &tensor,
-                               std::array<float, N> &data) {
-  return toCPU(ctx, tensor, data.data(), sizeof(data));
-}
-
-inline std::future<void> toCPU(Context &ctx, WGPUBuffer buffer, void *data,
-                               size_t size) {
+inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
+                                    size_t size) {
   // The size (in bytes) for the copy.
   uint64_t bufferSize = size;
 
@@ -1471,6 +1459,92 @@ inline std::future<void> toCPU(Context &ctx, WGPUBuffer buffer, void *data,
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
 
   return promise->get_future();
+}
+
+/**
+ * @brief Overload of the toCPU function to copy data from a GPU buffer to CPU
+ * memory for an array of floats instead of a pointer to a float buffer.
+ * @param[in] ctx Context instance to manage the operation
+ * @param[in] tensor Tensor instance representing the GPU buffer to copy from
+ * @param[out] data Array of floats to copy the data to
+ *
+ * @code
+ * std::future<void> toCPUFuture = toCPU(ctx, tensor, data);
+ * wait(ctx, toCPUFuture);
+ * @endcode
+ */
+template <size_t N>
+inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor,
+                                    std::array<float, N> &data) {
+  return toCPUAsync(ctx, tensor, data.data(), sizeof(data));
+}
+
+/**
+ * @brief Synchronous wrapper for copying from a Tensor GPU buffer to CPU
+ * memory.
+ *
+ * This function synchronously waits for the asynchronous copy operation to
+ * complete, ensuring that the data is fully transferred from the GPU buffer to
+ * the CPU memory before returning.
+ *
+ * @param ctx Context instance to manage the operation
+ * @param tensor Tensor instance representing the GPU buffer to copy from
+ * @param data Pointer to the CPU memory to copy the data to
+ * @param bufferSize Size of the data buffer in bytes
+ * @param instance WGPUInstance used for processing events during waiting
+ *
+ * @code
+ * toCPU(ctx, tensor, data, bufferSize, instance);
+ * @endcode
+ */
+inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
+  auto future = toCPUAsync(ctx, tensor, data, bufferSize);
+  wait(ctx, future);
+}
+
+/**
+ * @brief Synchronous wrapper for copying from a GPU buffer to CPU memory.
+ *
+ * This function synchronously waits for the asynchronous copy operation to
+ * complete, ensuring that the data is fully transferred from the GPU buffer to
+ * the CPU memory before returning.
+ *
+ * @param ctx Context instance to manage the operation
+ * @param buffer WGPUBuffer instance representing the GPU buffer to copy from
+ * @param data Pointer to the CPU memory to copy the data to
+ * @param size Size of the data buffer in bytes
+ * @param instance WGPUInstance used for processing events during waiting
+ *
+ * @code
+ * toCPU(ctx, buffer, data, size, instance);
+ * @endcode
+ */
+inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size) {
+  auto future = toCPUAsync(ctx, buffer, data, size);
+  wait(ctx, future);
+}
+
+/**
+ * @brief Synchronous wrapper for copying from a Tensor GPU buffer to CPU
+ * memory for an array of floats instead of a pointer to a float buffer.
+ *
+ * This function synchronously waits for the asynchronous copy operation to
+ * complete, ensuring that the data is fully transferred from the GPU buffer to
+ * the CPU memory before returning.
+ *
+ * @param ctx Context instance to manage the operation
+ * @param tensor Tensor instance representing the GPU buffer to copy from
+ * @param data Array of floats to copy the data to
+ * @param instance WGPUInstance used for processing events during waiting
+ *
+ * @code
+ * toCPU(ctx, tensor, data, instance);
+ * @endcode
+ */
+template <size_t N>
+inline void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data) {
+  auto future = toCPUAsync(ctx, tensor, data);
+  wait(ctx, future);
 }
 
 /**
@@ -1617,9 +1691,9 @@ struct CompData {
 };
 
 /**
- * @brief A factory function to create a kernel on the GPU. The kernel is
- * created with the given WGSL code, input tensors, output tensor, and
- * optional parameters.
+ * @brief A factory function to create a kernel asynchronously on the GPU.
+ * The kernel is created with the given WGSL code, input tensors,
+ * output tensor, and optional parameters.
  *
  * Note that the values of the input tensors are not used here, only the
  * reference handles to the underlying buffers as well as the size of the
@@ -1639,18 +1713,19 @@ struct CompData {
  * @return Kernel instance representing the created kernel
  *
  * @code
- * std::future<Kernel> kernelFuture = createKernel(ctx, code, dataBindings,
+ * std::future<Kernel> kernelFuture = createKernelAsync(ctx, code, dataBindings,
  numInputs, output, nThreads, params, paramsSize);
- * Kernel kernel = WaitForFuture(ctx.instance, kernelFuture);
+ * Kernel kernel = wait(ctx.instance, kernelFuture);
  * @endcode
 
  */
 inline std::future<Kernel>
-createKernel(Context &ctx, const KernelCode &code, const Tensor *dataBindings,
-             size_t numTensors, const size_t *viewOffsets,
-             const Shape &totalWorkgroups, const void *params = nullptr,
-             size_t paramsSize = 0, CompilationInfo *compilationInfo = nullptr,
-             const char *cacheKey = nullptr) {
+createKernelAsync(Context &ctx, const KernelCode &code,
+                  const Tensor *dataBindings, size_t numTensors,
+                  const size_t *viewOffsets, const Shape &totalWorkgroups,
+                  const void *params = nullptr, size_t paramsSize = 0,
+                  CompilationInfo *compilationInfo = nullptr,
+                  const char *cacheKey = nullptr) {
   // Create a cache key by the pointer values of the data bindings and the
   // kernel code
   if (cacheKey != nullptr &&
@@ -1818,7 +1893,7 @@ createKernel(Context &ctx, const KernelCode &code, const Tensor *dataBindings,
 
     // Register callback and then wait for the result.
     wgpuShaderModuleGetCompilationInfo(shaderModule, compilationCallbackInfo);
-    waitForFuture(ctx.instance, compFuture);
+    wait(ctx, compFuture);
   }
 
   // Now create the compute pipeline using the shader module.
@@ -1840,6 +1915,123 @@ createKernel(Context &ctx, const KernelCode &code, const Tensor *dataBindings,
 
   outerPromise.set_value(op);
   return outerFuture;
+}
+
+/*
+ * @brief Overload which wraps the createKernelAsync factory function to create
+ * a kernel on the GPU. This overload uses takes a pointer and size for the
+ * input tensors instead of a static collection and a void pointer for params
+ * instead of a static type.
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] code WGSL code for the kernel
+ * @param[in] dataBindings Pointer to a span of tensors bound to the kernel
+ * @param[in] numTensors Number of tensors in the dataBindings span
+ * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be
+ * a Shape of rank == 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does
+ * not have any parameters, use NoParam.
+ * @return Kernel instance representing the created kernel
+ *
+ * @code
+ * std::future<Kernel> kernelFuture = createKernel(ctx, code, tensorData,
+ * output,totalWorkgroups, params); Kernel kernel = wait(ctx.instance,
+ * kernelFuture);
+ * @endcode
+ */
+inline Kernel createKernel(Context &ctx, const KernelCode &code,
+                           const Tensor *dataBindings, size_t numTensors,
+                           const size_t *viewOffsets,
+                           const Shape &totalWorkgroups,
+                           const void *params = nullptr, size_t paramsSize = 0,
+                           CompilationInfo *compilationInfo = nullptr,
+                           const char *cacheKey = nullptr) {
+  std::future<Kernel> kernelFuture = createKernelAsync(
+      ctx, code, dataBindings, numTensors, viewOffsets, totalWorkgroups, params,
+      paramsSize, compilationInfo, cacheKey);
+  return wait(ctx, kernelFuture);
+}
+
+/**
+ * @brief Overload which wraps the createKernelAsync factory function to create
+ * a kernel asynchronously on the GPU. This overload uses takes a static
+ * collection of input tensors instead of a pointer and a statically determined
+ * ParamsType instead of casting params to a void pointer.
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] code WGSL code for the kernel
+ * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
+ * to the kernel as inputs and outputs.
+ * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be
+ * a Shape of rank == 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does
+ * not have any parameters, use NoParam.
+ * @return Kernel instance representing the created kernel
+ *
+ * @code
+ * std::future<Kernel> kernelFuture = createKernel(ctx, code, tensorData,
+ * output,totalWorkgroups, params); Kernel kernel = wait(ctx.instance,
+ * kernelFuture);
+ * @endcode
+ */
+template <typename ParamsType = NoParam, size_t numInputs>
+std::future<Kernel>
+createKernelAsync(Context &ctx, const KernelCode &code,
+                  const Bindings<numInputs> &dataBindings,
+                  const Shape &totalWorkgroups,
+                  const ParamsType &params = ParamsType{},
+                  CompilationInfo *compilationInfo = nullptr,
+                  const char *cacheKey = nullptr) {
+  if constexpr (!IsNoParam<ParamsType>) {
+    return createKernelAsync(ctx, code, dataBindings.data.data(), numInputs,
+                             dataBindings.viewOffsets.data(), totalWorkgroups,
+                             reinterpret_cast<const void *>(&params),
+                             sizeof(ParamsType), compilationInfo, cacheKey);
+  } else {
+    return createKernelAsync(ctx, code, dataBindings.data.data(), numInputs,
+                             dataBindings.viewOffsets.data(), totalWorkgroups,
+                             nullptr, 0, compilationInfo, cacheKey);
+  }
+}
+
+/**
+ * @brief Overload which wraps the createKernel factory function to create a
+ * kernel on the GPU. This overload uses takes a static collection of input
+ * tensors instead of a pointer and a statically determined ParamsType instead
+ * of casting params to a void pointer.
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] code WGSL code for the kernel
+ * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
+ * to the kernel as inputs and outputs.
+ * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be
+ * a Shape of rank == 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does
+ * not have any parameters, use NoParam.
+ * @return Kernel instance representing the created kernel
+ *
+ * @code
+ * Kernel kernel = createKernel(ctx, code, tensorData, output,totalWorkgroups,
+ * params);
+ * @endcode
+ */
+template <typename ParamsType = NoParam, size_t numInputs>
+Kernel createKernel(Context &ctx, const KernelCode &code,
+                    const Bindings<numInputs> &dataBindings,
+                    const Shape &totalWorkgroups,
+                    const ParamsType &params = ParamsType{},
+                    CompilationInfo *compilationInfo = nullptr,
+                    const char *cacheKey = nullptr) {
+  if constexpr (!IsNoParam<ParamsType>) {
+    return createKernel(ctx, code, dataBindings.data.data(), numInputs,
+                        dataBindings.viewOffsets.data(), totalWorkgroups,
+                        reinterpret_cast<const void *>(&params),
+                        sizeof(ParamsType), compilationInfo, cacheKey);
+  } else {
+    return createKernel(ctx, code, dataBindings.data.data(), numInputs,
+                        dataBindings.viewOffsets.data(), totalWorkgroups,
+                        nullptr, 0, compilationInfo, cacheKey);
+  }
 }
 
 /**
@@ -1874,47 +2066,6 @@ inline void dispatchKernelCallback(WGPUQueueWorkDoneStatus status,
 }
 
 /**
- * @brief Overload which wraps the createKernel factory function to create a
- * kernel on the GPU. This overload uses takes a static collection of input
- * tensors instead of a pointer and a statically determined ParamsType instead
- * of casting params to a void pointer.
- *
- * @param[in] ctx Context instance to manage the kernel
- * @param[in] code WGSL code for the kernel
- * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
- * to the kernel as inputs and outputs.
- * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be
- * a Shape of rank == 3.
- * @param[in] params Optional parameters for the kernel. If the kernel does
- * not have any parameters, use NoParam.
- * @return Kernel instance representing the created kernel
- *
- * @code
- * std::future<Kernel> kernelFuture = createKernel(ctx, code, tensorData,
- * output,totalWorkgroups, params); Kernel kernel = WaitForFuture(ctx.instance,
- * kernelFuture);
- * @endcode
- */
-template <typename ParamsType = NoParam, size_t numInputs>
-std::future<Kernel> createKernel(Context &ctx, const KernelCode &code,
-                                 const Bindings<numInputs> &dataBindings,
-                                 const Shape &totalWorkgroups,
-                                 const ParamsType &params = ParamsType{},
-                                 CompilationInfo *compilationInfo = nullptr,
-                                 const char *cacheKey = nullptr) {
-  if constexpr (!IsNoParam<ParamsType>) {
-    return createKernel(ctx, code, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), totalWorkgroups,
-                        reinterpret_cast<const void *>(&params),
-                        sizeof(ParamsType), compilationInfo, cacheKey);
-  } else {
-    return createKernel(ctx, code, dataBindings.data.data(), numInputs,
-                        dataBindings.viewOffsets.data(), totalWorkgroups,
-                        nullptr, 0, compilationInfo, cacheKey);
-  }
-}
-
-/**
  * @brief Asynchronously submits a kernel to the GPU queue for execution.
  * It also sets up a callback to notify when the kernel has finished executing
  * by setting the value of the promise in the kernel instance argument.
@@ -1930,10 +2081,10 @@ std::future<Kernel> createKernel(Context &ctx, const KernelCode &code,
  *
  * @code
  * std::future<void> dispatchFuture = dispatchKernel(ctx, kernel);
- * WaitForFuture(ctx.instance, dispatchFuture);
+ * wait(ctx.instance, dispatchFuture);
  * @endcode
  */
-inline std::future<void> dispatchKernel(Context &ctx, Kernel &kernel) {
+inline std::future<void> dispatchKernelAsync(Context &ctx, Kernel &kernel) {
   // If the kernel was used before, reset the command buffer.
   if (kernel->used) {
     resetCommandBuffer(ctx.device, kernel);
@@ -1960,6 +2111,23 @@ inline std::future<void> dispatchKernel(Context &ctx, Kernel &kernel) {
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
 
   return future;
+}
+
+/**
+ * @brief Synchronous wrapper for dispatchKernelAsync. This function submits
+ * the kernel to the GPU queue and waits for it to finish executing.
+ *
+ * @param[in] ctx Context instance to manage the kernel, from which the queue
+ * for the GPU is obtained
+ * @param[in] kernel Kernel instance to dispatch
+ *
+ * @code
+ * dispatchKernel(ctx, kernel);
+ * @endcode
+ */
+inline void dispatchKernel(Context &ctx, Kernel &kernel) {
+  auto future = dispatchKernelAsync(ctx, kernel);
+  wait(ctx, future);
 }
 
 } // namespace gpu

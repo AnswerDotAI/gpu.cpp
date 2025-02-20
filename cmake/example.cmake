@@ -54,7 +54,6 @@ if(EMSCRIPTEN)
         -sUSE_GLFW=3 \
         -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=15MB \
         -sASYNCIFY \
-        -sASYNCIFY_DEBUG \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_enum_tables.js \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_generated_struct_info.js \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_generated_sig_info.js \

@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
   printf("--------------\n\n");
 
   // std::unique_ptr<Context> ctx = createContext();
-  Context ctx = waitForContext();
+  Context ctx = createContext();
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
@@ -36,14 +36,11 @@ int main(int argc, char **argv) {
   }
   Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = createTensor(ctx, Shape{N}, kf32);
-  std::future<Kernel> kernelFuture = createKernel(ctx, {kGelu, 256, kf32},
+  Kernel op = createKernel(ctx, {kGelu, 256, kf32},
                            Bindings{input, output},
                            {cdiv(N, 256), 1, 1});
-  Kernel op = waitForFuture(ctx.instance, kernelFuture);
-  std::future<void> dispatchFuture = dispatchKernel(ctx, op);
-  waitForFuture(ctx.instance, dispatchFuture);
-  std::future<void> cpuFuture = toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
-  waitForFuture(ctx.instance, cpuFuture);
+  dispatchKernel(ctx, op);
+  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   for (int i = 0; i < 12; ++i) {
     printf("  gelu(%.2f) = %.2f\n", inputArr[i], outputArr[i]);
   }
