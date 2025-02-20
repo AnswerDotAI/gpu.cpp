@@ -793,10 +793,11 @@ inline void check(bool condition, const char *message,
 /**
  * @brief Pumps events until the provided future is ready.
  *
- * This helper template function continuously checks the status of the provided std::future<T>
- * until it becomes ready. On Emscripten builds, it yields control to the JavaScript event loop
- * using emscripten_sleep to allow asynchronous callbacks to execute. On other platforms, it
- * processes events from the given WGPUInstance using wgpuInstanceProcessEvents. Once the future
+ * This helper template function continuously checks the status of the provided
+ * std::future<T> until it becomes ready. On Emscripten builds, it yields
+ * control to the JavaScript event loop using emscripten_sleep to allow
+ * asynchronous callbacks to execute. On other platforms, it processes events
+ * from the given WGPUInstance using wgpuInstanceProcessEvents. Once the future
  * is ready, its value is returned.
  *
  * @tparam T The type of the value contained in the future.
@@ -805,8 +806,8 @@ inline void check(bool condition, const char *message,
  * @return T The value retrieved from the ready future.
  *
  * @code
- * std::future<WGPUDevice> deviceFuture = requestDeviceAsync(adapter, devDescriptor);
- * WGPUDevice device = waitForFuture(instance, deviceFuture);
+ * std::future<WGPUDevice> deviceFuture = requestDeviceAsync(adapter,
+ * devDescriptor); WGPUDevice device = waitForFuture(instance, deviceFuture);
  * @endcode
  */
 template <typename T>
@@ -831,17 +832,56 @@ T waitForFuture(WGPUInstance instance, std::future<T> &f) {
 // Context Callbacks & Helpers
 
 /**
- * @brief Adapter callback function invoked upon completion of an asynchronous WebGPU adapter request.
+ * @brief Waits for the provided std::future<T> to become ready by polling its status.
  *
- * This callback is triggered when the request for a WebGPU adapter completes. It verifies whether
- * the adapter was successfully obtained. On failure, it logs an error message (in Emscripten builds)
- * and sets an exception on the associated promise. On success, it sets the value of the promise with
- * the obtained adapter. Finally, it frees the allocated memory for the promise pointer.
+ * This helper template function continuously checks the status of the provided std::future<T> until it is ready.
+ * On Emscripten builds, it yields control to the JavaScript event loop using emscripten_sleep(1) for smooth asynchronous behavior.
+ * On non-Emscripten platforms, it sleeps for a short duration (10 milliseconds) between checks.
+ * Once the future is ready, its value is returned.
  *
- * @param status The status of the adapter request. Expected to be WGPURequestAdapterStatus_Success on success.
+ * @tparam T The type of the value contained in the future.
+ * @param f The future to wait on.
+ * @return T The value retrieved from the ready future.
+ *
+ * @code
+ * std::future<Context> contextFuture = createContext();
+ * Context ctx = waitForContextFuture(contextFuture);
+ * @endcode
+ */
+template <typename T> T waitForContextFuture(std::future<T> &f) {
+  #ifdef __EMSCRIPTEN__
+    while (f.wait_for(std::chrono::milliseconds(0)) !=
+           std::future_status::ready) {
+      emscripten_sleep(1); // Yield back to the JS event loop.
+    }
+    return f.get();
+  #else
+    while (f.wait_for(std::chrono::milliseconds(0)) !=
+           std::future_status::ready) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return f.get();
+  #endif
+  }
+
+/**
+ * @brief Adapter callback function invoked upon completion of an asynchronous
+ * WebGPU adapter request.
+ *
+ * This callback is triggered when the request for a WebGPU adapter completes.
+ * It verifies whether the adapter was successfully obtained. On failure, it
+ * logs an error message (in Emscripten builds) and sets an exception on the
+ * associated promise. On success, it sets the value of the promise with the
+ * obtained adapter. Finally, it frees the allocated memory for the promise
+ * pointer.
+ *
+ * @param status The status of the adapter request. Expected to be
+ * WGPURequestAdapterStatus_Success on success.
  * @param adapter The WGPUAdapter obtained on a successful request.
- * @param message A string view containing additional information about the adapter request.
- * @param userdata1 A pointer to a heap-allocated std::shared_ptr<std::promise<WGPUAdapter>>.
+ * @param message A string view containing additional information about the
+ * adapter request.
+ * @param userdata1 A pointer to a heap-allocated
+ * std::shared_ptr<std::promise<WGPUAdapter>>.
  * @param userdata2 Unused.
  */
 inline void adapterCallback(WGPURequestAdapterStatus status,
@@ -864,17 +904,22 @@ inline void adapterCallback(WGPURequestAdapterStatus status,
 }
 
 /**
- * @brief Callback function invoked upon completion of an asynchronous WebGPU device request.
+ * @brief Callback function invoked upon completion of an asynchronous WebGPU
+ * device request.
  *
- * This callback is triggered when the request for a WebGPU device completes. It verifies that
- * the device was successfully created. On success, the callback sets the value of the associated
- * promise; otherwise, it sets an exception. After fulfilling the promise, it frees the allocated
- * memory for the promise pointer.
+ * This callback is triggered when the request for a WebGPU device completes. It
+ * verifies that the device was successfully created. On success, the callback
+ * sets the value of the associated promise; otherwise, it sets an exception.
+ * After fulfilling the promise, it frees the allocated memory for the promise
+ * pointer.
  *
- * @param status The status of the device request. Expected to be WGPURequestDeviceStatus_Success on success.
+ * @param status The status of the device request. Expected to be
+ * WGPURequestDeviceStatus_Success on success.
  * @param device The WGPUDevice obtained on successful request.
- * @param message A string view containing additional information about the device request.
- * @param userdata1 A pointer to a heap-allocated std::shared_ptr<std::promise<WGPUDevice>>.
+ * @param message A string view containing additional information about the
+ * device request.
+ * @param userdata1 A pointer to a heap-allocated
+ * std::shared_ptr<std::promise<WGPUDevice>>.
  * @param userdata2 Unused.
  */
 inline void deviceCallback(WGPURequestDeviceStatus status, WGPUDevice device,
@@ -897,13 +942,14 @@ inline void deviceCallback(WGPURequestDeviceStatus status, WGPUDevice device,
 /**
  * @brief Asynchronously requests a WebGPU adapter from the given instance.
  *
- * This helper function wraps the asynchronous call to request an adapter using the WebGPU API.
- * It sets up a promise and registers an adapter callback, returning a future that will eventually
- * hold the requested WGPUAdapter.
+ * This helper function wraps the asynchronous call to request an adapter using
+ * the WebGPU API. It sets up a promise and registers an adapter callback,
+ * returning a future that will eventually hold the requested WGPUAdapter.
  *
  * @param instance The WGPUInstance from which to request the adapter.
  * @param adapterOpts The options for requesting the adapter.
- * @return std::future<WGPUAdapter> A future that will eventually hold the created WGPUAdapter.
+ * @return std::future<WGPUAdapter> A future that will eventually hold the
+ * created WGPUAdapter.
  */
 inline std::future<WGPUAdapter>
 requestAdapterAsync(WGPUInstance instance,
@@ -923,13 +969,15 @@ requestAdapterAsync(WGPUInstance instance,
 /**
  * @brief Asynchronously requests a WebGPU device from a given adapter.
  *
- * This helper function wraps the asynchronous call to request a device using the WebGPU API.
- * It sets up a promise and registers a device callback, returning a future that will be fulfilled
- * once the device is available.
+ * This helper function wraps the asynchronous call to request a device using
+ * the WebGPU API. It sets up a promise and registers a device callback,
+ * returning a future that will be fulfilled once the device is available.
  *
  * @param adapter The WGPUAdapter to request the device from.
- * @param devDescriptor The descriptor specifying the characteristics of the requested device.
- * @return std::future<WGPUDevice> A future that will eventually hold the created WGPUDevice.
+ * @param devDescriptor The descriptor specifying the characteristics of the
+ * requested device.
+ * @return std::future<WGPUDevice> A future that will eventually hold the
+ * created WGPUDevice.
  */
 inline std::future<WGPUDevice>
 requestDeviceAsync(WGPUAdapter adapter,
@@ -964,60 +1012,62 @@ requestDeviceAsync(WGPUAdapter adapter,
  * @return Context instance representing the created GPU context
  *
  */
-inline Context createContext(const WGPUInstanceDescriptor &desc = {},
-                             const WGPURequestAdapterOptions &adapterOpts = {},
-                             const WGPUDeviceDescriptor &devDescriptor = {}) {
-  Context ctx; // Stack-allocated Context.
+inline std::future<Context>
+createContext(const WGPUInstanceDescriptor &desc = {},
+              const WGPURequestAdapterOptions &adapterOpts = {},
+              const WGPUDeviceDescriptor &devDescriptor = {}) {
 
-#ifdef __EMSCRIPTEN__
-  ctx.instance = wgpuCreateInstance(nullptr);
-#else
+  auto promise = std::make_shared<std::promise<Context>>();
+
+  // On native platforms, run our context creation in a detached thread.
+
+  Context ctx;
   ctx.instance = wgpuCreateInstance(&desc);
-#endif
-  check(ctx.instance, "Initialize WebGPU", __FILE__, __LINE__);
-
-  // Request the adapter asynchronously.
-  LOG(kDefLog, kTrace, "Requesting adapter");
+  if (!ctx.instance) {
+    promise->set_exception(std::make_exception_ptr(
+        std::runtime_error("Failed to create WebGPU instance.")));
+    return promise->get_future();
+  }
   try {
     auto adapterFuture = requestAdapterAsync(ctx.instance, adapterOpts);
-    // Pump events until the adapter future is ready.
     ctx.adapter = waitForFuture(ctx.instance, adapterFuture);
     ctx.adapterStatus = WGPURequestAdapterStatus_Success;
   } catch (const std::exception &ex) {
-    check(false, ex.what(), __FILE__, __LINE__);
+    promise->set_exception(std::make_exception_ptr(ex));
+    return promise->get_future();
   }
-
-  // Request the device asynchronously.
-  LOG(kDefLog, kTrace, "Requesting device");
   try {
     auto deviceFuture = requestDeviceAsync(ctx.adapter, devDescriptor);
-    // Pump events until the device future is ready.
     ctx.device = waitForFuture(ctx.instance, deviceFuture);
     ctx.deviceStatus = WGPURequestDeviceStatus_Success;
-    LOG(kDefLog, kTrace, "Device request ended");
-
-    // If the device was created, set up logging and fetch the queue.
-#ifndef __EMSCRIPTEN__
-    WGPULoggingCallbackInfo loggingCallbackInfo{
-        .nextInChain = nullptr,
-        .callback =
-            [](WGPULoggingType type, WGPUStringView message, void *, void *) {
-              LOG(kDefLog, kError, "Device logging callback: %.*s",
-                  static_cast<int>(message.length), message.data);
-              if (type == WGPULoggingType_Error) {
-                throw std::runtime_error("Device error logged.");
-              }
-            },
-        .userdata1 = nullptr,
-        .userdata2 = nullptr};
-    wgpuDeviceSetLoggingCallback(ctx.device, loggingCallbackInfo);
-#endif
-    ctx.queue = wgpuDeviceGetQueue(ctx.device);
   } catch (const std::exception &ex) {
-    check(false, ex.what(), __FILE__, __LINE__);
+    promise->set_exception(std::make_exception_ptr(ex));
+    return promise->get_future();
   }
+  ctx.queue = wgpuDeviceGetQueue(ctx.device);
+  promise->set_value(std::move(ctx));
 
-  return std::move(ctx);
+  return promise->get_future();
+}
+
+/**
+ * @brief Synchronously waits for and returns the created GPU context.
+ *
+ * This function invokes the asynchronous createContext() factory function to create a GPU
+ * context, then waits for its completion using waitForContextFuture. The returned Context
+ * holds handles to the WebGPU instance, adapter, device, and queue, and is used for subsequent
+ * GPU operations.
+ *
+ * @return Context The fully initialized GPU context.
+ *
+ * @code
+ * Context ctx = waitForContext();
+ * // Now ctx can be used for GPU operations.
+ * @endcode
+ */
+inline Context waitForContext() {
+  std::future<Context> contextFuture = createContext();
+  return waitForContextFuture<Context>(contextFuture);
 }
 
 #ifdef USE_DAWN_API
@@ -1152,17 +1202,22 @@ createContextByGpuIdx(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
 #endif
 
 /**
- * @brief Callback function invoked upon completion of an asynchronous GPU buffer mapping.
+ * @brief Callback function invoked upon completion of an asynchronous GPU
+ * buffer mapping.
  *
- * This callback is triggered when the GPU buffer mapping for a readback buffer is completed.
- * It verifies that the mapping operation was successful, retrieves the mapped memory,
- * copies the data from the GPU buffer to a CPU memory region, unmaps the buffer,
- * signals the completion by fulfilling the associated promise, and cleans up the allocated callback data.
+ * This callback is triggered when the GPU buffer mapping for a readback buffer
+ * is completed. It verifies that the mapping operation was successful,
+ * retrieves the mapped memory, copies the data from the GPU buffer to a CPU
+ * memory region, unmaps the buffer, signals the completion by fulfilling the
+ * associated promise, and cleans up the allocated callback data.
  *
- * @param status The mapping status. Expected to be WGPUMapAsyncStatus_Success on success.
- * @param message A string view containing additional information about the mapping operation.
- * @param userdata1 A pointer to a heap-allocated CallbackData structure containing the GPU buffer,
- *                  buffer size, destination CPU memory pointer, and a promise for signaling completion.
+ * @param status The mapping status. Expected to be WGPUMapAsyncStatus_Success
+ * on success.
+ * @param message A string view containing additional information about the
+ * mapping operation.
+ * @param userdata1 A pointer to a heap-allocated CallbackData structure
+ * containing the GPU buffer, buffer size, destination CPU memory pointer, and a
+ * promise for signaling completion.
  * @param userdata2 Unused.
  */
 inline void bufferMapCallback(WGPUMapAsyncStatus status, WGPUStringView message,
@@ -1192,16 +1247,20 @@ inline void bufferMapCallback(WGPUMapAsyncStatus status, WGPUStringView message,
 }
 
 /**
- * @brief Callback function invoked when the GPU queue’s submitted work is complete.
+ * @brief Callback function invoked when the GPU queue’s submitted work is
+ * complete.
  *
- * This callback is registered with the GPU queue after submitting work. When invoked,
- * it verifies that all queued work completed successfully, and then sets up the buffer
- * mapping callback to initiate the asynchronous mapping of a readback buffer. The readback
- * buffer is mapped to access the processed data on the CPU.
+ * This callback is registered with the GPU queue after submitting work. When
+ * invoked, it verifies that all queued work completed successfully, and then
+ * sets up the buffer mapping callback to initiate the asynchronous mapping of a
+ * readback buffer. The readback buffer is mapped to access the processed data
+ * on the CPU.
  *
- * @param status The status of the completed work. Expected to be WGPUQueueWorkDoneStatus_Success on success.
- * @param userdata1 A pointer to a heap-allocated CallbackData structure containing the readback buffer,
- *                  buffer size, destination CPU memory pointer, and a promise to signal completion.
+ * @param status The status of the completed work. Expected to be
+ * WGPUQueueWorkDoneStatus_Success on success.
+ * @param userdata1 A pointer to a heap-allocated CallbackData structure
+ * containing the readback buffer, buffer size, destination CPU memory pointer,
+ * and a promise to signal completion.
  * @param userdata2 Unused.
  */
 inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
@@ -1543,12 +1602,14 @@ inline Shape cdiv(Shape total, Shape group) {
 }
 
 /**
- * @brief Packages the shader compilation information along with a promise for asynchronous signaling.
+ * @brief Packages the shader compilation information along with a promise for
+ * asynchronous signaling.
  *
  * This structure holds a pointer to a CompilationInfo instance that collects
- * details such as status, messages, line numbers, and positions from the shader compilation.
- * It also contains a shared pointer to a std::promise<void> which is used to signal the completion
- * of the asynchronous shader compilation process.
+ * details such as status, messages, line numbers, and positions from the shader
+ * compilation. It also contains a shared pointer to a std::promise<void> which
+ * is used to signal the completion of the asynchronous shader compilation
+ * process.
  */
 struct CompData {
   CompilationInfo *compInfo;
@@ -1578,10 +1639,11 @@ struct CompData {
  * @return Kernel instance representing the created kernel
  *
  * @code
- * std::future<Kernel> kernelFuture = createKernel(ctx, code, dataBindings, numInputs, output, nThreads, params, paramsSize);
+ * std::future<Kernel> kernelFuture = createKernel(ctx, code, dataBindings,
+ numInputs, output, nThreads, params, paramsSize);
  * Kernel kernel = WaitForFuture(ctx.instance, kernelFuture);
  * @endcode
- 
+
  */
 inline std::future<Kernel>
 createKernel(Context &ctx, const KernelCode &code, const Tensor *dataBindings,
@@ -1783,15 +1845,19 @@ createKernel(Context &ctx, const KernelCode &code, const Tensor *dataBindings,
 /**
  * @brief Free‑standing callback for dispatchKernel’s asynchronous work‐done.
  *
- * This callback is invoked when the GPU queue signals the completion of the submitted
- * workload for a kernel dispatch. It receives the work-done status and a userdata pointer,
- * which is expected to be a heap‑allocated pointer to a std::promise<void>.
+ * This callback is invoked when the GPU queue signals the completion of the
+ * submitted workload for a kernel dispatch. It receives the work-done status
+ * and a userdata pointer, which is expected to be a heap‑allocated pointer to a
+ * std::promise<void>.
  *
- * On success, the promise is fulfilled by calling set_value(). Otherwise, it is set with an exception.
- * After setting the promise state, the allocated memory for the promise is freed.
+ * On success, the promise is fulfilled by calling set_value(). Otherwise, it is
+ * set with an exception. After setting the promise state, the allocated memory
+ * for the promise is freed.
  *
- * @param status The status of the work done. Expected to be WGPUQueueWorkDoneStatus_Success on success.
- * @param userdata1 A heap allocated pointer to std::promise<void> which is set when the work is done.
+ * @param status The status of the work done. Expected to be
+ * WGPUQueueWorkDoneStatus_Success on success.
+ * @param userdata1 A heap allocated pointer to std::promise<void> which is set
+ * when the work is done.
  * @param userdata2 Unused.
  */
 inline void dispatchKernelCallback(WGPUQueueWorkDoneStatus status,
@@ -1824,8 +1890,9 @@ inline void dispatchKernelCallback(WGPUQueueWorkDoneStatus status,
  * @return Kernel instance representing the created kernel
  *
  * @code
- * std::future<Kernel> kernelFuture = createKernel(ctx, code, tensorData, output,totalWorkgroups, params);
- * Kernel kernel = WaitForFuture(ctx.instance, kernelFuture);
+ * std::future<Kernel> kernelFuture = createKernel(ctx, code, tensorData,
+ * output,totalWorkgroups, params); Kernel kernel = WaitForFuture(ctx.instance,
+ * kernelFuture);
  * @endcode
  */
 template <typename ParamsType = NoParam, size_t numInputs>

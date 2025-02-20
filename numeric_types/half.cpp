@@ -185,7 +185,7 @@ void testContainers() {
     testRoundTrip(h[3]);
   }
   {
-    Context ctx = createContext();
+    Context ctx = waitForContext();
     std::array<half, 8> h = {1.0f, 0.5f, 2.0f, 3.14f, 1.0, 2.0, 3.0, 4.0};
     Tensor devH = createTensor(ctx, {h.size()}, kf16, h.data());
     std::array<half, 8> h2;
@@ -215,13 +215,14 @@ fn main(
     }
 }
 )";
-  Context ctx = createContext(
+  std::future<Context> futureContext = createContext(
       {}, {},
       /*device descriptor, enabling f16 in WGSL*/
       {
           .requiredFeatureCount = 1,
           .requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data(),
       });
+  Context ctx = waitForContextFuture(futureContext);
   static constexpr size_t N = 10000;
   std::array<half, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {

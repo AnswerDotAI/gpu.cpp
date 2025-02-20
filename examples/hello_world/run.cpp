@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
   printf("--------------\n\n");
 
   // std::unique_ptr<Context> ctx = createContext();
-  Context ctx = createContext();
+  Context ctx = waitForContext();
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
@@ -36,8 +36,6 @@ int main(int argc, char **argv) {
   }
   Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = createTensor(ctx, Shape{N}, kf32);
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
   std::future<Kernel> kernelFuture = createKernel(ctx, {kGelu, 256, kf32},
                            Bindings{input, output},
                            {cdiv(N, 256), 1, 1});
