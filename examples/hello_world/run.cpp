@@ -28,7 +28,13 @@ int main(int argc, char **argv) {
   printf("--------------\n\n");
 
   // std::unique_ptr<Context> ctx = createContext();
+  #ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+  auto adaptersList = listAdapters(ctx);
+  LOG(kDefLog, kInfo, "Available GPU adapters:\n%s", adaptersList.c_str());
+  #else
   Context ctx = createContext();
+  #endif
   static constexpr size_t N = 10000;
   std::array<float, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {

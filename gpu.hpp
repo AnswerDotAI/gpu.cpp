@@ -16,9 +16,8 @@
 #include <utility> // std::pair
 #include <vector>
 
-#ifndef __EMSCRIPTEN__
 
-#else
+#ifdef __EMSCRIPTEN__
 #include "emscripten/emscripten.h"
 #endif
 
@@ -254,6 +253,26 @@ inline std::string toString(const Shape &shape) {
  * depending on the type.
  */
 inline std::string toString(size_t value) { return std::to_string(value); }
+
+/**
+ * @brief Converts a WGPUStringView to an std::string.
+ *
+ * If the view's data is null, an empty string is returned. If the view's
+ * length equals WGPU_STRLEN, it is assumed to be null‑terminated; otherwise,
+ * the explicit length is used.
+ *
+ * @param strView The WGPUStringView to convert.
+ * @return std::string The resulting standard string.
+ */
+inline std::string formatWGPUStringView(WGPUStringView strView) {
+  if (!strView.data) {
+    return "";
+  }
+  if (strView.length == WGPU_STRLEN) {
+    return std::string(strView.data);
+  }
+  return std::string(strView.data, strView.length);
+}
 
 /**
  * @brief simple in-place string replacement helper function for substituting
@@ -1076,136 +1095,191 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
   return waitForContextFuture<Context>(contextFuture);
 }
 
-#ifdef USE_DAWN_API
+#ifndef __EMSCRIPTEN__
+#if USE_DAWN_API
 /**
- * @brief Factory function to create a GPU context, which aggregates WebGPU API
- * handles to interact with the GPU including the instance, adapter, device, and
- * queue.
+ * @brief Retrieves the list of available GPU adapters from the Dawn instance.
  *
- * The function takes gpu index to support for multi GPUs.
- * To activate this function, it needs not only webgpu's headers but also DAWN's
- * headers.
+ * This function creates a Dawn instance using the provided context's instance
+ * handle, then enumerates and returns the available GPU adapters as a vector.
  *
- * If dawn is used, it also sets up an error callback for device loss.
- *
- * @param[in] gpuIdx GPU index
- * @param[in] desc Instance descriptor for the WebGPU instance (optional)
- * @param[in] devDescriptor Device descriptor for the WebGPU device (optional)
- * @return Context instance representing the created GPU context
- *
+ * @param ctx The Context containing the WebGPU instance handle.
+ * @return std::vector<dawn::native::Adapter> A vector of available GPU
+ * adapters.
+ * 
  * @code
- * Context ctx = createContextByGpuIdx(1);
+ * std::vector<dawn::native::Adapter> adapters = getAdapters(ctx);
  * @endcode
  */
-inline Context
-createContextByGpuIdx(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
-                      const WGPUDeviceDescriptor &devDescriptor = {}) {
-  Context context;
-  {
-#ifdef __EMSCRIPTEN__
-    // Emscripten does not support the instance descriptor
-    // and throws an assertion error if it is not nullptr.
-    context.instance = wgpuCreateInstance(nullptr);
-#else
-    context.instance = wgpuCreateInstance(&desc);
-#endif
-    // check status
-    check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
-  }
+inline std::vector<dawn::native::Adapter> getAdapters(Context &ctx) {
+  dawn::native::Instance dawnInstance(
+      reinterpret_cast<dawn::native::InstanceBase *>(ctx.instance));
+  return dawnInstance.EnumerateAdapters();
+}
 
-  LOG(kDefLog, kInfo, "Requesting adapter");
-  {
-    std::vector<dawn::native::Adapter> adapters =
-        dawn::native::Instance(
-            reinterpret_cast<dawn::native::InstanceBase *>(context.instance))
-            .EnumerateAdapters();
-    LOG(kDefLog, kInfo, "The number of GPUs=%d\n", adapters.size());
-    // Note: Second gpu is not available on Macos, but the number of GPUs is 2
-    // on Macos.
-    //       Calling wgpuAdapterGetInfo function for the second gpu becomes
-    //       segfault. When you check all GPUs on linux, uncomment out following
-    //       codes.
-    //
-    // for (size_t i = 0; i < adapters.size(); i++) {
-    //   WGPUAdapterInfo info {};
-    //   auto ptr = adapters[i].Get();
-    //   if (ptr && adapters[i]) {
-    //     wgpuAdapterGetInfo(ptr, &info);
-    //     LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", i, info.description);
-    //     wgpuAdapterInfoFreeMembers(info);
-    //   }
-    // }
-
-    {
-      LOG(kDefLog, kInfo, "Use GPU(Adapter)[%d]\n", gpuIdx);
-      auto ptr = adapters[gpuIdx].Get();
-      if (ptr) {
-        WGPUAdapterInfo info{};
-        wgpuAdapterGetInfo(ptr, &info);
-        LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", gpuIdx,
-            info.description);
-        wgpuAdapterInfoFreeMembers(info);
-      }
-      context.adapter = adapters[gpuIdx].Get();
-      dawn::native::GetProcs().adapterAddRef(context.adapter);
+/**
+ * @brief Formats the given vector of Dawn adapters into a single concatenated string.
+ *
+ * This function iterates over each Dawn adapter in the provided vector, retrieves its
+ * description using the WebGPU API, and converts the description from a WGPUStringView
+ * to an std::string using the formatWGPUStringView helper. The resulting descriptions
+ * are concatenated into a single string separated by newline characters.
+ *
+ * @param adapters A vector of Dawn adapters obtained from a WebGPU instance.
+ * @return std::string A newline-delimited string listing each adapter's description.
+ * 
+ * @code
+ * std::string adapterList = formatAdapters(adapters);
+ * @endcode
+ */
+inline std::string formatAdapters(const std::vector<dawn::native::Adapter> &adapters) {
+  std::string adapterList;
+  for (size_t i = 0; i < adapters.size(); ++i) {
+    auto adapterPtr = adapters[i].Get();
+    if (adapterPtr) {
+      WGPUAdapterInfo info = {};
+      wgpuAdapterGetInfo(adapterPtr, &info);
+      std::string desc = formatWGPUStringView(info.description);
+      adapterList += "GPU Adapter [" + std::to_string(i) + "]: " + desc + "\n";
+      wgpuAdapterInfoFreeMembers(info);
     }
   }
+  return adapterList;
+}
+
+/**
+ * @brief Lists the available GPU adapters in the current WebGPU instance.
+ *
+ * This function retrieves the list of available GPU adapters using the
+ * getAdapters helper function, then formats and returns the adapter
+ * descriptions as a single string using the formatAdapters helper function.
+ *
+ * @param ctx The Context containing the WebGPU instance handle.
+ * @return std::string A newline-delimited string listing each adapter's
+ * description.
+ * 
+ * @code
+ * std::string adapterList = listAdapters(ctx);
+ * @endcode
+ */
+inline std::string listAdapters(Context &ctx) {
+  auto adapters = getAdapters(ctx);
+  return formatAdapters(adapters);
+}
+
+/**
+ * @brief Asynchronously creates a GPU context using the specified GPU index.
+ *
+ * This function creates a WebGPU instance, retrieves the available GPU
+ * adapters, and selects the adapter at the specified index. It then requests a
+ * device from the selected adapter and sets up a logging callback for device
+ * errors. The function returns a future that will be fulfilled with the
+ * created Context once all operations are complete.
+ *
+ * @param gpuIdx The index of the GPU adapter to use.
+ * @param desc Instance descriptor for the WebGPU instance (optional)
+ * @param devDescriptor Device descriptor for the WebGPU device (optional)
+ * @return std::future<Context> A future that will eventually hold the created
+ * Context.
+ * 
+ * @code
+ * std::future<Context> contextFuture = createContextByGpuIdxAsync(0);
+ * Context ctx = waitForContextFuture(contextFuture);
+ * @endcode
+ */
+inline std::future<Context>
+createContextByGpuIdxAsync(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
+                           const WGPUDeviceDescriptor &devDescriptor = {}) {
+  auto promise = std::make_shared<std::promise<Context>>();
+  Context ctx;
+
+  ctx.instance = wgpuCreateInstance(&desc);
+
+  if (!ctx.instance) {
+    promise->set_exception(std::make_exception_ptr(
+        std::runtime_error("Failed to create WebGPU instance.")));
+    return promise->get_future();
+  }
+  check(ctx.instance, "Initialize WebGPU", __FILE__, __LINE__);
+
+  // Use helper functions to obtain and format the adapters.
+  auto adapters = getAdapters(ctx);
+
+  if (gpuIdx >= adapters.size()) {
+    promise->set_exception(
+        std::make_exception_ptr(std::runtime_error("Invalid GPU index.")));
+    return promise->get_future();
+  }
+  LOG(kDefLog, kInfo, "Using GPU Adapter[%d]", gpuIdx);
+  auto adapterPtr = adapters[gpuIdx].Get();
+  if (adapterPtr) {
+    WGPUAdapterInfo info = {};
+    wgpuAdapterGetInfo(adapterPtr, &info);
+    LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s", gpuIdx,
+        formatWGPUStringView(info.description).c_str());
+    wgpuAdapterInfoFreeMembers(info);
+  }
+  ctx.adapter = reinterpret_cast<WGPUAdapter>(adapterPtr);
+  dawn::native::GetProcs().adapterAddRef(ctx.adapter);
 
   LOG(kDefLog, kInfo, "Requesting device");
-  {
-    struct DeviceData {
-      WGPUDevice device = nullptr;
-      bool requestEnded = false;
-    };
-    DeviceData devData;
-
-    auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, WGPUStringView message,
-                                   void *pUserData, void *) {
-      DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
-      check(status == WGPURequestDeviceStatus_Success,
-            "Could not get WebGPU device.", __FILE__, __LINE__);
-      LOG(kDefLog, kTrace, "Device Request succeeded %x",
-          static_cast<void *>(device));
-      devData.device = device;
-      devData.requestEnded = true;
-    };
-
-    WGPURequestDeviceCallbackInfo deviceCallbackInfo = {
-        .mode = WGPUCallbackMode_AllowSpontaneous,
-        .callback = onDeviceRequestEnded,
-        .userdata1 = &devData,
-        .userdata2 = nullptr};
-    wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
-                             deviceCallbackInfo);
-
-    LOG(kDefLog, kInfo, "Waiting for device request to end");
-    while (!devData.requestEnded) {
-      processEvents(context.instance);
-    }
-    LOG(kDefLog, kInfo, "Device request ended");
-    assert(devData.requestEnded);
-    context.device = devData.device;
-
-    WGPULoggingCallbackInfo loggingCallbackInfo = {
-        .nextInChain = nullptr,
-        .callback =
-            [](WGPULoggingType type, WGPUStringView message, void *userdata1,
-               void *userdata2) {
-              LOG(kDefLog, kError, "Device logging callback: %.*s",
-                  static_cast<int>(message.length), message.data);
-              if (type == WGPULoggingType_Error) {
-                throw std::runtime_error("Device error logged.");
-              }
-            },
-        .userdata1 = nullptr,
-        .userdata2 = nullptr};
-    wgpuDeviceSetLoggingCallback(context.device, loggingCallbackInfo);
+  // Request the device asynchronously (using our requestDeviceAsync helper).
+  auto deviceFuture = requestDeviceAsync(ctx.adapter, devDescriptor);
+  try {
+    ctx.device = wait(ctx, deviceFuture);
+    ctx.deviceStatus = WGPURequestDeviceStatus_Success;
+  } catch (const std::exception &ex) {
+    promise->set_exception(std::make_exception_ptr(ex));
+    return promise->get_future();
   }
-  context.queue = wgpuDeviceGetQueue(context.device);
-  return context;
+
+  WGPULoggingCallbackInfo loggingCallbackInfo{
+      .nextInChain = nullptr,
+      .callback =
+          [](WGPULoggingType type, WGPUStringView message, void *userdata1,
+             void *userdata2) {
+            LOG(kDefLog, kError, "Device logging callback: %.*s",
+                static_cast<int>(message.length), message.data);
+            if (type == WGPULoggingType_Error) {
+              throw std::runtime_error("Device error logged.");
+            }
+          },
+      .userdata1 = nullptr,
+      .userdata2 = nullptr};
+  wgpuDeviceSetLoggingCallback(ctx.device, loggingCallbackInfo);
+  ctx.queue = wgpuDeviceGetQueue(ctx.device);
+  promise->set_value(std::move(ctx));
+  return promise->get_future();
 }
-#endif
+
+/**
+ * @brief Synchronously creates a GPU context using the specified GPU index.
+ *
+ * This function calls the asynchronous createContextByGpuIdxAsync function to
+ * create a GPU context, then waits for its completion using
+ * waitForContextFuture. The returned Context holds handles to the WebGPU
+ * instance, adapter, device, and queue, and is used for subsequent GPU
+ * operations.
+ *
+ * @param gpuIdx The index of the GPU adapter to use.
+ * @param desc Instance descriptor for the WebGPU instance (optional)
+ * @param devDescriptor Device descriptor for the WebGPU device (optional)
+ * @return Context The fully initialized GPU context.
+ *
+ * @code
+ * Context ctx = createContextByGpuIdx(0);
+ * @endcode
+ */
+inline Context createContextByGpuIdx(int gpuIdx,
+                             const WGPUInstanceDescriptor &desc = {},
+                             const WGPUDeviceDescriptor &devDescriptor = {}) {
+  std::future<Context> contextFuture =
+      createContextByGpuIdxAsync(gpuIdx, desc, devDescriptor);
+  return waitForContextFuture<Context>(contextFuture);
+}
+
+#endif // USE_DAWN_API
+#endif // __EMSCRIPTEN__
 
 /**
  * @brief Callback function invoked upon completion of an asynchronous GPU

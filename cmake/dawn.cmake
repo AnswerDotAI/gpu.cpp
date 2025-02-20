@@ -7,6 +7,8 @@ if(EMSCRIPTEN)
     set(EM_SDK_DIR $ENV{EMSDK} CACHE INTERNAL "")
     set(DAWN_BUILD_DIR "${DAWN_DIR}/build_web" CACHE INTERNAL "")
     set(DAWN_EMSCRIPTEN_TOOLCHAIN ${EM_SDK_DIR}/upstream/emscripten CACHE INTERNAL "" FORCE)
+else()
+    add_compile_definitions(USE_DAWN_API)
 endif()
 
 # Enable find for no dawn rebuilds with flutter run
