@@ -1,6 +1,7 @@
 build/*
 # any build subdirectory in the tree
 **/build/
+**/build_web/
 examples/hello_gpu/build/*
 examples/raymarch/build/*
 docs/html
@@ -8,6 +9,7 @@ source
 .DS_Store
 third_party/lib/*
 third_party/local/*
+third_party/dawn/*
 
 # formatter files
 .cmake-format.py
@@ -19,4 +21,7 @@ build
 # clangd files
 .cache
 compile_commands.json
+
+# editor specific
+.vscode/*
 

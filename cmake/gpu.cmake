@@ -1,69 +1,40 @@
-get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
-get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
+set(FILENAME "gpu.hpp")
 
-# Construct potential paths
-set(FILEPATH_CURRENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
-set(FILEPATH_PROJECT_ROOT "${PROJECT_ROOT}/${FILENAME}")
-
-# Include file finding utility script
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/find_gpu.cmake")
-
-# Check if the file exists in the current directory
-find_project_root(${CMAKE_CURRENT_SOURCE_DIR} ${FILENAME} TARGET_FILE_PATH)
-if("${TARGET_FILE_PATH}" STREQUAL "")
-    find_project_root(${FILEPATH_CURRENT_DIR} ${FILENAME} TARGET_FILE_PATH)
-    if("${TARGET_FILE_PATH}" STREQUAL "")
-        message(
-            FATAL_ERROR
-                "File ${FILENAME} not found in either ${CMAKE_CURRENT_SOURCE_DIR} or ${CMAKE_CURRENT_SOURCE_DIR}/../../"
-        )
-    endif()
-endif()
-
-# Define architecture and build type directories or file names
-if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(ARCH "x64")
+# Setup project root here.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${FILENAME}")
+    set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 else()
-    set(ARCH "x86")
+    get_filename_component(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+    get_filename_component(PROJECT_ROOT ${PROJECT_ROOT} DIRECTORY)
+    set(PROJECT_ROOT "${PROJECT_ROOT}/")
 endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(BUILD_TYPE "Debug")
+message(STATUS "PROJECT_ROOT: ${PROJECT_ROOT}")
+
+# Add sources
+set(GPU_SOURCES
+    "${PROJECT_ROOT}/gpu.cpp"
+    "${PROJECT_ROOT}/numeric_types/half.cpp"
+    "${DAWN_BUILD_DIR}/gen/include/dawn/webgpu.h"
+)
+
+# Add headers
+set(GPU_HEADERS
+    "${PROJECT_ROOT}/gpu.hpp"
+    "${PROJECT_ROOT}/utils/logging.hpp"
+    "${PROJECT_ROOT}/utils/array_utils.hpp"
+    "${PROJECT_ROOT}/numeric_types/half.hpp"
+    
+)
+
+# Create the STATIC library for gpu
+add_library(gpu STATIC ${GPU_SOURCES} ${GPU_HEADERS})
+set_target_properties(gpu PROPERTIES LINKER_LANGUAGE CXX)
+target_include_directories(gpu PUBLIC "${PROJECT_ROOT}")
+if(NOT EMSCRIPTEN)
+    target_include_directories(gpu PUBLIC "${DAWN_BUILD_DIR}/gen/include/dawn/")
 else()
-    set(BUILD_TYPE "Release")
+    target_include_directories(gpu PUBLIC "${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/include/")
+    target_include_directories(gpu PUBLIC "${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/include/webgpu/")
 endif()
 
-add_library(webgpulib SHARED IMPORTED)
-add_library(gpu INTERFACE)
-add_library(wgpu INTERFACE)
-add_dependencies(gpu webgpulib)
-# Define the header-only library
-target_include_directories(gpu INTERFACE ${TARGET_FILE_PATH})
-
-# Add headers webgpu.h
-target_include_directories(wgpu
-                           INTERFACE ${TARGET_FILE_PATH}/third_party/headers)
-include(ExternalProject)
-
-set(DAWN_EXT_PREFIX "${TARGET_FILE_PATH}/third_party/local/dawn")
-
-ExternalProject_Add(
-    dawn_project
-    PREFIX ${DAWN_EXT_PREFIX}
-    GIT_REPOSITORY "https://dawn.googlesource.com/dawn"
-    GIT_TAG "main"
-    SOURCE_DIR "${DAWN_EXT_PREFIX}/source"
-    BINARY_DIR "${DAWN_EXT_PREFIX}/build"
-    INSTALL_DIR "${DAWN_EXT_PREFIX}/install"
-    GIT_SUBMODULES ""
-    # setting cmake args doesn't work and I don't know why
-    CONFIGURE_COMMAND
-        ${CMAKE_COMMAND} -S ${DAWN_EXT_PREFIX}/source -B
-        ${DAWN_EXT_PREFIX}/build -DDAWN_FETCH_DEPENDENCIES=ON
-        -DDAWN_ENABLE_INSTALL=ON -DDAWN_BUILD_MONOLITHIC_LIBRARY=ON
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -G ${CMAKE_GENERATOR}
-    INSTALL_COMMAND ${CMAKE_COMMAND} --install . --prefix
-                    ${DAWN_EXT_PREFIX}/install
-    LOG_INSTALL ON)
-find_library(LIBDAWN dawn PATHS "${DAWN_EXT_PREFIX}/install/lib")
-target_link_libraries(webgpulib INTERFACE ${LIBDAWN})

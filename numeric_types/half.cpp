@@ -241,7 +241,7 @@ fn main(
   }
 }
 
-int main() {
+int testMain() {
   printf("\nHalf-precision float tests\n==========================\n");
 
   printf("\nRegular values float round trips\n\n");
