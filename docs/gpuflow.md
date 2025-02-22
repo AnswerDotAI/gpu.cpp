@@ -11,7 +11,7 @@ flowchart TD
     
     E["Upload Data via toGPU <br>(raw buffer)<br>toGPU<br>(ctx, data, buffer, size)"]
     F["Upload Data via toGPU<br>(Tensor overload)<br>toGPU(ctx, data, tensor)"]
-    G["Optional: Upload Kernel Parameters<br>toGPU(ctx, params, Kernel)"]
+    G["Optional: <br> Kernel Parameters<br>toGPU(ctx, params, Kernel)"]
   end
 
   %% Buffer Setup & Bindings
