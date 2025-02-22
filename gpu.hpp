@@ -1486,11 +1486,7 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
   // Register the callback. The async chain continues inside
   // queueWorkDoneCallback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
-
-  if (readbackBuffer) {
-    wgpuBufferRelease(readbackBuffer);
-  }
-
+  
   return promise->get_future();
 }
 
@@ -1549,10 +1545,6 @@ inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
 
   // Start the asynchronous chain by registering the work-done callback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
-
-  if (op.readbackBuffer) {
-    wgpuBufferRelease(op.readbackBuffer);
-  }
 
   return promise->get_future();
 }
