@@ -10,6 +10,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -1354,11 +1355,12 @@ inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
         __LINE__);
 
   // Set up the buffer mapping callback information.
-  WGPUBufferMapCallbackInfo mapCallbackInfo;
-  mapCallbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
-  mapCallbackInfo.callback = bufferMapCallback;
-  mapCallbackInfo.userdata1 = cbData;
-  mapCallbackInfo.userdata2 = nullptr;
+  WGPUBufferMapCallbackInfo mapCallbackInfo = {
+    .mode = WGPUCallbackMode_AllowSpontaneous,
+    .callback = bufferMapCallback,
+    .userdata1 = cbData, // Pass the callback data.
+    .userdata2 = nullptr // No additional user data.
+  };
 
   // Begin the asynchronous mapping of the readback buffer.
   wgpuBufferMapAsync(cbData->buffer, WGPUMapMode_Read, 0, cbData->bufferSize,
