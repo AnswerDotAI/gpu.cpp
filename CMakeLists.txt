@@ -2,7 +2,7 @@
 # and cmake/gpu.cmake for more details
 cmake_minimum_required(VERSION 3.28)
 project(gpu)
-
+set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # export compile_commands.json to use with
                                       # LSP
 set(CMAKE_CXX_STANDARD 20)

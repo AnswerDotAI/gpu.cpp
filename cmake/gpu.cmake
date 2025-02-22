@@ -39,4 +39,3 @@ else()
     target_include_directories(gpu PUBLIC "${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/include/")
     target_include_directories(gpu PUBLIC "${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/include/webgpu/")
 endif()
-
