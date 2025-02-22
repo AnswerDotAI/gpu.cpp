@@ -16,7 +16,6 @@
 #include <utility> // std::pair
 #include <vector>
 
-
 #ifdef __EMSCRIPTEN__
 #include "emscripten/emscripten.h"
 #endif
@@ -1106,7 +1105,7 @@ inline Context createContext(const WGPUInstanceDescriptor &desc = {},
  * @param ctx The Context containing the WebGPU instance handle.
  * @return std::vector<dawn::native::Adapter> A vector of available GPU
  * adapters.
- * 
+ *
  * @code
  * std::vector<dawn::native::Adapter> adapters = getAdapters(ctx);
  * @endcode
@@ -1118,21 +1117,25 @@ inline std::vector<dawn::native::Adapter> getAdapters(Context &ctx) {
 }
 
 /**
- * @brief Formats the given vector of Dawn adapters into a single concatenated string.
+ * @brief Formats the given vector of Dawn adapters into a single concatenated
+ * string.
  *
- * This function iterates over each Dawn adapter in the provided vector, retrieves its
- * description using the WebGPU API, and converts the description from a WGPUStringView
- * to an std::string using the formatWGPUStringView helper. The resulting descriptions
- * are concatenated into a single string separated by newline characters.
+ * This function iterates over each Dawn adapter in the provided vector,
+ * retrieves its description using the WebGPU API, and converts the description
+ * from a WGPUStringView to an std::string using the formatWGPUStringView
+ * helper. The resulting descriptions are concatenated into a single string
+ * separated by newline characters.
  *
  * @param adapters A vector of Dawn adapters obtained from a WebGPU instance.
- * @return std::string A newline-delimited string listing each adapter's description.
- * 
+ * @return std::string A newline-delimited string listing each adapter's
+ * description.
+ *
  * @code
  * std::string adapterList = formatAdapters(adapters);
  * @endcode
  */
-inline std::string formatAdapters(const std::vector<dawn::native::Adapter> &adapters) {
+inline std::string
+formatAdapters(const std::vector<dawn::native::Adapter> &adapters) {
   std::string adapterList;
   for (size_t i = 0; i < adapters.size(); ++i) {
     auto adapterPtr = adapters[i].Get();
@@ -1157,7 +1160,7 @@ inline std::string formatAdapters(const std::vector<dawn::native::Adapter> &adap
  * @param ctx The Context containing the WebGPU instance handle.
  * @return std::string A newline-delimited string listing each adapter's
  * description.
- * 
+ *
  * @code
  * std::string adapterList = listAdapters(ctx);
  * @endcode
@@ -1181,7 +1184,7 @@ inline std::string listAdapters(Context &ctx) {
  * @param devDescriptor Device descriptor for the WebGPU device (optional)
  * @return std::future<Context> A future that will eventually hold the created
  * Context.
- * 
+ *
  * @code
  * std::future<Context> contextFuture = createContextByGpuIdxAsync(0);
  * Context ctx = waitForContextFuture(contextFuture);
@@ -1270,9 +1273,9 @@ createContextByGpuIdxAsync(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
  * Context ctx = createContextByGpuIdx(0);
  * @endcode
  */
-inline Context createContextByGpuIdx(int gpuIdx,
-                             const WGPUInstanceDescriptor &desc = {},
-                             const WGPUDeviceDescriptor &devDescriptor = {}) {
+inline Context
+createContextByGpuIdx(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
+                      const WGPUDeviceDescriptor &devDescriptor = {}) {
   std::future<Context> contextFuture =
       createContextByGpuIdxAsync(gpuIdx, desc, devDescriptor);
   return waitForContextFuture<Context>(contextFuture);
@@ -1365,17 +1368,19 @@ inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
 /**
  * @brief Copies data from a GPU buffer to CPU memory.
  * @param[in] ctx Context instance to manage the operation
- * @param[in] tensor Tensor instance representing the GPU buffer to copy from
  * @param[out] data Pointer to the CPU memory to copy the data to
  * @param[in] bufferSize Size of the data buffer in bytes
  * @param[in] op StagingBuffer instance to manage the operation
+ * @param[in] sourceOffset Offset in the GPU buffer to start copying from.
  *
  * @code
  * toCPU(ctx, tensor, data, bufferSize);
  * @endcode
  */
-inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
-                                    size_t bufferSize, CopyData &op) {
+
+// NOTE: I think this one is redundant? CopyData not used externally.
+inline std::future<void> toCPUAsync(Context &ctx, void *data, size_t bufferSize,
+                                    CopyData &op, size_t sourceOffset = 0) {
   // Submit the command buffer and release it.
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
   wgpuCommandBufferRelease(op.commandBuffer);
@@ -1388,8 +1393,8 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
   CallbackData *cbData = new CallbackData{
       op.readbackBuffer, // The GPU buffer to be read back.
       bufferSize,
-      data,   // CPU memory destination.
-      promise // The promise to be signaled.
+      data,    // CPU memory destination.
+      promise, // The promise to be signaled.
   };
 
   // Set up the work-done callback to initiate the buffer mapping.
@@ -1401,6 +1406,11 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
 
   // Begin the asynchronous chain by registering the queue work-done callback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
+  // Release the readback buffer as it is no longer needed.
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
 
   return promise->get_future();
 }
@@ -1417,11 +1427,13 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
  *
  * @param[in] ctx Context instance to manage the operation
  * @param[in] tensor Tensor instance representing the GPU buffer to copy from
- * @param[in] bufferSize Size of the data buffer in bytes
+ * @param[in] bufferSize Size to read in bytes as out data.
  * @param[out] data Pointer to the CPU memory to copy the data to
+ * @param[in] sourceOffset Offset in the GPU buffer to start copying from.
  */
 inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
-                                    size_t bufferSize) {
+                                    size_t bufferSize,
+                                    size_t sourceOffset = 0) {
   // Create a promise that will later be satisfied when the async copy
   // completes.
   auto promise = std::make_shared<std::promise<void>>();
@@ -1430,7 +1442,7 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
   WGPUBufferDescriptor readbackBufferDescriptor = {
       .label = {.data = nullptr, .length = 0},
       .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
-      .size = bufferSize,
+      .size = bufferSize, // Size of the readback buffer.
   };
   WGPUBuffer readbackBuffer =
       wgpuDeviceCreateBuffer(ctx.device, &readbackBufferDescriptor);
@@ -1438,8 +1450,9 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
   // Create a command encoder and record a copy from the tensor GPU buffer
   WGPUCommandEncoder commandEncoder =
       wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
-  wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
-                                       readbackBuffer, 0, bufferSize);
+  wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer,
+                                       sourceOffset, readbackBuffer, 0,
+                                       bufferSize);
   // Finish recording by creating a command buffer and release the encoder.
   WGPUCommandBuffer commandBuffer =
       wgpuCommandEncoderFinish(commandEncoder, nullptr);
@@ -1472,13 +1485,16 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
   // queueWorkDoneCallback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
 
+  if (readbackBuffer) {
+    wgpuBufferRelease(readbackBuffer);
+  }
+
   return promise->get_future();
 }
 
 inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
-                                    size_t size) {
-  // The size (in bytes) for the copy.
-  uint64_t bufferSize = size;
+                                    size_t bufferSize,
+                                    size_t sourceOffset = 0) {
 
   // Create an operation structure (here we reuse CopyData solely for its
   // members that we need to create a readback buffer and command buffer).
@@ -1503,7 +1519,7 @@ inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
   {
     WGPUCommandEncoder commandEncoder =
         wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
-    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, buffer, 0,
+    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, buffer, sourceOffset,
                                          op.readbackBuffer, 0, bufferSize);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     wgpuCommandEncoderRelease(commandEncoder);
@@ -1516,10 +1532,10 @@ inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
 
   // Allocate callback data
   CallbackData *cbData = new CallbackData{
-      op.readbackBuffer,               // The readback buffer created above.
-      static_cast<size_t>(bufferSize), // Size of the copy.
-      data,                            // Destination CPU memory.
-      promise                          // Our promise to satisfy when done.
+      op.readbackBuffer, // The readback buffer created above.
+      bufferSize,        // Size of the copy.
+      data,   // Destination CPU memory.         // Offset in the GPU buffer.
+      promise // Our promise to satisfy when done.
   };
 
   // Set up the queue work-done callback info.
@@ -1531,6 +1547,10 @@ inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
 
   // Start the asynchronous chain by registering the work-done callback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
 
   return promise->get_future();
 }
@@ -1548,9 +1568,11 @@ inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
  * @endcode
  */
 template <size_t N>
-inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor,
-                                    std::array<float, N> &data) {
-  return toCPUAsync(ctx, tensor, data.data(), sizeof(data));
+inline std::future<void>
+toCPUAsync(Context &ctx, Tensor &tensor, std::array<float, N> &data,
+           size_t sourceOffset = 0) {
+  return toCPUAsync(ctx, tensor, data.data(), sizeof(data), sourceOffset
+                    );
 }
 
 /**
@@ -1571,8 +1593,10 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor,
  * toCPU(ctx, tensor, data, bufferSize, instance);
  * @endcode
  */
-inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
-  auto future = toCPUAsync(ctx, tensor, data, bufferSize);
+inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
+                  size_t sourceOffset = 0) {
+  auto future =
+      toCPUAsync(ctx, tensor, data, bufferSize, sourceOffset);
   wait(ctx, future);
 }
 
@@ -1593,8 +1617,9 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
  * toCPU(ctx, buffer, data, size, instance);
  * @endcode
  */
-inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size) {
-  auto future = toCPUAsync(ctx, buffer, data, size);
+inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size,
+                  size_t sourceOffset = 0) {
+  auto future = toCPUAsync(ctx, buffer, data, size, sourceOffset);
   wait(ctx, future);
 }
 
@@ -1616,8 +1641,9 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size) {
  * @endcode
  */
 template <size_t N>
-inline void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data) {
-  auto future = toCPUAsync(ctx, tensor, data);
+inline void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data,
+                  size_t sourceOffset = 0) {
+  auto future = toCPUAsync(ctx, tensor, data, sourceOffset);
   wait(ctx, future);
 }
 
