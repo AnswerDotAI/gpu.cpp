@@ -1,4 +1,3 @@
-//// filepath: /d:/Code/git/forks/gpu.cpp/test/test_gpu_integration.cpp
 #include "gpu.hpp"
 #include <array>
 #include <cstdio>
