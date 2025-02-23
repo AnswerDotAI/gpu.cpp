@@ -1306,7 +1306,7 @@ createContextByGpuIdx(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
  */
 inline void bufferMapCallback(WGPUMapAsyncStatus status, WGPUStringView message,
                               void *userdata1, void * /*userdata2*/) {
-  CallbackData *cbData = reinterpret_cast<CallbackData *>(userdata1);
+  const CallbackData *cbData = static_cast<CallbackData *>(userdata1);
   // Check that mapping succeeded.
   check(status == WGPUMapAsyncStatus_Success, "Map readbackBuffer", __FILE__,
         __LINE__);
@@ -1349,17 +1349,17 @@ inline void bufferMapCallback(WGPUMapAsyncStatus status, WGPUStringView message,
  */
 inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
                                   void *userdata1, void * /*userdata2*/) {
-  CallbackData *cbData = reinterpret_cast<CallbackData *>(userdata1);
+  const CallbackData *cbData = static_cast<CallbackData *>(userdata1);
   // Ensure the queue work finished successfully.
   check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done", __FILE__,
         __LINE__);
 
   // Set up the buffer mapping callback information.
   WGPUBufferMapCallbackInfo mapCallbackInfo = {
-    .mode = WGPUCallbackMode_AllowSpontaneous,
-    .callback = bufferMapCallback,
-    .userdata1 = cbData, // Pass the callback data.
-    .userdata2 = nullptr // No additional user data.
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = bufferMapCallback,
+      .userdata1 = const_cast<CallbackData *>(cbData), // Pass the callback data.
+      .userdata2 = nullptr // No additional user data.
   };
 
   // Begin the asynchronous mapping of the readback buffer.
@@ -1400,11 +1400,11 @@ inline std::future<void> toCPUAsync(Context &ctx, void *data, size_t bufferSize,
   };
 
   // Set up the work-done callback to initiate the buffer mapping.
-  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo;
-  workDoneCallbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
-  workDoneCallbackInfo.callback = queueWorkDoneCallback;
-  workDoneCallbackInfo.userdata1 = cbData; // Pass the callback data.
-  workDoneCallbackInfo.userdata2 = nullptr;
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = queueWorkDoneCallback,
+      .userdata1 = const_cast<CallbackData *>(cbData),
+      .userdata2 = nullptr};
 
   // Begin the asynchronous chain by registering the queue work-done callback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
@@ -1486,7 +1486,7 @@ inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
   // Register the callback. The async chain continues inside
   // queueWorkDoneCallback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
-  
+
   return promise->get_future();
 }
 
@@ -1562,11 +1562,10 @@ inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
  * @endcode
  */
 template <size_t N>
-inline std::future<void>
-toCPUAsync(Context &ctx, Tensor &tensor, std::array<float, N> &data,
-           size_t sourceOffset = 0) {
-  return toCPUAsync(ctx, tensor, data.data(), sizeof(data), sourceOffset
-                    );
+inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor,
+                                    std::array<float, N> &data,
+                                    size_t sourceOffset = 0) {
+  return toCPUAsync(ctx, tensor, data.data(), sizeof(data), sourceOffset);
 }
 
 /**
@@ -1589,8 +1588,7 @@ toCPUAsync(Context &ctx, Tensor &tensor, std::array<float, N> &data,
  */
 inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
                   size_t sourceOffset = 0) {
-  auto future =
-      toCPUAsync(ctx, tensor, data, bufferSize, sourceOffset);
+  auto future = toCPUAsync(ctx, tensor, data, bufferSize, sourceOffset);
   wait(ctx, future);
 }
 
