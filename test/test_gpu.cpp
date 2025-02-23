@@ -1,12 +1,34 @@
 #include "gpu.hpp"
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <future>
 #include <vector>
 
 using namespace gpu;
+using namespace std::chrono;
+
+
+// Forward declarations:
+void testToCPUWithTensor();
+void testToCPUWithBuffer();
+void testToCPUWithTensorSourceOffset();
+void testToCPUWithBufferSourceOffset();
+void stressTestToCPU();
+
+int main() {
+  LOG(kDefLog, kInfo, "Running GPU integration tests...");
+  testToCPUWithTensor();
+  testToCPUWithBuffer();
+  testToCPUWithTensorSourceOffset();
+  testToCPUWithBufferSourceOffset();
+  stressTestToCPU();
+  LOG(kDefLog, kInfo, "All tests passed.");
+  return 0;
+}
+
 
 // A simple WGSL copy kernel that copies input to output.
 static const char *kCopyKernel = R"(
@@ -21,6 +43,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 }
 )";
+
 
 // Test using the overload that takes a Tensor.
 void testToCPUWithTensor() {
@@ -185,12 +208,49 @@ void testToCPUWithBufferSourceOffset() {
   LOG(kDefLog, kInfo, "testToCPUWithBufferSourceOffset passed.");
 }
 
-int main() {
-  LOG(kDefLog, kInfo, "Running GPU integration tests...");
-  testToCPUWithTensor();
-  testToCPUWithBuffer();
-  testToCPUWithTensorSourceOffset();
-  testToCPUWithBufferSourceOffset();
-  LOG(kDefLog, kInfo, "All tests passed.");
-  return 0;
+void stressTestToCPU() {
+  LOG(kDefLog, kInfo, "Running stressTestToCPU for 2 seconds...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  // Create a persistent tensor with some test data.
+  std::vector<float> inputData(N, 0.0f);
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] = static_cast<float>(i);
+  }
+  Tensor tensor = createTensor(ctx, Shape{N}, kf32, inputData.data());
+
+  // Prepare to run for one second.
+  auto startTime = high_resolution_clock::now();
+  std::vector<std::future<void>> futures;
+  size_t opCount = 0;
+  while (high_resolution_clock::now() - startTime < seconds(2)) {
+    // Allocate an output buffer (using a shared_ptr so it stays valid until the future completes)
+    auto outputData = std::make_shared<std::vector<float>>(N, 0.0f);
+    // Use the tensor overload; we’re copying the entire tensor (destOffset = 0)
+    LOG(kDefLog, kInfo, "Copying %zu bytes from GPU to CPU...", N * sizeof(float));
+    // log count
+    LOG(kDefLog, kInfo, "opCount = %zu", opCount);
+    auto fut = toCPUAsync(ctx, tensor, outputData->data(), N * sizeof(float), 0);
+    futures.push_back(std::move(fut));
+    ++opCount;
+  }
+
+  // Wait for all submitted operations to complete.
+  for (auto &f : futures) {
+    wait(ctx, f);
+  }
+  
+  auto endTime = high_resolution_clock::now();
+  auto totalMs = duration_cast<milliseconds>(endTime - startTime).count();
+  double throughput = (opCount / (totalMs / 1000.0));
+
+  LOG(kDefLog, kInfo, "Stress test completed:\n"
+            "  %zu GPU to CPU operations in %lld ms\n"
+            "  Throughput: %.2f ops/sec", opCount, totalMs, throughput);
 }
