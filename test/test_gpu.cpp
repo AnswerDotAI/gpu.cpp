@@ -227,7 +227,6 @@ void stressTestToCPU() {
 
   // Prepare to run for one second.
   auto startTime = high_resolution_clock::now();
-  std::vector<std::future<void>> futures;
   size_t opCount = 0;
   while (high_resolution_clock::now() - startTime < seconds(2)) {
     // Allocate an output buffer (using a shared_ptr so it stays valid until the future completes)
@@ -237,13 +236,8 @@ void stressTestToCPU() {
     // log count
     LOG(kDefLog, kInfo, "opCount = %zu", opCount);
     auto fut = toCPUAsync(ctx, tensor, outputData->data(), N * sizeof(float), 0);
-    futures.push_back(std::move(fut));
+    wait(ctx, fut);
     ++opCount;
-  }
-
-  // Wait for all submitted operations to complete.
-  for (auto &f : futures) {
-    wait(ctx, f);
   }
   
   auto endTime = high_resolution_clock::now();
