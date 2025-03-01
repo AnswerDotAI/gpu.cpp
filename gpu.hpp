@@ -869,7 +869,7 @@ template <typename T> T wait(Context &ctx, std::future<T> &f) {
  * Context ctx = waitForContextFuture(contextFuture);
  * @endcode
  */
-template <typename T> T waitForContextFuture(std::future<T> &f) {
+template <typename T> T waitForContextFuture(std::future<T> &f, size_t sleepTime = 10) {
 #ifdef __EMSCRIPTEN__
   while (f.wait_for(std::chrono::milliseconds(0)) !=
          std::future_status::ready) {
@@ -879,7 +879,7 @@ template <typename T> T waitForContextFuture(std::future<T> &f) {
 #else
   while (f.wait_for(std::chrono::milliseconds(0)) !=
          std::future_status::ready) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
   }
   return f.get();
 #endif
