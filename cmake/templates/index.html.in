@@ -12,7 +12,7 @@
       if (typeof Module !== 'undefined') {
         Module.onRuntimeInitialized = function() {
           // Optionally, pass arguments to main in an array.
-          Module._main([]);
+          Module.ccall('main', 'number', [], [], { async: true });
         };
       } else {
         console.error('Module is undefined. Check that your generated JS file is loaded properly.');

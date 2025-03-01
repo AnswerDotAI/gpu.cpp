@@ -45,13 +45,14 @@ if(EMSCRIPTEN)
     # Set Emscripten-specific link flags that enable WASM output and expose certain symbols.
     # Needed to use updated version, emdawnwebgpu
     set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS "\
+        -O3 \
         -sUSE_WEBGPU=0 \
         -sWASM=1 \
         -DDAWN_EMSCRIPTEN_TOOLCHAIN=${EMSCRIPTEN_DIR} \
         -sEXPORTED_FUNCTIONS=_main,_malloc,_free,_memcpy \
         -sEXPORTED_RUNTIME_METHODS=ccall \
         -sUSE_GLFW=3 \
-        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB \
+        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=15MB \
         -sASYNCIFY \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_enum_tables.js \
         --js-library=${DAWN_BUILD_DIR}/gen/src/emdawnwebgpu/library_webgpu_generated_struct_info.js \

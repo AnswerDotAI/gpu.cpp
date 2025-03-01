@@ -1,6 +1,7 @@
 #ifndef GPU_HPP
 #define GPU_HPP
 
+#include "webgpu.h"
 #include <array>
 #include <cassert>
 #include <cstring>
@@ -9,20 +10,19 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <utility> // std::pair
 #include <vector>
 
-#include "webgpu.h"
-
-#include "numeric_types/half.hpp"
-#include "utils/logging.hpp"
-
 #ifdef __EMSCRIPTEN__
 #include "emscripten/emscripten.h"
 #endif
+
+#include "numeric_types/half.hpp"
+#include "utils/logging.hpp"
 
 #ifdef USE_DAWN_API
 #include "dawn/native/DawnNative.h"
@@ -255,6 +255,26 @@ inline std::string toString(const Shape &shape) {
 inline std::string toString(size_t value) { return std::to_string(value); }
 
 /**
+ * @brief Converts a WGPUStringView to an std::string.
+ *
+ * If the view's data is null, an empty string is returned. If the view's
+ * length equals WGPU_STRLEN, it is assumed to be null‑terminated; otherwise,
+ * the explicit length is used.
+ *
+ * @param strView The WGPUStringView to convert.
+ * @return std::string The resulting standard string.
+ */
+inline std::string formatWGPUStringView(WGPUStringView strView) {
+  if (!strView.data) {
+    return "";
+  }
+  if (strView.length == WGPU_STRLEN) {
+    return std::string(strView.data);
+  }
+  return std::string(strView.data, strView.length);
+}
+
+/**
  * @brief simple in-place string replacement helper function for substituting
  * placeholders in a WGSL string template.
  *
@@ -430,8 +450,8 @@ struct CallbackData {
   WGPUBuffer buffer; // managed by owning Kernel
   size_t bufferSize;
   void *output; // non-owning, only for target memory in toCPU, not used for
-                // kernel invocations
-  std::promise<void> *promise;
+  // kernel invocations
+  std::shared_ptr<std::promise<void>> promise;
   std::future<void> *future;
 };
 
@@ -530,32 +550,27 @@ struct Context {
   // Default constructor
   Context() = default;
 
-  Context(Context&& other) noexcept
-      : instance(other.instance),
-        adapter(other.adapter),
-        device(other.device),
+  Context(Context &&other) noexcept
+      : instance(other.instance), adapter(other.adapter), device(other.device),
         queue(other.queue),
         // Re‐initialize pools to point to *this*:
-        pool(this),
-        kernelPool(this),
-        adapterStatus(other.adapterStatus),
-        deviceStatus(other.deviceStatus)
-  {
+        pool(this), kernelPool(this), adapterStatus(other.adapterStatus),
+        deviceStatus(other.deviceStatus) {
     LOG(kDefLog, kTrace, "Moving Context ownership");
     // Move over the resources in the pools:
-    pool.data       = std::move(other.pool.data);
+    pool.data = std::move(other.pool.data);
     kernelPool.data = std::move(other.kernelPool.data);
 
     // Null out handles in the source so its destructor won't release them.
     other.instance = nullptr;
-    other.adapter  = nullptr;
-    other.device   = nullptr;
-    other.queue    = nullptr;
+    other.adapter = nullptr;
+    other.device = nullptr;
+    other.queue = nullptr;
     // other.adapterStatus = 0;
     // other.deviceStatus = 0;
   }
 
-  Context& operator=(Context&& other) noexcept {
+  Context &operator=(Context &&other) noexcept {
     if (this != &other) {
       // Free any existing resources. In most cases, this should be a no-op
       // since we typically shouldn't have two active initialized Context
@@ -625,7 +640,7 @@ inline Tensor createTensor(TensorPool &pool, WGPUDevice &device,
   size_t numElements = size(shape);
   size_t size = sizeBytes(dtype) * numElements;
   WGPUBufferDescriptor bufferDesc = {
-      .label = {.data = nullptr, .length = 0}, 
+      .label = {.data = nullptr, .length = 0},
       .usage = usage,
       .size = size,
   };
@@ -795,6 +810,212 @@ inline void check(bool condition, const char *message,
 }
 
 /**
+ * @brief Pumps events until the provided future is ready.
+ *
+ * This helper template function continuously checks the status of the provided
+ * std::future<T> until it becomes ready. On Emscripten builds, it yields
+ * control to the JavaScript event loop using emscripten_sleep to allow
+ * asynchronous callbacks to execute. On other platforms, it processes events
+ * from the given WGPUInstance using wgpuInstanceProcessEvents. Once the future
+ * is ready, its value is returned.
+ *
+ * @tparam T The type of the value contained in the future.
+ * @param instance The WGPUInstance used to process events.
+ * @param f The future to wait on.
+ * @return T The value retrieved from the ready future.
+ *
+ * @code
+ * std::future<WGPUDevice> deviceFuture = requestDeviceAsync(adapter,
+ * devDescriptor); WGPUDevice device = wait(instance, deviceFuture);
+ * @endcode
+ */
+template <typename T> T wait(Context &ctx, std::future<T> &f) {
+#ifdef __EMSCRIPTEN__
+  // Poll until the future is ready.
+  while (f.wait_for(std::chrono::milliseconds(0)) !=
+         std::future_status::ready) {
+    // Yield control to the JS event loop.
+    emscripten_sleep(1);
+  }
+  return f.get();
+#else
+  while (f.wait_for(std::chrono::milliseconds(0)) !=
+         std::future_status::ready) {
+    wgpuInstanceProcessEvents(ctx.instance);
+  }
+  return f.get();
+#endif
+}
+
+// Context Callbacks & Helpers
+
+/**
+ * @brief Waits for the provided std::future<T> to become ready by polling its
+ * status.
+ *
+ * This helper template function continuously checks the status of the provided
+ * std::future<T> until it is ready. On Emscripten builds, it yields control to
+ * the JavaScript event loop using emscripten_sleep(1) for smooth asynchronous
+ * behavior. On non-Emscripten platforms, it sleeps for a short duration (10
+ * milliseconds) between checks. Once the future is ready, its value is
+ * returned.
+ *
+ * @tparam T The type of the value contained in the future.
+ * @param f The future to wait on.
+ * @return T The value retrieved from the ready future.
+ *
+ * @code
+ * std::future<Context> contextFuture = createContext();
+ * Context ctx = waitForContextFuture(contextFuture);
+ * @endcode
+ */
+template <typename T> T waitForContextFuture(std::future<T> &f, size_t sleepTime = 10) {
+#ifdef __EMSCRIPTEN__
+  while (f.wait_for(std::chrono::milliseconds(0)) !=
+         std::future_status::ready) {
+    emscripten_sleep(1); // Yield back to the JS event loop.
+  }
+  return f.get();
+#else
+  while (f.wait_for(std::chrono::milliseconds(0)) !=
+         std::future_status::ready) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleepTime));
+  }
+  return f.get();
+#endif
+}
+
+/**
+ * @brief Adapter callback function invoked upon completion of an asynchronous
+ * WebGPU adapter request.
+ *
+ * This callback is triggered when the request for a WebGPU adapter completes.
+ * It verifies whether the adapter was successfully obtained. On failure, it
+ * logs an error message (in Emscripten builds) and sets an exception on the
+ * associated promise. On success, it sets the value of the promise with the
+ * obtained adapter. Finally, it frees the allocated memory for the promise
+ * pointer.
+ *
+ * @param status The status of the adapter request. Expected to be
+ * WGPURequestAdapterStatus_Success on success.
+ * @param adapter The WGPUAdapter obtained on a successful request.
+ * @param message A string view containing additional information about the
+ * adapter request.
+ * @param userdata1 A pointer to a heap-allocated
+ * std::shared_ptr<std::promise<WGPUAdapter>>.
+ * @param userdata2 Unused.
+ */
+inline void adapterCallback(WGPURequestAdapterStatus status,
+                            WGPUAdapter adapter, WGPUStringView message,
+                            void *userdata1, void * /*userdata2*/) {
+  auto *promisePtr =
+      reinterpret_cast<std::shared_ptr<std::promise<WGPUAdapter>> *>(userdata1);
+  if (status != WGPURequestAdapterStatus_Success) {
+#ifdef __EMSCRIPTEN__
+    LOG(kDefLog, kError, "Could not get WebGPU adapter: %.*s",
+        static_cast<int>(message.length), message.data);
+#endif
+    (*promisePtr)
+        ->set_exception(std::make_exception_ptr(
+            std::runtime_error("Request WebGPU adapter failed")));
+  } else {
+    (*promisePtr)->set_value(adapter);
+  }
+  delete promisePtr;
+}
+
+/**
+ * @brief Callback function invoked upon completion of an asynchronous WebGPU
+ * device request.
+ *
+ * This callback is triggered when the request for a WebGPU device completes. It
+ * verifies that the device was successfully created. On success, the callback
+ * sets the value of the associated promise; otherwise, it sets an exception.
+ * After fulfilling the promise, it frees the allocated memory for the promise
+ * pointer.
+ *
+ * @param status The status of the device request. Expected to be
+ * WGPURequestDeviceStatus_Success on success.
+ * @param device The WGPUDevice obtained on successful request.
+ * @param message A string view containing additional information about the
+ * device request.
+ * @param userdata1 A pointer to a heap-allocated
+ * std::shared_ptr<std::promise<WGPUDevice>>.
+ * @param userdata2 Unused.
+ */
+inline void deviceCallback(WGPURequestDeviceStatus status, WGPUDevice device,
+                           WGPUStringView message, void *userdata1,
+                           void * /*userdata2*/) {
+  auto *promisePtr =
+      reinterpret_cast<std::shared_ptr<std::promise<WGPUDevice>> *>(userdata1);
+  if (status != WGPURequestDeviceStatus_Success) {
+    (*promisePtr)
+        ->set_exception(std::make_exception_ptr(
+            std::runtime_error("Request WebGPU device failed")));
+  } else {
+    LOG(kDefLog, kTrace, "Device Request succeeded %p",
+        static_cast<void *>(device));
+    (*promisePtr)->set_value(device);
+  }
+  delete promisePtr;
+}
+
+/**
+ * @brief Asynchronously requests a WebGPU adapter from the given instance.
+ *
+ * This helper function wraps the asynchronous call to request an adapter using
+ * the WebGPU API. It sets up a promise and registers an adapter callback,
+ * returning a future that will eventually hold the requested WGPUAdapter.
+ *
+ * @param instance The WGPUInstance from which to request the adapter.
+ * @param adapterOpts The options for requesting the adapter.
+ * @return std::future<WGPUAdapter> A future that will eventually hold the
+ * created WGPUAdapter.
+ */
+inline std::future<WGPUAdapter>
+requestAdapterAsync(WGPUInstance instance,
+                    const WGPURequestAdapterOptions &adapterOpts) {
+  auto promise = std::make_shared<std::promise<WGPUAdapter>>();
+  auto *promisePtr = new std::shared_ptr<std::promise<WGPUAdapter>>(promise);
+
+  WGPURequestAdapterCallbackInfo callbackInfo{
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = adapterCallback,
+      .userdata1 = promisePtr,
+      .userdata2 = nullptr};
+  wgpuInstanceRequestAdapter(instance, &adapterOpts, callbackInfo);
+  return promise->get_future();
+}
+
+/**
+ * @brief Asynchronously requests a WebGPU device from a given adapter.
+ *
+ * This helper function wraps the asynchronous call to request a device using
+ * the WebGPU API. It sets up a promise and registers a device callback,
+ * returning a future that will be fulfilled once the device is available.
+ *
+ * @param adapter The WGPUAdapter to request the device from.
+ * @param devDescriptor The descriptor specifying the characteristics of the
+ * requested device.
+ * @return std::future<WGPUDevice> A future that will eventually hold the
+ * created WGPUDevice.
+ */
+inline std::future<WGPUDevice>
+requestDeviceAsync(WGPUAdapter adapter,
+                   const WGPUDeviceDescriptor &devDescriptor) {
+  auto promise = std::make_shared<std::promise<WGPUDevice>>();
+  auto *promisePtr = new std::shared_ptr<std::promise<WGPUDevice>>(promise);
+
+  WGPURequestDeviceCallbackInfo deviceCallbackInfo{
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = deviceCallback,
+      .userdata1 = promisePtr,
+      .userdata2 = nullptr};
+  wgpuAdapterRequestDevice(adapter, &devDescriptor, deviceCallbackInfo);
+  return promise->get_future();
+}
+
+/**
  * @brief Factory function to create a GPU context, which aggregates WebGPU API
  * handles to interact with the GPU including the instance, adapter, device, and
  * queue.
@@ -812,318 +1033,388 @@ inline void check(bool condition, const char *message,
  * @return Context instance representing the created GPU context
  *
  */
-inline Context createContext(
-    const WGPUInstanceDescriptor &desc = {},
-    const WGPURequestAdapterOptions &adapterOpts = {},
-    const WGPUDeviceDescriptor &devDescriptor = {}) 
-{
-  Context ctx; // stack-allocated
+inline std::future<Context>
+createContextAsync(const WGPUInstanceDescriptor &desc = {},
+                   const WGPURequestAdapterOptions &adapterOpts = {},
+                   const WGPUDeviceDescriptor &devDescriptor = {}) {
 
-#ifdef __EMSCRIPTEN__
-  ctx.instance = wgpuCreateInstance(nullptr);
-#else
+  auto promise = std::make_shared<std::promise<Context>>();
+
+  // On native platforms, run our context creation in a detached thread.
+
+  Context ctx;
   ctx.instance = wgpuCreateInstance(&desc);
-#endif
+  if (!ctx.instance) {
+    promise->set_exception(std::make_exception_ptr(
+        std::runtime_error("Failed to create WebGPU instance.")));
+    return promise->get_future();
+  }
+  try {
+    auto adapterFuture = requestAdapterAsync(ctx.instance, adapterOpts);
+    ctx.adapter = wait(ctx, adapterFuture);
+    ctx.adapterStatus = WGPURequestAdapterStatus_Success;
+  } catch (const std::exception &ex) {
+    promise->set_exception(std::make_exception_ptr(ex));
+    return promise->get_future();
+  }
+  try {
+    auto deviceFuture = requestDeviceAsync(ctx.adapter, devDescriptor);
+    ctx.device = wait(ctx, deviceFuture);
+    ctx.deviceStatus = WGPURequestDeviceStatus_Success;
+  } catch (const std::exception &ex) {
+    promise->set_exception(std::make_exception_ptr(ex));
+    return promise->get_future();
+  }
+  ctx.queue = wgpuDeviceGetQueue(ctx.device);
+  promise->set_value(std::move(ctx));
+
+  return promise->get_future();
+}
+
+/**
+ * @brief Synchronously waits for and returns the created GPU context.
+ *
+ * This function invokes the asynchronous createContext() factory function to
+ * create a GPU context, then waits for its completion using
+ * waitForContextFuture. The returned Context holds handles to the WebGPU
+ * instance, adapter, device, and queue, and is used for subsequent GPU
+ * operations.
+ *
+ * @return Context The fully initialized GPU context.
+ *
+ * @code
+ * Context ctx = waitForContext();
+ * // Now ctx can be used for GPU operations.
+ * @endcode
+ */
+inline Context createContext(const WGPUInstanceDescriptor &desc = {},
+                             const WGPURequestAdapterOptions &adapterOpts = {},
+                             const WGPUDeviceDescriptor &devDescriptor = {}) {
+  std::future<Context> contextFuture =
+      createContextAsync(desc, adapterOpts, devDescriptor);
+  return waitForContextFuture<Context>(contextFuture);
+}
+
+#ifndef __EMSCRIPTEN__
+#if USE_DAWN_API
+/**
+ * @brief Retrieves the list of available GPU adapters from the Dawn instance.
+ *
+ * This function creates a Dawn instance using the provided context's instance
+ * handle, then enumerates and returns the available GPU adapters as a vector.
+ *
+ * @param ctx The Context containing the WebGPU instance handle.
+ * @return std::vector<dawn::native::Adapter> A vector of available GPU
+ * adapters.
+ *
+ * @code
+ * std::vector<dawn::native::Adapter> adapters = getAdapters(ctx);
+ * @endcode
+ */
+inline std::vector<dawn::native::Adapter> getAdapters(Context &ctx) {
+  dawn::native::Instance dawnInstance(
+      reinterpret_cast<dawn::native::InstanceBase *>(ctx.instance));
+  return dawnInstance.EnumerateAdapters();
+}
+
+/**
+ * @brief Formats the given vector of Dawn adapters into a single concatenated
+ * string.
+ *
+ * This function iterates over each Dawn adapter in the provided vector,
+ * retrieves its description using the WebGPU API, and converts the description
+ * from a WGPUStringView to an std::string using the formatWGPUStringView
+ * helper. The resulting descriptions are concatenated into a single string
+ * separated by newline characters.
+ *
+ * @param adapters A vector of Dawn adapters obtained from a WebGPU instance.
+ * @return std::string A newline-delimited string listing each adapter's
+ * description.
+ *
+ * @code
+ * std::string adapterList = formatAdapters(adapters);
+ * @endcode
+ */
+inline std::string
+formatAdapters(const std::vector<dawn::native::Adapter> &adapters) {
+  std::string adapterList;
+  for (size_t i = 0; i < adapters.size(); ++i) {
+    auto adapterPtr = adapters[i].Get();
+    if (adapterPtr) {
+      WGPUAdapterInfo info = {};
+      wgpuAdapterGetInfo(adapterPtr, &info);
+      std::string desc = formatWGPUStringView(info.description);
+      adapterList += "GPU Adapter [" + std::to_string(i) + "]: " + desc + "\n";
+      wgpuAdapterInfoFreeMembers(info);
+    }
+  }
+  return adapterList;
+}
+
+/**
+ * @brief Lists the available GPU adapters in the current WebGPU instance.
+ *
+ * This function retrieves the list of available GPU adapters using the
+ * getAdapters helper function, then formats and returns the adapter
+ * descriptions as a single string using the formatAdapters helper function.
+ *
+ * @param ctx The Context containing the WebGPU instance handle.
+ * @return std::string A newline-delimited string listing each adapter's
+ * description.
+ *
+ * @code
+ * std::string adapterList = listAdapters(ctx);
+ * @endcode
+ */
+inline std::string listAdapters(Context &ctx) {
+  auto adapters = getAdapters(ctx);
+  return formatAdapters(adapters);
+}
+
+/**
+ * @brief Asynchronously creates a GPU context using the specified GPU index.
+ *
+ * This function creates a WebGPU instance, retrieves the available GPU
+ * adapters, and selects the adapter at the specified index. It then requests a
+ * device from the selected adapter and sets up a logging callback for device
+ * errors. The function returns a future that will be fulfilled with the
+ * created Context once all operations are complete.
+ *
+ * @param gpuIdx The index of the GPU adapter to use.
+ * @param desc Instance descriptor for the WebGPU instance (optional)
+ * @param devDescriptor Device descriptor for the WebGPU device (optional)
+ * @return std::future<Context> A future that will eventually hold the created
+ * Context.
+ *
+ * @code
+ * std::future<Context> contextFuture = createContextByGpuIdxAsync(0);
+ * Context ctx = waitForContextFuture(contextFuture);
+ * @endcode
+ */
+inline std::future<Context>
+createContextByGpuIdxAsync(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
+                           const WGPUDeviceDescriptor &devDescriptor = {}) {
+  auto promise = std::make_shared<std::promise<Context>>();
+  Context ctx;
+
+  ctx.instance = wgpuCreateInstance(&desc);
+
+  if (!ctx.instance) {
+    promise->set_exception(std::make_exception_ptr(
+        std::runtime_error("Failed to create WebGPU instance.")));
+    return promise->get_future();
+  }
   check(ctx.instance, "Initialize WebGPU", __FILE__, __LINE__);
 
-  LOG(kDefLog, kTrace, "Requesting adapter");
-  {
-    struct AdapterData {
-      WGPUAdapter adapter = nullptr;
-      bool requestEnded = false;
-      WGPURequestAdapterStatus status;
-    };
-    AdapterData adapterData;
+  // Use helper functions to obtain and format the adapters.
+  auto adapters = getAdapters(ctx);
 
-    auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status,
-                                    WGPUAdapter adapter, 
-                                    WGPUStringView message,
-                                    void *pUserData, void *) {
-      auto &ad = *reinterpret_cast<AdapterData*>(pUserData);
-      ad.status = status;
-#ifdef __EMSCRIPTEN__
-      if (status != WGPURequestAdapterStatus_Success) {
-        LOG(kDefLog, kError, "Could not get WebGPU adapter: %.*s",
-            static_cast<int>(message.length), message.data);
-      }
-#endif
-      check(status == WGPURequestAdapterStatus_Success,
-            "Request WebGPU adapter", __FILE__, __LINE__);
-      ad.adapter      = adapter;
-      ad.requestEnded = true;
-    };
+  if (gpuIdx >= adapters.size()) {
+    promise->set_exception(
+        std::make_exception_ptr(std::runtime_error("Invalid GPU index.")));
+    return promise->get_future();
+  }
+  LOG(kDefLog, kInfo, "Using GPU Adapter[%d]", gpuIdx);
+  auto adapterPtr = adapters[gpuIdx].Get();
+  if (adapterPtr) {
+    WGPUAdapterInfo info = {};
+    wgpuAdapterGetInfo(adapterPtr, &info);
+    LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s", gpuIdx,
+        formatWGPUStringView(info.description).c_str());
+    wgpuAdapterInfoFreeMembers(info);
+  }
+  ctx.adapter = reinterpret_cast<WGPUAdapter>(adapterPtr);
+  dawn::native::GetProcs().adapterAddRef(ctx.adapter);
 
-    WGPURequestAdapterCallbackInfo callbackInfo {
-      .mode = WGPUCallbackMode_AllowSpontaneous,
-      .callback = onAdapterRequestEnded,
-      .userdata1 = &adapterData,
-      .userdata2 = nullptr
-    };
-    wgpuInstanceRequestAdapter(ctx.instance, &adapterOpts, callbackInfo);
-
-    while (!adapterData.requestEnded) {
-      processEvents(ctx.instance);
-    }
-    ctx.adapter = adapterData.adapter;
-    ctx.adapterStatus = adapterData.status;
+  LOG(kDefLog, kInfo, "Requesting device");
+  // Request the device asynchronously (using our requestDeviceAsync helper).
+  auto deviceFuture = requestDeviceAsync(ctx.adapter, devDescriptor);
+  try {
+    ctx.device = wait(ctx, deviceFuture);
+    ctx.deviceStatus = WGPURequestDeviceStatus_Success;
+  } catch (const std::exception &ex) {
+    promise->set_exception(std::make_exception_ptr(ex));
+    return promise->get_future();
   }
 
-  LOG(kDefLog, kTrace, "Requesting device");
-  {
-    struct DeviceData {
-      WGPUDevice device = nullptr;
-      bool requestEnded = false;
-      WGPURequestDeviceStatus status;
-    };
-    DeviceData devData;
-
-    auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, 
-                                   WGPUStringView message,
-                                   void *pUserData, void *) {
-      auto &dd = *reinterpret_cast<DeviceData*>(pUserData);
-      dd.status = status;
-      check(status == WGPURequestDeviceStatus_Success,
-            "Could not get WebGPU device.", __FILE__, __LINE__);
-      LOG(kDefLog, kTrace, "Device Request succeeded %p", 
-          static_cast<void*>(device));
-      dd.device      = device;
-      dd.requestEnded= true;
-    };
-
-    WGPURequestDeviceCallbackInfo deviceCallbackInfo {
-      .mode = WGPUCallbackMode_AllowSpontaneous,
-      .callback = onDeviceRequestEnded,
-      .userdata1= &devData,
-      .userdata2= nullptr
-    };
-    wgpuAdapterRequestDevice(ctx.adapter, &devDescriptor, deviceCallbackInfo);
-
-    LOG(kDefLog, kTrace, "Waiting for device request to end");
-    while (!devData.requestEnded) {
-      processEvents(ctx.instance);
-    }
-    LOG(kDefLog, kTrace, "Device request ended");
-
-    ctx.device = devData.device;
-    ctx.deviceStatus = devData.status;
-
-    // If the device was created, set up logging and fetch the queue
-    if (devData.status == WGPURequestDeviceStatus_Success) {
-      #ifndef __EMSCRIPTEN__
-      WGPULoggingCallbackInfo loggingCallbackInfo {
-        .nextInChain = nullptr,
-        .callback =
-          [](WGPULoggingType type, WGPUStringView message, 
-             void *, void *) {
+  WGPULoggingCallbackInfo loggingCallbackInfo{
+      .nextInChain = nullptr,
+      .callback =
+          [](WGPULoggingType type, WGPUStringView message, void *userdata1,
+             void *userdata2) {
             LOG(kDefLog, kError, "Device logging callback: %.*s",
                 static_cast<int>(message.length), message.data);
             if (type == WGPULoggingType_Error) {
               throw std::runtime_error("Device error logged.");
             }
           },
-        .userdata1 = nullptr,
-        .userdata2 = nullptr
-      };
-      wgpuDeviceSetLoggingCallback(ctx.device, loggingCallbackInfo);
-      #endif
-      ctx.queue = wgpuDeviceGetQueue(ctx.device);
-    }
-  }
-
-  return std::move(ctx);
+      .userdata1 = nullptr,
+      .userdata2 = nullptr};
+  wgpuDeviceSetLoggingCallback(ctx.device, loggingCallbackInfo);
+  ctx.queue = wgpuDeviceGetQueue(ctx.device);
+  promise->set_value(std::move(ctx));
+  return promise->get_future();
 }
 
-
-#ifdef USE_DAWN_API
 /**
- * @brief Factory function to create a GPU context, which aggregates WebGPU API
- * handles to interact with the GPU including the instance, adapter, device, and
- * queue.
+ * @brief Synchronously creates a GPU context using the specified GPU index.
  *
- * The function takes gpu index to support for multi GPUs.
- * To activate this function, it needs not only webgpu's headers but also DAWN's
- * headers.
+ * This function calls the asynchronous createContextByGpuIdxAsync function to
+ * create a GPU context, then waits for its completion using
+ * waitForContextFuture. The returned Context holds handles to the WebGPU
+ * instance, adapter, device, and queue, and is used for subsequent GPU
+ * operations.
  *
- * If dawn is used, it also sets up an error callback for device loss.
- *
- * @param[in] gpuIdx GPU index
- * @param[in] desc Instance descriptor for the WebGPU instance (optional)
- * @param[in] devDescriptor Device descriptor for the WebGPU device (optional)
- * @return Context instance representing the created GPU context
+ * @param gpuIdx The index of the GPU adapter to use.
+ * @param desc Instance descriptor for the WebGPU instance (optional)
+ * @param devDescriptor Device descriptor for the WebGPU device (optional)
+ * @return Context The fully initialized GPU context.
  *
  * @code
- * Context ctx = createContextByGpuIdx(1);
+ * Context ctx = createContextByGpuIdx(0);
  * @endcode
  */
 inline Context
 createContextByGpuIdx(int gpuIdx, const WGPUInstanceDescriptor &desc = {},
                       const WGPUDeviceDescriptor &devDescriptor = {}) {
-  Context context;
-  {
-#ifdef __EMSCRIPTEN__
-    // Emscripten does not support the instance descriptor
-    // and throws an assertion error if it is not nullptr.
-    context.instance = wgpuCreateInstance(nullptr);
-#else
-    context.instance = wgpuCreateInstance(&desc);
-#endif
-    // check status
-    check(context.instance, "Initialize WebGPU", __FILE__, __LINE__);
-  }
-
-  LOG(kDefLog, kInfo, "Requesting adapter");
-  {
-    std::vector<dawn::native::Adapter> adapters =
-        dawn::native::Instance(
-            reinterpret_cast<dawn::native::InstanceBase *>(context.instance))
-            .EnumerateAdapters();
-    LOG(kDefLog, kInfo, "The number of GPUs=%d\n", adapters.size());
-    // Note: Second gpu is not available on Macos, but the number of GPUs is 2
-    // on Macos.
-    //       Calling wgpuAdapterGetInfo function for the second gpu becomes
-    //       segfault. When you check all GPUs on linux, uncomment out following
-    //       codes.
-    //
-    // for (size_t i = 0; i < adapters.size(); i++) {
-    //   WGPUAdapterInfo info {};
-    //   auto ptr = adapters[i].Get();
-    //   if (ptr && adapters[i]) {
-    //     wgpuAdapterGetInfo(ptr, &info);
-    //     LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", i, info.description);
-    //     wgpuAdapterInfoFreeMembers(info);
-    //   }
-    // }
-
-    {
-      LOG(kDefLog, kInfo, "Use GPU(Adapter)[%d]\n", gpuIdx);
-      auto ptr = adapters[gpuIdx].Get();
-      if (ptr) {
-        WGPUAdapterInfo info{};
-        wgpuAdapterGetInfo(ptr, &info);
-        LOG(kDefLog, kInfo, "GPU(Adapter)[%d] = %s\n", gpuIdx,
-            info.description);
-        wgpuAdapterInfoFreeMembers(info);
-      }
-      context.adapter = adapters[gpuIdx].Get();
-      dawn::native::GetProcs().adapterAddRef(context.adapter);
-    }
-  }
-
-  LOG(kDefLog, kInfo, "Requesting device");
-  {
-    struct DeviceData {
-      WGPUDevice device = nullptr;
-      bool requestEnded = false;
-    };
-    DeviceData devData;
-
-    auto onDeviceRequestEnded = [](WGPURequestDeviceStatus status,
-                                   WGPUDevice device, WGPUStringView message,
-                                   void *pUserData, void *) {
-      DeviceData &devData = *reinterpret_cast<DeviceData *>(pUserData);
-      check(status == WGPURequestDeviceStatus_Success,
-            "Could not get WebGPU device.", __FILE__, __LINE__);
-      LOG(kDefLog, kTrace, "Device Request succeeded %x",
-          static_cast<void *>(device));
-      devData.device = device;
-      devData.requestEnded = true;
-    };
-
-    WGPURequestDeviceCallbackInfo deviceCallbackInfo = {
-        .mode = WGPUCallbackMode_AllowSpontaneous,
-        .callback = onDeviceRequestEnded,
-        .userdata1 = &devData,
-        .userdata2 = nullptr};
-    wgpuAdapterRequestDevice(context.adapter, &devDescriptor,
-                             deviceCallbackInfo);
-
-    LOG(kDefLog, kInfo, "Waiting for device request to end");
-    while (!devData.requestEnded) {
-      processEvents(context.instance);
-    }
-    LOG(kDefLog, kInfo, "Device request ended");
-    assert(devData.requestEnded);
-    context.device = devData.device;
-
-    WGPULoggingCallbackInfo loggingCallbackInfo = {
-        .nextInChain = nullptr,
-        .callback =
-            [](WGPULoggingType type, WGPUStringView message, void *userdata1,
-               void *userdata2) {
-              LOG(kDefLog, kError, "Device logging callback: %.*s",
-                  static_cast<int>(message.length), message.data);
-              if (type == WGPULoggingType_Error) {
-                throw std::runtime_error("Device error logged.");
-              }
-            },
-        .userdata1 = nullptr,
-        .userdata2 = nullptr};
-    wgpuDeviceSetLoggingCallback(context.device, loggingCallbackInfo);
-  }
-  context.queue = wgpuDeviceGetQueue(context.device);
-  return context;
+  std::future<Context> contextFuture =
+      createContextByGpuIdxAsync(gpuIdx, desc, devDescriptor);
+  return waitForContextFuture<Context>(contextFuture);
 }
-#endif
 
-inline void wait(Context &ctx, std::future<void> &future) {
-  while (future.wait_for(std::chrono::seconds(0)) !=
-         std::future_status::ready) {
-    processEvents(ctx.instance);
-  }
+#endif // USE_DAWN_API
+#endif // __EMSCRIPTEN__
+
+/**
+ * @brief Callback function invoked upon completion of an asynchronous GPU
+ * buffer mapping.
+ *
+ * This callback is triggered when the GPU buffer mapping for a readback buffer
+ * is completed. It verifies that the mapping operation was successful,
+ * retrieves the mapped memory, copies the data from the GPU buffer to a CPU
+ * memory region, unmaps the buffer, signals the completion by fulfilling the
+ * associated promise, and cleans up the allocated callback data.
+ *
+ * @param status The mapping status. Expected to be WGPUMapAsyncStatus_Success
+ * on success.
+ * @param message A string view containing additional information about the
+ * mapping operation.
+ * @param userdata1 A pointer to a heap-allocated CallbackData structure
+ * containing the GPU buffer, buffer size, destination CPU memory pointer, and a
+ * promise for signaling completion.
+ * @param userdata2 Unused.
+ */
+inline void bufferMapCallback(WGPUMapAsyncStatus status, WGPUStringView message,
+                              void *userdata1, void * /*userdata2*/) {
+  const CallbackData *cbData = static_cast<CallbackData *>(userdata1);
+  // Check that mapping succeeded.
+  check(status == WGPUMapAsyncStatus_Success, "Map readbackBuffer", __FILE__,
+        __LINE__);
+
+  // Get the mapped memory.
+  const void *mappedData =
+      wgpuBufferGetConstMappedRange(cbData->buffer, 0, cbData->bufferSize);
+  check(mappedData, "Get mapped range", __FILE__, __LINE__);
+
+  // Copy the data from the mapped GPU buffer to the CPU memory.
+  memcpy(cbData->output, mappedData, cbData->bufferSize);
+
+  // Unmap the buffer.
+  wgpuBufferUnmap(cbData->buffer);
+
+  // Signal that the copy has completed.
+  // Ensure you use the arrow operator on the shared_ptr to call set_value().
+  cbData->promise->set_value();
+
+  // Clean up the dynamically allocated callback data.
+  delete cbData;
+}
+
+/**
+ * @brief Callback function invoked when the GPU queue’s submitted work is
+ * complete.
+ *
+ * This callback is registered with the GPU queue after submitting work. When
+ * invoked, it verifies that all queued work completed successfully, and then
+ * sets up the buffer mapping callback to initiate the asynchronous mapping of a
+ * readback buffer. The readback buffer is mapped to access the processed data
+ * on the CPU.
+ *
+ * @param status The status of the completed work. Expected to be
+ * WGPUQueueWorkDoneStatus_Success on success.
+ * @param userdata1 A pointer to a heap-allocated CallbackData structure
+ * containing the readback buffer, buffer size, destination CPU memory pointer,
+ * and a promise to signal completion.
+ * @param userdata2 Unused.
+ */
+inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
+                                  void *userdata1, void * /*userdata2*/) {
+  const CallbackData *cbData = static_cast<CallbackData *>(userdata1);
+  // Ensure the queue work finished successfully.
+  check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done", __FILE__,
+        __LINE__);
+
+  // Set up the buffer mapping callback information.
+  WGPUBufferMapCallbackInfo mapCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = bufferMapCallback,
+      .userdata1 = const_cast<CallbackData *>(cbData), // Pass the callback data.
+      .userdata2 = nullptr // No additional user data.
+  };
+
+  // Begin the asynchronous mapping of the readback buffer.
+  wgpuBufferMapAsync(cbData->buffer, WGPUMapMode_Read, 0, cbData->bufferSize,
+                     mapCallbackInfo);
 }
 
 /**
  * @brief Copies data from a GPU buffer to CPU memory.
  * @param[in] ctx Context instance to manage the operation
- * @param[in] tensor Tensor instance representing the GPU buffer to copy from
  * @param[out] data Pointer to the CPU memory to copy the data to
  * @param[in] bufferSize Size of the data buffer in bytes
  * @param[in] op StagingBuffer instance to manage the operation
+ * @param[in] sourceOffset Offset in the GPU buffer to start copying from.
  *
  * @code
  * toCPU(ctx, tensor, data, bufferSize);
  * @endcode
  */
-inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
-                  CopyData &op) {
+
+// NOTE: I think this one is redundant? CopyData not used externally.
+inline std::future<void> toCPUAsync(Context &ctx, void *data, size_t bufferSize,
+                                    CopyData &op, size_t sourceOffset = 0) {
+  // Submit the command buffer and release it.
   wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
   wgpuCommandBufferRelease(op.commandBuffer);
-  CallbackData callbackData = {op.readbackBuffer, bufferSize, data, &op.promise,
-                               &op.future};
 
+  // Create a promise and get its future.
+  auto promise = std::make_shared<std::promise<void>>();
+
+  // Allocate callback data so it remains valid until the async
+  // chain finishes.
+  CallbackData *cbData = new CallbackData{
+      op.readbackBuffer, // The GPU buffer to be read back.
+      bufferSize,
+      data,    // CPU memory destination.
+      promise, // The promise to be signaled.
+  };
+
+  // Set up the work-done callback to initiate the buffer mapping.
   WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
       .mode = WGPUCallbackMode_AllowSpontaneous,
-      .callback =
-          [](WGPUQueueWorkDoneStatus status, void *userdata1, void *userdata2) {
-            check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-                  __FILE__, __LINE__);
-            const auto *data = static_cast<CallbackData *>(userdata1);
-            WGPUBufferMapCallbackInfo mapCallbackInfo = {
-                .mode = WGPUCallbackMode_AllowSpontaneous,
-                .callback =
-                    [](WGPUMapAsyncStatus status, WGPUStringView message,
-                       void *userdata1, void *userdata2) {
-                      const auto *data = static_cast<CallbackData *>(userdata1);
-                      check(status == WGPUMapAsyncStatus_Success,
-                            "Map readbackBuffer", __FILE__, __LINE__);
-                      const void *mappedData = wgpuBufferGetConstMappedRange(
-                          data->buffer, /*offset=*/0, data->bufferSize);
-                      check(mappedData, "Get mapped range", __FILE__, __LINE__);
-                      memcpy(data->output, mappedData, data->bufferSize);
-                      wgpuBufferUnmap(data->buffer);
-                      data->promise->set_value();
-                    },
-                .userdata1 = const_cast<CallbackData *>(data),
-                .userdata2 = nullptr};
-            wgpuBufferMapAsync(data->buffer, WGPUMapMode_Read, 0,
-                               data->bufferSize, mapCallbackInfo);
-          },
-      .userdata1 = &callbackData,
+      .callback = queueWorkDoneCallback,
+      .userdata1 = const_cast<CallbackData *>(cbData),
       .userdata2 = nullptr};
+
+  // Begin the asynchronous chain by registering the queue work-done callback.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
 
-  wait(ctx, op.future);
+  // Release the readback buffer as it is no longer needed.
+  if (op.readbackBuffer) {
+    wgpuBufferRelease(op.readbackBuffer);
+  }
+
+  return promise->get_future();
 }
 
 /**
@@ -1138,34 +1429,124 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
  *
  * @param[in] ctx Context instance to manage the operation
  * @param[in] tensor Tensor instance representing the GPU buffer to copy from
- * @param[in] bufferSize Size of the data buffer in bytes
+ * @param[in] bufferSize Size to read in bytes as out data.
  * @param[out] data Pointer to the CPU memory to copy the data to
+ * @param[in] sourceOffset Offset in the GPU buffer to start copying from.
  */
-inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
+inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor, void *data,
+                                    size_t bufferSize,
+                                    size_t sourceOffset = 0) {
+  // Create a promise that will later be satisfied when the async copy
+  // completes.
+  auto promise = std::make_shared<std::promise<void>>();
+
+  // Create a readback buffer that will be used for copying and mapping.
+  WGPUBufferDescriptor readbackBufferDescriptor = {
+      .label = {.data = nullptr, .length = 0},
+      .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
+      .size = bufferSize, // Size of the readback buffer.
+  };
+  WGPUBuffer readbackBuffer =
+      wgpuDeviceCreateBuffer(ctx.device, &readbackBufferDescriptor);
+
+  // Create a command encoder and record a copy from the tensor GPU buffer
+  WGPUCommandEncoder commandEncoder =
+      wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
+  wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer,
+                                       sourceOffset, readbackBuffer, 0,
+                                       bufferSize);
+  // Finish recording by creating a command buffer and release the encoder.
+  WGPUCommandBuffer commandBuffer =
+      wgpuCommandEncoderFinish(commandEncoder, nullptr);
+  wgpuCommandEncoderRelease(commandEncoder);
+  check(commandBuffer, "Create command buffer", __FILE__, __LINE__);
+
+  // Submit the work to the queue and release the command buffer immediately.
+  wgpuQueueSubmit(ctx.queue, 1, &commandBuffer);
+  wgpuCommandBufferRelease(commandBuffer);
+
+  // Allocate callback data
+  CallbackData *cbData = new CallbackData{
+      readbackBuffer, // The readback buffer to map.
+      bufferSize,     // The size of the copy.
+      data,           // CPU memory destination.
+      promise         // The promise to signal when done.
+  };
+
+  // Set up the work-done callback. When the queue’s submitted work is
+  // completed, it is routed to queueWorkDoneCallback which then starts the
+  // asynchronous map.
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = queueWorkDoneCallback,
+      .userdata1 = cbData,
+      .userdata2 = nullptr,
+  };
+
+  // Register the callback. The async chain continues inside
+  // queueWorkDoneCallback.
+  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
+  return promise->get_future();
+}
+
+inline std::future<void> toCPUAsync(Context &ctx, WGPUBuffer buffer, void *data,
+                                    size_t bufferSize,
+                                    size_t sourceOffset = 0) {
+
+  // Create an operation structure (here we reuse CopyData solely for its
+  // members that we need to create a readback buffer and command buffer).
   CopyData op;
-  op.future = op.promise.get_future();
+
+  // Create the promise that will be fulfilled once the copy is done.
+  auto promise = std::make_shared<std::promise<void>>();
+
+  // Create a readback buffer that we can map for reading.
   {
     WGPUBufferDescriptor readbackBufferDescriptor = {
-        .label = {.data = nullptr, .length = 0}, 
+        .label = {.data = nullptr, .length = 0},
         .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
         .size = bufferSize,
     };
     op.readbackBuffer =
         wgpuDeviceCreateBuffer(ctx.device, &readbackBufferDescriptor);
   }
+
+  // Create a command encoder which copies from the provided buffer to the
+  // readback buffer.
   {
-    WGPUCommandEncoder commandEncoder;
-    commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
-    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, tensor.data.buffer, 0,
+    WGPUCommandEncoder commandEncoder =
+        wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
+    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, buffer, sourceOffset,
                                          op.readbackBuffer, 0, bufferSize);
     op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
     wgpuCommandEncoderRelease(commandEncoder);
     check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
   }
-  toCPU(ctx, tensor, data, bufferSize, op);
-  if (op.readbackBuffer) {
-    wgpuBufferRelease(op.readbackBuffer);
-  }
+
+  // Submit the command and release the command buffer.
+  wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
+  wgpuCommandBufferRelease(op.commandBuffer);
+
+  // Allocate callback data
+  CallbackData *cbData = new CallbackData{
+      op.readbackBuffer, // The readback buffer created above.
+      bufferSize,        // Size of the copy.
+      data,   // Destination CPU memory.         // Offset in the GPU buffer.
+      promise // Our promise to satisfy when done.
+  };
+
+  // Set up the queue work-done callback info.
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
+      .mode = WGPUCallbackMode_AllowSpontaneous,
+      .callback = queueWorkDoneCallback, // Our free function callback.
+      .userdata1 = cbData,               // Pass the callback data pointer.
+      .userdata2 = nullptr};
+
+  // Start the asynchronous chain by registering the work-done callback.
+  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
+  return promise->get_future();
 }
 
 /**
@@ -1176,76 +1557,86 @@ inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize) {
  * @param[out] data Array of floats to copy the data to
  *
  * @code
- * toCPU(ctx, tensor, data);
+ * std::future<void> toCPUFuture = toCPU(ctx, tensor, data);
+ * wait(ctx, toCPUFuture);
  * @endcode
  */
 template <size_t N>
-void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data) {
-  toCPU(ctx, tensor, data.data(), sizeof(data));
+inline std::future<void> toCPUAsync(Context &ctx, Tensor &tensor,
+                                    std::array<float, N> &data,
+                                    size_t sourceOffset = 0) {
+  return toCPUAsync(ctx, tensor, data.data(), sizeof(data), sourceOffset);
 }
 
-inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size) {
-  uint64_t bufferSize = size;
-  CopyData op;
-  op.future = op.promise.get_future();
-  {
-    WGPUBufferDescriptor readbackBufferDescriptor = {
-        .label = {.data = nullptr, .length = 0}, 
-        .usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
-        .size = bufferSize,
-    };
-    op.readbackBuffer =
-        wgpuDeviceCreateBuffer(ctx.device, &readbackBufferDescriptor);
-  }
-  {
-    WGPUCommandEncoder commandEncoder;
-    commandEncoder = wgpuDeviceCreateCommandEncoder(ctx.device, nullptr);
-    wgpuCommandEncoderCopyBufferToBuffer(commandEncoder, buffer, 0,
-                                         op.readbackBuffer, 0, bufferSize);
-    op.commandBuffer = wgpuCommandEncoderFinish(commandEncoder, nullptr);
-    wgpuCommandEncoderRelease(commandEncoder);
-    check(op.commandBuffer, "Create command buffer", __FILE__, __LINE__);
-  }
-  wgpuQueueSubmit(ctx.queue, 1, &op.commandBuffer);
-  wgpuCommandBufferRelease(op.commandBuffer);
-  CallbackData callbackData = {op.readbackBuffer, static_cast<size_t>(bufferSize), data, &op.promise,
-                               &op.future};
+/**
+ * @brief Synchronous wrapper for copying from a Tensor GPU buffer to CPU
+ * memory.
+ *
+ * This function synchronously waits for the asynchronous copy operation to
+ * complete, ensuring that the data is fully transferred from the GPU buffer to
+ * the CPU memory before returning.
+ *
+ * @param ctx Context instance to manage the operation
+ * @param tensor Tensor instance representing the GPU buffer to copy from
+ * @param data Pointer to the CPU memory to copy the data to
+ * @param bufferSize Size of the data buffer in bytes
+ * @param instance WGPUInstance used for processing events during waiting
+ *
+ * @code
+ * toCPU(ctx, tensor, data, bufferSize, instance);
+ * @endcode
+ */
+inline void toCPU(Context &ctx, Tensor &tensor, void *data, size_t bufferSize,
+                  size_t sourceOffset = 0) {
+  auto future = toCPUAsync(ctx, tensor, data, bufferSize, sourceOffset);
+  wait(ctx, future);
+}
 
-  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
-      .mode = WGPUCallbackMode_AllowSpontaneous,
-      .callback =
-          [](WGPUQueueWorkDoneStatus status, void *userdata1, void *userdata2) {
-            check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-                  __FILE__, __LINE__);
-            const auto *data = static_cast<CallbackData *>(userdata1);
-            WGPUBufferMapCallbackInfo mapCallbackInfo = {
-                .mode = WGPUCallbackMode_AllowSpontaneous,
-                .callback =
-                    [](WGPUMapAsyncStatus status, WGPUStringView message,
-                       void *userdata1, void *userdata2) {
-                      const auto *data = static_cast<CallbackData *>(userdata1);
-                      check(status == WGPUMapAsyncStatus_Success,
-                            "Map readbackBuffer", __FILE__, __LINE__);
-                      const void *mappedData = wgpuBufferGetConstMappedRange(
-                          data->buffer, /*offset=*/0, data->bufferSize);
-                      check(mappedData, "Get mapped range", __FILE__, __LINE__);
-                      memcpy(data->output, mappedData, data->bufferSize);
-                      wgpuBufferUnmap(data->buffer);
-                      data->promise->set_value();
-                    },
-                .userdata1 = const_cast<CallbackData *>(data),
-                .userdata2 = nullptr};
-            wgpuBufferMapAsync(data->buffer, WGPUMapMode_Read, 0,
-                               data->bufferSize, mapCallbackInfo);
-          },
-      .userdata1 = &callbackData,
-      .userdata2 = nullptr};
-  wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+/**
+ * @brief Synchronous wrapper for copying from a GPU buffer to CPU memory.
+ *
+ * This function synchronously waits for the asynchronous copy operation to
+ * complete, ensuring that the data is fully transferred from the GPU buffer to
+ * the CPU memory before returning.
+ *
+ * @param ctx Context instance to manage the operation
+ * @param buffer WGPUBuffer instance representing the GPU buffer to copy from
+ * @param data Pointer to the CPU memory to copy the data to
+ * @param size Size of the data buffer in bytes
+ * @param instance WGPUInstance used for processing events during waiting
+ *
+ * @code
+ * toCPU(ctx, buffer, data, size, instance);
+ * @endcode
+ */
+inline void toCPU(Context &ctx, WGPUBuffer buffer, void *data, size_t size,
+                  size_t sourceOffset = 0) {
+  auto future = toCPUAsync(ctx, buffer, data, size, sourceOffset);
+  wait(ctx, future);
+}
 
-  wait(ctx, op.future);
-  if (op.readbackBuffer) {
-    wgpuBufferRelease(op.readbackBuffer);
-  }
+/**
+ * @brief Synchronous wrapper for copying from a Tensor GPU buffer to CPU
+ * memory for an array of floats instead of a pointer to a float buffer.
+ *
+ * This function synchronously waits for the asynchronous copy operation to
+ * complete, ensuring that the data is fully transferred from the GPU buffer to
+ * the CPU memory before returning.
+ *
+ * @param ctx Context instance to manage the operation
+ * @param tensor Tensor instance representing the GPU buffer to copy from
+ * @param data Array of floats to copy the data to
+ * @param instance WGPUInstance used for processing events during waiting
+ *
+ * @code
+ * toCPU(ctx, tensor, data, instance);
+ * @endcode
+ */
+template <size_t N>
+inline void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data,
+                  size_t sourceOffset = 0) {
+  auto future = toCPUAsync(ctx, tensor, data, sourceOffset);
+  wait(ctx, future);
 }
 
 /**
@@ -1377,9 +1768,24 @@ inline Shape cdiv(Shape total, Shape group) {
 }
 
 /**
- * @brief A factory function to create a kernel on the GPU. The kernel is
- * created with the given WGSL code, input tensors, output tensor, and
- * optional parameters.
+ * @brief Packages the shader compilation information along with a promise for
+ * asynchronous signaling.
+ *
+ * This structure holds a pointer to a CompilationInfo instance that collects
+ * details such as status, messages, line numbers, and positions from the shader
+ * compilation. It also contains a shared pointer to a std::promise<void> which
+ * is used to signal the completion of the asynchronous shader compilation
+ * process.
+ */
+struct CompData {
+  CompilationInfo *compInfo;
+  std::shared_ptr<std::promise<void>> compPromise;
+};
+
+/**
+ * @brief A factory function to create a kernel asynchronously on the GPU.
+ * The kernel is created with the given WGSL code, input tensors,
+ * output tensor, and optional parameters.
  *
  * Note that the values of the input tensors are not used here, only the
  * reference handles to the underlying buffers as well as the size of the
@@ -1399,34 +1805,40 @@ inline Shape cdiv(Shape total, Shape group) {
  * @return Kernel instance representing the created kernel
  *
  * @code
- * Kernel kernel = createKernel(ctx, code, dataBindings, numInputs,
+ * std::future<Kernel> kernelFuture = createKernelAsync(ctx, code, dataBindings,
+ numInputs, output, nThreads, params, paramsSize);
+ * Kernel kernel = wait(ctx.instance, kernelFuture);
  * @endcode
- * output, nThreads, params, paramsSize);
+
  */
-inline Kernel createKernel(Context& ctx, const KernelCode &code,
-                           const Tensor *dataBindings, size_t numTensors,
-                           const size_t *viewOffsets,
-                           const Shape &totalWorkgroups,
-                           const void *params = nullptr, size_t paramsSize = 0,
-                           CompilationInfo *compilationInfo = nullptr,
-                           const char *cacheKey = nullptr) {
+inline std::future<Kernel>
+createKernelAsync(Context &ctx, const KernelCode &code,
+                  const Tensor *dataBindings, size_t numTensors,
+                  const size_t *viewOffsets, const Shape &totalWorkgroups,
+                  const void *params = nullptr, size_t paramsSize = 0,
+                  CompilationInfo *compilationInfo = nullptr,
+                  const char *cacheKey = nullptr) {
   // Create a cache key by the pointer values of the data bindings and the
   // kernel code
   if (cacheKey != nullptr &&
       ctx.kernelPool.data.find(cacheKey) != ctx.kernelPool.data.end()) {
-    LOG(kDefLog, kInfo, "Kernel cache hit");
-    return ctx.kernelPool.data[cacheKey];
+    std::promise<Kernel> ready;
+    ready.set_value(ctx.kernelPool.data[cacheKey]);
+    return ready.get_future();
   }
+
+  // Create an outer promise for the new kernel.
+  std::promise<Kernel> outerPromise;
+  std::future<Kernel> outerFuture = outerPromise.get_future();
 
   assert(totalWorkgroups.rank == 3);
   WGPUDevice device = ctx.device;
   WGPUQueue queue = ctx.queue;
   Kernel op(new RawKernel());
-
   // paramIndex is the index into bgLayoutEntries for the parameters buffer If
   // there are no parameters for the kernel, paramsSize == 0 and paramIndex is
   // effectively undefined (== -1)
-  size_t paramIndex = -1;
+  size_t paramIndex = static_cast<size_t>(-1);
   // Note: paramIndex is undefined unless paramsSize > 0
   size_t numBindings = numTensors;
   if (paramsSize > 0) {
@@ -1435,11 +1847,13 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
                                   // op.buffers, op.bufferSizes and
                                   // bgLayoutEntries
   }
+
   op->buffers = std::make_unique<WGPUBuffer[]>(numBindings);
   op->bufferSizes = std::make_unique<size_t[]>(numBindings);
   op->numBindings = numBindings;
-  std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBindings);
+
   // Create layout entries for input buffers
+  std::vector<WGPUBindGroupLayoutEntry> bgLayoutEntries(numBindings);
   for (size_t i = 0; i < numTensors; ++i) {
     bgLayoutEntries[i] = WGPUBindGroupLayoutEntry{
         .binding = static_cast<uint32_t>(i),
@@ -1452,8 +1866,6 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
     };
   }
   if (paramsSize > 0) {
-    LOG(kDefLog, kInfo, "Create layout entry for the params buffer");
-    // Create layout entry for the params buffer
     bgLayoutEntries[paramIndex] = WGPUBindGroupLayoutEntry{
         .binding = static_cast<uint32_t>(paramIndex),
         .visibility = WGPUShaderStage_Compute,
@@ -1466,10 +1878,11 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
   }
   WGPUBindGroupLayoutDescriptor bgLayoutDesc = {
       .entryCount = static_cast<uint32_t>(bgLayoutEntries.size()),
-      .entries = bgLayoutEntries.data(),
-  };
+      .entries = bgLayoutEntries.data()};
   WGPUBindGroupLayout bgLayout =
       wgpuDeviceCreateBindGroupLayout(device, &bgLayoutDesc);
+
+  // Assign buffers from dataBindings.
   for (size_t i = 0; i < numTensors; ++i) {
     op->buffers[i] = dataBindings[i].data.buffer;
     op->bufferSizes[i] = dataBindings[i].data.size;
@@ -1477,7 +1890,7 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
   // Create a buffer for the Params struct
   if (paramsSize > 0) {
     WGPUBufferDescriptor paramsBufferDesc = {
-        .label = {.data = nullptr, .length = 0}, 
+        .label = {.data = nullptr, .length = 0},
         .usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst,
         .size = paramsSize,
         .mappedAtCreation = false,
@@ -1489,6 +1902,8 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
   } else {
     LOG(kDefLog, kTrace, "No params buffer needed");
   }
+
+  // Build bind group entries and the bind group.
   std::vector<WGPUBindGroupEntry> bindGroupEntries(numBindings);
   for (size_t i = 0; i < numTensors; ++i) {
     bindGroupEntries[i] = WGPUBindGroupEntry{
@@ -1516,6 +1931,7 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
   };
   op->bindGroup = wgpuDeviceCreateBindGroup(device, &bindGroupDesc);
 
+  // Create pipeline layout.
   WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {
       .bindGroupLayoutCount = 1,
       .bindGroupLayouts = &bgLayout,
@@ -1523,63 +1939,151 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
   WGPUPipelineLayout pipelineLayout =
       wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
 
+  // Prepare the WGSL source and shader module descriptor.
   WGPUShaderSourceWGSL wgslDesc = {
       .chain = {.sType = WGPUSType_ShaderSourceWGSL},
       .code = {.data = code.data.c_str(), .length = code.data.length()}};
-
   WGPUShaderModuleDescriptor shaderModuleDesc = {};
   shaderModuleDesc.nextInChain = &wgslDesc.chain;
   shaderModuleDesc.label = {code.label.c_str(), code.label.length()};
 
-  WGPUComputePipelineDescriptor computePipelineDesc = {};
-  computePipelineDesc.layout = pipelineLayout;
-  computePipelineDesc.compute.module =
+  // Create the shader module.
+  WGPUShaderModule shaderModule =
       wgpuDeviceCreateShaderModule(device, &shaderModuleDesc);
 
+  // If compilation info is requested, register the callback immediately.
+  if (compilationInfo) {
+    auto compPromise = std::make_shared<std::promise<void>>();
+    std::future<void> compFuture = compPromise->get_future();
+    // Allocate helper data to pass to the callback.
+    auto *compData = new CompData{compilationInfo, compPromise};
+
+    auto compilationCallback = [](WGPUCompilationInfoRequestStatus status,
+                                  WGPUCompilationInfo const *info,
+                                  void *userdata1, void * /*userdata2*/) {
+      CompData *cd = reinterpret_cast<CompData *>(userdata1);
+      if (info && cd->compInfo) {
+        cd->compInfo->status = status;
+        for (uint32_t i = 0; i < info->messageCount; ++i) {
+          cd->compInfo->messages.push_back(
+              std::string(info->messages[i].message.data,
+                          info->messages[i].message.length));
+          cd->compInfo->lineNums.push_back(info->messages[i].lineNum);
+          cd->compInfo->linePos.push_back(info->messages[i].linePos);
+        }
+        cd->compInfo->finished = true;
+      }
+      cd->compPromise->set_value();
+      delete cd;
+    };
+
+    WGPUCompilationInfoCallbackInfo compilationCallbackInfo = {};
+    compilationCallbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
+    compilationCallbackInfo.callback = compilationCallback;
+    compilationCallbackInfo.userdata1 = compData;
+    compilationCallbackInfo.userdata2 = nullptr;
+
+    // Register callback and then wait for the result.
+    wgpuShaderModuleGetCompilationInfo(shaderModule, compilationCallbackInfo);
+    wait(ctx, compFuture);
+  }
+
+  // Now create the compute pipeline using the shader module.
+  WGPUComputePipelineDescriptor computePipelineDesc = {};
+  computePipelineDesc.layout = pipelineLayout;
+  computePipelineDesc.compute.module = shaderModule;
   computePipelineDesc.compute.entryPoint = {code.entryPoint.c_str(),
                                             code.entryPoint.length()};
   computePipelineDesc.label = {code.label.c_str(), code.label.length()};
-
   op->computePipeline =
       wgpuDeviceCreateComputePipeline(device, &computePipelineDesc);
+
   op->totalWorkgroups = {totalWorkgroups[0], totalWorkgroups[1],
                          totalWorkgroups[2]};
+
   resetCommandBuffer(device, op);
   if (cacheKey != nullptr)
     ctx.kernelPool.data[cacheKey] = op;
 
-  auto compilationInfoCallback = [](WGPUCompilationInfoRequestStatus status,
-                                    WGPUCompilationInfo const *compilationInfo,
-                                    void *userdata1, void *userdata2) {
-    CompilationInfo *result = static_cast<CompilationInfo *>(userdata1);
-    if (compilationInfo && result) {
-      result->status = status;
-      for (uint32_t i = 0; i < compilationInfo->messageCount; ++i) {
-        printf("Message %d: %.*s\n", i,
-               static_cast<int>(compilationInfo->messages[i].message.length),
-               compilationInfo->messages[i].message.data);
-        result->messages.push_back(
-            std::string(compilationInfo->messages[i].message.data,
-                        compilationInfo->messages[i].message.length));
-        result->lineNums.push_back(compilationInfo->messages[i].lineNum);
-        result->linePos.push_back(compilationInfo->messages[i].linePos);
-      }
-      result->finished = true;
-    } else {
-      LOG(kDefLog, kTrace, "No compilation info or result");
-    }
-  };
+  outerPromise.set_value(op);
+  return outerFuture;
+}
 
-  WGPUCompilationInfoCallbackInfo compilationCallbackInfo = {
-      .mode = WGPUCallbackMode_AllowSpontaneous,
-      .callback = compilationInfoCallback,
-      .userdata1 = static_cast<void *>(compilationInfo),
-      .userdata2 = nullptr};
+/*
+ * @brief Overload which wraps the createKernelAsync factory function to create
+ * a kernel on the GPU. This overload uses takes a pointer and size for the
+ * input tensors instead of a static collection and a void pointer for params
+ * instead of a static type.
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] code WGSL code for the kernel
+ * @param[in] dataBindings Pointer to a span of tensors bound to the kernel
+ * @param[in] numTensors Number of tensors in the dataBindings span
+ * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be
+ * a Shape of rank == 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does
+ * not have any parameters, use NoParam.
+ * @return Kernel instance representing the created kernel
+ *
+ * @code
+ * std::future<Kernel> kernelFuture = createKernel(ctx, code, tensorData,
+ * output,totalWorkgroups, params); Kernel kernel = wait(ctx.instance,
+ * kernelFuture);
+ * @endcode
+ */
+inline Kernel createKernel(Context &ctx, const KernelCode &code,
+                           const Tensor *dataBindings, size_t numTensors,
+                           const size_t *viewOffsets,
+                           const Shape &totalWorkgroups,
+                           const void *params = nullptr, size_t paramsSize = 0,
+                           CompilationInfo *compilationInfo = nullptr,
+                           const char *cacheKey = nullptr) {
+  std::future<Kernel> kernelFuture = createKernelAsync(
+      ctx, code, dataBindings, numTensors, viewOffsets, totalWorkgroups, params,
+      paramsSize, compilationInfo, cacheKey);
+  return wait(ctx, kernelFuture);
+}
 
-  while (compilationInfo && !compilationInfo->finished) {
-    processEvents(ctx.instance);
+/**
+ * @brief Overload which wraps the createKernelAsync factory function to create
+ * a kernel asynchronously on the GPU. This overload uses takes a static
+ * collection of input tensors instead of a pointer and a statically determined
+ * ParamsType instead of casting params to a void pointer.
+ *
+ * @param[in] ctx Context instance to manage the kernel
+ * @param[in] code WGSL code for the kernel
+ * @param[in] dataBindings A Bindings of tensors whose GPU buffers are bound
+ * to the kernel as inputs and outputs.
+ * @param[in] totalWorkgroups Number of workgroups in the x, y, z grid, must be
+ * a Shape of rank == 3.
+ * @param[in] params Optional parameters for the kernel. If the kernel does
+ * not have any parameters, use NoParam.
+ * @return Kernel instance representing the created kernel
+ *
+ * @code
+ * std::future<Kernel> kernelFuture = createKernel(ctx, code, tensorData,
+ * output,totalWorkgroups, params); Kernel kernel = wait(ctx.instance,
+ * kernelFuture);
+ * @endcode
+ */
+template <typename ParamsType = NoParam, size_t numInputs>
+std::future<Kernel>
+createKernelAsync(Context &ctx, const KernelCode &code,
+                  const Bindings<numInputs> &dataBindings,
+                  const Shape &totalWorkgroups,
+                  const ParamsType &params = ParamsType{},
+                  CompilationInfo *compilationInfo = nullptr,
+                  const char *cacheKey = nullptr) {
+  if constexpr (!IsNoParam<ParamsType>) {
+    return createKernelAsync(ctx, code, dataBindings.data.data(), numInputs,
+                             dataBindings.viewOffsets.data(), totalWorkgroups,
+                             reinterpret_cast<const void *>(&params),
+                             sizeof(ParamsType), compilationInfo, cacheKey);
+  } else {
+    return createKernelAsync(ctx, code, dataBindings.data.data(), numInputs,
+                             dataBindings.viewOffsets.data(), totalWorkgroups,
+                             nullptr, 0, compilationInfo, cacheKey);
   }
-  return op;
 }
 
 /**
@@ -1599,9 +2103,9 @@ inline Kernel createKernel(Context& ctx, const KernelCode &code,
  * @return Kernel instance representing the created kernel
  *
  * @code
- * Kernel kernel = createKernel(ctx, code, tensorData, output,
+ * Kernel kernel = createKernel(ctx, code, tensorData, output,totalWorkgroups,
+ * params);
  * @endcode
- * totalWorkgroups, params);
  */
 template <typename ParamsType = NoParam, size_t numInputs>
 Kernel createKernel(Context &ctx, const KernelCode &code,
@@ -1623,6 +2127,37 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
 }
 
 /**
+ * @brief Free‑standing callback for dispatchKernel’s asynchronous work‐done.
+ *
+ * This callback is invoked when the GPU queue signals the completion of the
+ * submitted workload for a kernel dispatch. It receives the work-done status
+ * and a userdata pointer, which is expected to be a heap‑allocated pointer to a
+ * std::promise<void>.
+ *
+ * On success, the promise is fulfilled by calling set_value(). Otherwise, it is
+ * set with an exception. After setting the promise state, the allocated memory
+ * for the promise is freed.
+ *
+ * @param status The status of the work done. Expected to be
+ * WGPUQueueWorkDoneStatus_Success on success.
+ * @param userdata1 A heap allocated pointer to std::promise<void> which is set
+ * when the work is done.
+ * @param userdata2 Unused.
+ */
+inline void dispatchKernelCallback(WGPUQueueWorkDoneStatus status,
+                                   void *userdata1, void * /*userdata2*/) {
+  // Cast the userdata pointer back to our heap‑allocated promise.
+  auto *p = reinterpret_cast<std::promise<void> *>(userdata1);
+  if (status == WGPUQueueWorkDoneStatus_Success) {
+    p->set_value();
+  } else {
+    p->set_exception(std::make_exception_ptr(
+        std::runtime_error("Queue work did not complete successfully.")));
+  }
+  delete p; // free the heap allocation
+}
+
+/**
  * @brief Asynchronously submits a kernel to the GPU queue for execution.
  * It also sets up a callback to notify when the kernel has finished executing
  * by setting the value of the promise in the kernel instance argument.
@@ -1637,30 +2172,54 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
  * @param[in] promise Promise to set when the kernel has finished executing
  *
  * @code
- * dispatchKernel(ctx, kernel);
+ * std::future<void> dispatchFuture = dispatchKernel(ctx, kernel);
+ * wait(ctx.instance, dispatchFuture);
  * @endcode
  */
-inline void dispatchKernel(Context &ctx, Kernel &kernel,
-                           std::promise<void> &promise) {
+inline std::future<void> dispatchKernelAsync(Context &ctx, Kernel &kernel) {
+  // If the kernel was used before, reset the command buffer.
   if (kernel->used) {
     resetCommandBuffer(ctx.device, kernel);
   }
+
+  // Submit the command buffer and release it.
   wgpuQueueSubmit(ctx.queue, 1, &kernel->commandBuffer);
   wgpuCommandBufferRelease(kernel->commandBuffer);
   kernel->used = true;
 
-  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {
-      .mode = WGPUCallbackMode_AllowSpontaneous,
-      .callback =
-          [](WGPUQueueWorkDoneStatus status, void *userdata1, void *userdata2) {
-            check(status == WGPUQueueWorkDoneStatus_Success, "Queue work done",
-                  __FILE__, __LINE__);
-            auto *promise = static_cast<std::promise<void> *>(userdata1);
-            promise->set_value();
-          },
-      .userdata1 = &promise,
-      .userdata2 = nullptr};
+  // Allocate a promise on the heap so it remains valid beyond this function’s
+  // scope.
+  std::promise<void> *promise = new std::promise<void>();
+  std::future<void> future = promise->get_future();
+
+  // Set up the callback info.
+  WGPUQueueWorkDoneCallbackInfo workDoneCallbackInfo = {};
+  workDoneCallbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
+  workDoneCallbackInfo.callback = dispatchKernelCallback;
+  workDoneCallbackInfo.userdata1 = reinterpret_cast<void *>(promise);
+  workDoneCallbackInfo.userdata2 = nullptr;
+
+  // IMPORTANT: Pass the address of the callback info structure.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
+
+  return future;
+}
+
+/**
+ * @brief Synchronous wrapper for dispatchKernelAsync. This function submits
+ * the kernel to the GPU queue and waits for it to finish executing.
+ *
+ * @param[in] ctx Context instance to manage the kernel, from which the queue
+ * for the GPU is obtained
+ * @param[in] kernel Kernel instance to dispatch
+ *
+ * @code
+ * dispatchKernel(ctx, kernel);
+ * @endcode
+ */
+inline void dispatchKernel(Context &ctx, Kernel &kernel) {
+  auto future = dispatchKernelAsync(ctx, kernel);
+  wait(ctx, future);
 }
 
 } // namespace gpu

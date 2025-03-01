@@ -124,10 +124,8 @@ int main(int argc, char **argv) {
                                      cdiv({NCOLS, NROWS, 1}, wgSize), params);
   printf("\033[2J\033[H");
   while (true) {
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    dispatchKernel(ctx, renderKernel, promise);
-    wait(ctx, future);
+
+    dispatchKernel(ctx, renderKernel);
     toCPU(ctx, devScreen, screen.data(), sizeof(screen));
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
 
