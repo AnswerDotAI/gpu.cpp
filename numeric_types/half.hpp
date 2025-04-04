@@ -54,6 +54,7 @@ static inline uint64_t __builtin_clz(uint64_t value)
 struct half;
 static inline half halfFromFloat(float f);
 static inline float halfToFloat(half h);
+int testHalf();
 
 /**
  * Experimental implementation of half-precision 16-bit floating point numbers.

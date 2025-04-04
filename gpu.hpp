@@ -195,7 +195,15 @@ struct TensorPool {
 enum NumType {
   kf16, // (experimental)
   kf32,
-  ki32
+  kf64,
+  ki8,
+  ki16,
+  ki32,
+  ki64,
+  ku8,
+  ku16,
+  ku32,
+  ku64,
 };
 
 /**
@@ -207,8 +215,24 @@ inline size_t sizeBytes(const NumType &type) {
     return sizeof(uint16_t);
   case kf32:
     return sizeof(float);
+  case kf64:
+    return sizeof(double);
+  case ki8:
+    return sizeof(uint8_t);
+  case ki16:
+    return sizeof(uint16_t);
   case ki32:
     return sizeof(int32_t);
+  case ki64:
+    return sizeof(int64_t);
+  case ku8:
+    return sizeof(uint8_t);
+  case ku16:
+    return sizeof(uint16_t);
+  case ku32:
+    return sizeof(uint32_t);
+  case ku64:
+    return sizeof(uint64_t);
   default:
     LOG(kDefLog, kError, "Invalid NumType in size calculation.");
     return 0;
@@ -224,8 +248,24 @@ inline std::string toString(NumType type) {
     return "f16";
   case kf32:
     return "f32";
+  case kf64:
+    return "f64";
+  case ki8:
+    return "i8";
+  case ki16:
+    return "i16";
   case ki32:
     return "i32";
+  case ki64:
+    return "i64";
+  case ku8:
+    return "u8";
+  case ku16:
+    return "u16";
+  case ku32:
+    return "u32";
+  case ku64:
+    return "u64";
   default:
     LOG(kDefLog, kError, "Invalid NumType in string conversion.");
     return "unknown";
@@ -694,6 +734,18 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype) {
  * @endcode
  */
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const half *data) {
+  assert(dtype == kf16);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
                            const float *data) {
   assert(dtype == kf32);
   Tensor tensor =
@@ -706,8 +758,8 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
 }
 
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const int32_t *data) {
-  assert(dtype == ki32);
+                           const double *data) {
+  assert(dtype == kf64);
   Tensor tensor =
       createTensor(ctx.pool, ctx.device, shape, dtype,
                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
@@ -717,27 +769,93 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
   return tensor;
 }
 
-/**
- * @brief Overload of the tensor factory function to instantiate a tensor on
- * the GPU with a given shape, data type. This overload also takes initial
- * half* data to populate the tensor with.
- *
- * The data is assumed to be of size equal to the product of the dimensions in
- * the shape, and is copied to the GPU buffer.
- *
- * @param[in] ctx Context instance to manage the tensor
- * @param[in] shape Shape of the tensor
- * @param[in] dtype Data type of the tensor (e.g. kf32)
- * @param[in] data Initial data to populate the tensor with
- * @return Tensor instance representing the created tensor
- *
- * @code
- * Tensor tensor = createTensor(ctx, {256, 256}, kf32, data);
- * @endcode
- */
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const half *data) {
-  assert(dtype == kf16);
+                           const uint8_t *data) {
+  assert(dtype == ku8);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const uint16_t *data) {
+  assert(dtype == ku16);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const uint32_t *data) {
+  assert(dtype == ku32);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const uint64_t *data) {
+  assert(dtype == ku64);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const int64_t *data) {
+  assert(dtype == ki64);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const int8_t *data) {
+  assert(dtype == ki8);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const int16_t *data) {
+  assert(dtype == ki16);
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, dtype,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+  return tensor;
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const int32_t *data) {
+  assert(dtype == ki32);
   Tensor tensor =
       createTensor(ctx.pool, ctx.device, shape, dtype,
                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
@@ -869,7 +987,8 @@ template <typename T> T wait(Context &ctx, std::future<T> &f) {
  * Context ctx = waitForContextFuture(contextFuture);
  * @endcode
  */
-template <typename T> T waitForContextFuture(std::future<T> &f, size_t sleepTime = 10) {
+template <typename T>
+T waitForContextFuture(std::future<T> &f, size_t sleepTime = 10) {
 #ifdef __EMSCRIPTEN__
   while (f.wait_for(std::chrono::milliseconds(0)) !=
          std::future_status::ready) {
@@ -1358,8 +1477,9 @@ inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
   WGPUBufferMapCallbackInfo mapCallbackInfo = {
       .mode = WGPUCallbackMode_AllowSpontaneous,
       .callback = bufferMapCallback,
-      .userdata1 = const_cast<CallbackData *>(cbData), // Pass the callback data.
-      .userdata2 = nullptr // No additional user data.
+      .userdata1 =
+          const_cast<CallbackData *>(cbData), // Pass the callback data.
+      .userdata2 = nullptr                    // No additional user data.
   };
 
   // Begin the asynchronous mapping of the readback buffer.
@@ -1680,7 +1800,7 @@ inline void toGPU(Context &ctx, const half *data, Tensor &tensor) {
                        tensor.data.size);
 }
 
-inline void toGPU(Context &ctx, const int *data, Tensor &tensor) {
+inline void toGPU(Context &ctx, const double *data, Tensor &tensor) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
                        tensor.data.size);
 }
@@ -1694,7 +1814,87 @@ inline void toGPU(Context &ctx, const half *data, Tensor &tensor, size_t size) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
 }
 
+inline void toGPU(Context &ctx, const double *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const uint8_t *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const uint16_t *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const uint32_t *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const uint64_t *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const uint8_t *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const uint16_t *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const uint32_t *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const uint64_t *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const int8_t *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const int16_t *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const int *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const int64_t *data, Tensor &tensor) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
+                       tensor.data.size);
+}
+
+inline void toGPU(Context &ctx, const int8_t *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const int16_t *data, Tensor &tensor,
+                  size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
 inline void toGPU(Context &ctx, const int *data, Tensor &tensor, size_t size) {
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
+}
+
+inline void toGPU(Context &ctx, const int64_t *data, Tensor &tensor,
+                  size_t size) {
   wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data, size);
 }
 
