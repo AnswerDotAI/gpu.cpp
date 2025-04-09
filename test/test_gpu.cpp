@@ -71,18 +71,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 void testNumTypeSizes() {
   LOG(kDefLog, kInfo, "Running testNumTypeSizes...");
 
-  // kf16 and kf32 expected sizes
-  // Adjust these values if your implementation differs.
+
   assert(sizeBytes(kf16) == 2);
   assert(sizeBytes(kf32) == 4);
-
-  // For the integer types, we compare against the sizeof the respective type.
   assert(sizeBytes(ki8) == sizeof(uint8_t));   // typically 1
   assert(sizeBytes(ki16) == sizeof(uint16_t)); // typically 2
   assert(sizeBytes(ki32) == sizeof(int32_t));  // typically 4
   assert(sizeBytes(ku8) == sizeof(uint8_t));   // typically 1
   assert(sizeBytes(ku16) == sizeof(uint16_t)); // typically 2
-  // Assuming ku32 should be sizeof(uint32_t)
   assert(sizeBytes(ku32) == sizeof(uint32_t)); // typically 4
 
   LOG(kDefLog, kInfo, "testNumTypeSizes passed.");
@@ -105,7 +101,6 @@ void testToCPUWithHalf() {
     inputData[i] = half(static_cast<float>(i));
   }
 
-  // Create a tensor for half data using the kf16 type.
   Tensor inputTensor = createTensor(ctx, Shape{N}, kf16, inputData.data());
 
   // Copy GPU output to CPU.
@@ -138,7 +133,6 @@ void testToCPUWithFloat() {
     outputData[i] = 0.0f;
   }
 
-  // Create a tensor for float data using the kf32 type.
   Tensor inputTensor = createTensor(ctx, Shape{N}, kf32, inputData.data());
 
   // Copy GPU output to CPU.
@@ -299,7 +293,6 @@ void testToCPUWithint64() {
     outputData[i] = 0;
   }
 
-  // Assuming a new NumType 'ki64' for 64-bit integers.
   Tensor inputTensor = createTensor(ctx, Shape{N}, ki64, inputData.data());
 
   // Copy GPU output to CPU.
@@ -331,7 +324,6 @@ void testToCPUWithUint8() {
   Tensor inputTensor = createTensor(
       ctx, Shape{N}, ku8, reinterpret_cast<const uint8_t *>(inputData.data()));
 
-  // Synchronously copy GPU output to CPU using the tensor overload.
   toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
 
   // Verify the output matches the input.
