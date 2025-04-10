@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 
-// A simple function that counts leading zeros in a 16-bit number.
+// Counts leading zeros in a 16-bit number.
 static inline uint16_t half_clz16(uint16_t value) {
   uint16_t count = 0;
   // Start at the highest bit (0x8000)
