@@ -7,49 +7,17 @@
 #include <cstdint>
 #include <cstdio>
 
-#ifdef _MSC_VER
-#include <intrin.h>
-
-static inline uint32_t __builtin_clz(uint32_t value)
-{
-  unsigned long leading_zero = 0;
-  if (value == 0)
-  {
-    return 32;
+// A simple function that counts leading zeros in a 16-bit number.
+static inline uint16_t half_clz16(uint16_t value) {
+  uint16_t count = 0;
+  // Start at the highest bit (0x8000)
+  for (uint16_t mask = 0x8000; mask; mask >>= 1) {
+      if (value & mask)
+          break;
+      ++count;
   }
-  _BitScanReverse(&leading_zero, value);
-  return 31 - leading_zero;
+  return count;
 }
-
-static inline uint16_t __builtin_clz(uint16_t value)
-{
-  return __builtin_clz(static_cast<uint32_t>(value)) - 16;
-}
-
-static inline uint64_t __builtin_clz(uint64_t value)
-{
-  unsigned long leading_zero = 0;
-  if (value == 0)
-  {
-    return 64;
-  }
-#if defined(_WIN64)
-  _BitScanReverse64(&leading_zero, value);
-  return 63 - leading_zero;
-#else
-  uint32_t high = static_cast<uint32_t>(value >> 32);
-  uint32_t low = static_cast<uint32_t>(value);
-  if (high != 0)
-  {
-    return __builtin_clz(high);
-  }
-  else
-  {
-    return 32 + __builtin_clz(low);
-  }
-#endif
-}
-#endif
 
 struct half;
 static inline half halfFromFloat(float f);
@@ -59,8 +27,7 @@ int testHalf();
 /**
  * Experimental implementation of half-precision 16-bit floating point numbers.
  */
-struct half
-{
+struct half {
   uint16_t data;
 
   // Default constructor
@@ -78,22 +45,19 @@ struct half
   operator uint16_t() const { return data; }
 
   // Overload assignment operator from uint16_t
-  half &operator=(uint16_t value)
-  {
+  half &operator=(uint16_t value) {
     data = value;
     return *this;
   }
 
   // Overload assignment operator from another half
-  half &operator=(const half &other)
-  {
+  half &operator=(const half &other) {
     data = other.data;
     return *this;
   }
 
   // Overload assignment operator from float
-  half &operator=(float value)
-  {
+  half &operator=(float value) {
     data = halfFromFloat(value);
     return *this;
   }
@@ -104,10 +68,8 @@ struct half
  *
  * Based on Mike Acton's half.c implementation.
  */
-half halfFromFloat(float f)
-{
-  union
-  {
+half halfFromFloat(float f) {
+  union {
     float f;
     uint32_t u;
   } floatUnion = {f};
@@ -146,8 +108,7 @@ half halfFromFloat(float f)
   const uint32_t floatMantissa = float32 & FLOAT_MANTISSA_MASK;
 
   // Check for NaN
-  if ((floatExpMasked == FLOAT_EXP_MASK) && (floatMantissa != 0))
-  {
+  if ((floatExpMasked == FLOAT_EXP_MASK) && (floatMantissa != 0)) {
     half result;
     result.data =
         HALF_EXP_MASK | (floatMantissa >> FLOAT_HALF_MANTISSA_POS_OFFSET);
@@ -227,8 +188,7 @@ half halfFromFloat(float f)
  *
  * Based on Mike Acton's half.c implementation.
  */
-float halfToFloat(half h)
-{
+float halfToFloat(half h) {
   // Constants for bit masks, shifts, and biases
   const uint16_t ONE = 0x0001;
   const uint16_t TWO = 0x0002;
@@ -273,7 +233,7 @@ float halfToFloat(half h)
   const uint32_t isNan = isExpFlagged && isMantissaNonZero;
 
   // Handling denormalized numbers
-  const uint16_t halfMantissaLeadingZeros = __builtin_clz(halfMantissa) - 16;
+  const uint16_t halfMantissaLeadingZeros = half_clz16(halfMantissa);
   const uint16_t halfDenormShiftAmount =
       halfMantissaLeadingZeros + HALF_FLOAT_DENORM_SA_OFFSET;
   const uint32_t halfFloatDenormMantissaShiftAmount =
@@ -309,8 +269,7 @@ float halfToFloat(half h)
   const uint32_t result = checkNanResult;
 
   // Reinterpret the uint32_t result as a float using a union
-  union
-  {
+  union {
     uint32_t u;
     float f;
   } floatUnion;

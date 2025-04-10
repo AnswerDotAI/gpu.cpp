@@ -200,8 +200,8 @@ void testToCPUWithint8() {
 
   // Validate the copy.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithint8 passed.");
@@ -234,8 +234,8 @@ void testToCPUWithint16() {
 
   // Validate the copy.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithint16 passed.");
@@ -268,8 +268,8 @@ void testToCPUWithint() {
 
   // Validate the copy.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithint passed.");
@@ -328,8 +328,8 @@ void testToCPUWithUint8() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithUint8 passed.");
@@ -360,8 +360,8 @@ void testToCPUWithUint16() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithUint16 passed.");
@@ -392,8 +392,8 @@ void testToCPUWithUint32() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithUint32 passed.");
@@ -462,8 +462,8 @@ void testToCPUWithTensor() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %f", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "inputData[%zu] = %f", i, inputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithTensor passed.");
@@ -500,7 +500,7 @@ void testToCPUWithBuffer() {
 
   // Verify that the CPU output matches the original data.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
+    //LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
     assert(outputData[i] == data[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithBuffer passed.");
@@ -542,8 +542,8 @@ void testToCPUWithTensorSourceOffset() {
   for (size_t i = 0; i < copyCount; ++i) {
     float expected = inputData[sourceOffsetElements + i];
     float actual = cpuOutput[i];
-    LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
-    LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
+    //LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
+    //LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
     assert(expected == actual);
   }
   LOG(kDefLog, kInfo, "testToCPUWithTensorSourceOffset passed.");
@@ -585,8 +585,8 @@ void testToCPUWithBufferSourceOffset() {
   for (size_t i = 0; i < copyCount; ++i) {
     float expected = inputData[sourceOffsetElements + i];
     float actual = cpuOutput[i];
-    LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
-    LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
+    //LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
+    //LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
     assert(expected == actual);
   }
   LOG(kDefLog, kInfo, "testToCPUWithBufferSourceOffset passed.");

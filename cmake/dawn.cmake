@@ -38,7 +38,7 @@ include_directories(BEFORE PUBLIC
 
 
 # Optionally try to find an existing Dawn build.
-set(ENABLE_DAWN_FIND ON CACHE BOOL "Attempt to find an existing Dawn build" FORCE)
+set(ENABLE_DAWN_FIND OFF CACHE BOOL "Attempt to find an existing Dawn build" FORCE)
 set(DAWN_BUILD_FOUND OFF CACHE BOOL "Dawn build found" FORCE)
 
 if(ENABLE_DAWN_FIND)
