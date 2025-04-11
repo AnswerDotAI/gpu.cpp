@@ -760,13 +760,27 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
 // Overload for double: pack each double into a float (losing precision)
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
                            const double *data) {
-  assert(dtype == kf64); // unsupported: convert to kf32
+  assert(dtype == kf64);
   size_t numElements = size(shape);
-  std::vector<float> packed(numElements);
+  // Each double (8 bytes) will be packed into 2 uint32_t values (2×4 bytes).
+  std::vector<uint32_t> packed(numElements * 2);
   for (size_t i = 0; i < numElements; ++i) {
-    packed[i] = static_cast<float>(data[i]);
+    uint64_t bits;
+    std::memcpy(&bits, &data[i], sizeof(double)); // Extract raw bits.
+    packed[2 * i] = static_cast<uint32_t>(bits & 0xFFFFFFFF);
+    packed[2 * i + 1] = static_cast<uint32_t>(bits >> 32);
   }
-  return createTensor(ctx, shape, kf32, packed.data());
+  // Create a tensor using the core overload that accepts a TensorPool and
+  // WGPUDevice.
+  Tensor tensor =
+      createTensor(ctx.pool, ctx.device, shape, kf64,
+                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc);
+
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
+                       packed.size() * sizeof(uint32_t));
+
+  return tensor;
 }
 
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
@@ -1792,13 +1806,22 @@ inline void toCPU(Context &ctx, Tensor &tensor, NumType dtype, void *output,
     toCPU(ctx, tensor, output, tensor.data.size, sourceOffset);
     break;
 
-  // For double, the tensor was created by packing doubles into floats.
+  // kf64 to reverse bit‐packing of doubles.
   case kf64: {
-    std::vector<float> tmp(numElements);
-    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(float), sourceOffset);
+    // We expect each double to have been packed into 2 uint32_t values.
+    std::vector<uint32_t> tmp(numElements * 2);
+    // Read the packed data (each element is 4 bytes)
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
     double *dst = static_cast<double *>(output);
     for (size_t i = 0; i < numElements; ++i) {
-      dst[i] = static_cast<double>(tmp[i]);
+      uint32_t low = tmp[2 * i];
+      uint32_t high = tmp[2 * i + 1];
+      // Reassemble the 64-bit raw representation.
+      uint64_t bits = (static_cast<uint64_t>(high) << 32) | low;
+      // Copy the raw bits into a double.
+      double d;
+      std::memcpy(&d, &bits, sizeof(double));
+      dst[i] = d;
     }
     break;
   }
@@ -1905,13 +1928,22 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, NumType dtype, void *output,
     break;
   }
 
-  // For double, the buffer was written as floats.
+  // kf64 to reverse bit‐packing of doubles.
   case kf64: {
-    std::vector<float> tmp(numElements);
-    toCPU(ctx, buffer, tmp.data(), numElements * sizeof(float), sourceOffset);
+    // We expect each double to have been packed into 2 uint32_t values.
+    std::vector<uint32_t> tmp(numElements * 2);
+    // Read the packed data (each element is 4 bytes)
+    toCPU(ctx, buffer, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
     double *dst = static_cast<double *>(output);
     for (size_t i = 0; i < numElements; ++i) {
-      dst[i] = static_cast<double>(tmp[i]);
+      uint32_t low = tmp[2 * i];
+      uint32_t high = tmp[2 * i + 1];
+      // Reassemble the 64-bit raw representation.
+      uint64_t bits = (static_cast<uint64_t>(high) << 32) | low;
+      // Copy the raw bits into a double.
+      double d;
+      std::memcpy(&d, &bits, sizeof(double));
+      dst[i] = d;
     }
     break;
   }
@@ -2039,16 +2071,19 @@ inline void toGPU(Context &ctx, const half *data, WGPUBuffer buffer,
   toGPU(ctx, static_cast<const void *>(data), buffer, size);
 }
 
-// Overload for double: pack each double into a float (losing precision).
+// Overload for double: bit-pack each double into two 32‑bit unsigned integers.
 inline void toGPU(Context &ctx, const double *data, WGPUBuffer buffer,
                   size_t size) {
-  // Number of doubles = size / sizeof(double)
   size_t numElements = size / sizeof(double);
-  std::vector<float> packed(numElements);
+  std::vector<uint32_t> packed(numElements * 2);
   for (size_t i = 0; i < numElements; ++i) {
-    packed[i] = static_cast<float>(data[i]);
+    uint64_t bits;
+    std::memcpy(&bits, &data[i],
+                sizeof(double)); // Reinterpret double as raw bits.
+    packed[2 * i] = static_cast<uint32_t>(bits & 0xFFFFFFFF);
+    packed[2 * i + 1] = static_cast<uint32_t>(bits >> 32);
   }
-  toGPU(ctx, packed.data(), buffer, packed.size() * sizeof(float));
+  toGPU(ctx, packed.data(), buffer, packed.size() * sizeof(uint32_t));
 }
 
 // Overload for int8_t: pack four 8‑bit ints into one 32‑bit integer.
@@ -2157,15 +2192,19 @@ inline void toGPU(Context &ctx, const half *data, Tensor &tensor) {
                        tensor.data.size);
 }
 
-// Overload for double: pack each double into a float (losing precision)
+// Overload for double: bit-pack each double into two 32‑bit unsigned integers.
 inline void toGPU(Context &ctx, const double *data, Tensor &tensor) {
-  size_t numElements = size(tensor.shape);
-  std::vector<float> packed(numElements);
+  size_t numElements = tensor.data.size / sizeof(double);
+  std::vector<uint32_t> packed(numElements * 2);
   for (size_t i = 0; i < numElements; ++i) {
-    packed[i] = static_cast<float>(data[i]);
+    uint64_t bits;
+    std::memcpy(&bits, &data[i],
+                sizeof(double)); // Reinterpret double as raw bits.
+    packed[2 * i] = static_cast<uint32_t>(bits & 0xFFFFFFFF);
+    packed[2 * i + 1] = static_cast<uint32_t>(bits >> 32);
   }
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
-                       tensor.data.size);
+  toGPU(ctx, packed.data(), tensor.data.buffer,
+        packed.size() * sizeof(uint32_t));
 }
 
 // Overload for int8_t: pack four 8‑bit integers into one 32‑bit integer
