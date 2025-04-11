@@ -757,9 +757,21 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
   return tensor;
 }
 
+// Overload for double: pack each double into a float (losing precision)
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
                            const double *data) {
-  assert(dtype == kf64);
+  assert(dtype == kf64); // unsupported: convert to kf32
+  size_t numElements = size(shape);
+  std::vector<float> packed(numElements);
+  for (size_t i = 0; i < numElements; ++i) {
+    packed[i] = static_cast<float>(data[i]);
+  }
+  return createTensor(ctx, shape, kf32, packed.data());
+}
+
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const int32_t *data) {
+  assert(dtype == ki32);
   Tensor tensor =
       createTensor(ctx.pool, ctx.device, shape, dtype,
                    WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
@@ -769,28 +781,50 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
   return tensor;
 }
 
+// Overload for int8_t: pack four 8‑bit ints into one 32‑bit integer
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const uint8_t *data) {
-  assert(dtype == ku8);
-  Tensor tensor =
-      createTensor(ctx.pool, ctx.device, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
+                           const int8_t *data) {
+  assert(dtype == ki8); // unsupported: pack into ki32
+  size_t numElements = size(shape);
+  size_t packedCount = (numElements + 3) / 4;
+  std::vector<int32_t> packed(packedCount, 0);
+  for (size_t i = 0; i < numElements; ++i) {
+    size_t idx = i / 4;
+    size_t shift = (i % 4) * 8;
+    // pack as unsigned bits then reinterpret; shader is then responsible for
+    // unpacking
+    packed[idx] |= (static_cast<uint8_t>(data[i]) << shift);
+  }
+  return createTensor(ctx, shape, ki32, packed.data());
 }
 
+// Overload for int16_t: pack two 16‑bit ints into one 32‑bit integer
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const uint16_t *data) {
-  assert(dtype == ku16);
-  Tensor tensor =
-      createTensor(ctx.pool, ctx.device, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
+                           const int16_t *data) {
+  assert(dtype == ki16); // unsupported: pack into ki32
+  size_t numElements = size(shape);
+  size_t packedCount = (numElements + 1) / 2;
+  std::vector<int32_t> packed(packedCount, 0);
+  for (size_t i = 0; i < numElements; ++i) {
+    size_t idx = i / 2;
+    size_t shift = (i % 2) * 16;
+    packed[idx] |= (static_cast<uint16_t>(data[i]) << shift);
+  }
+  return createTensor(ctx, shape, ki32, packed.data());
+}
+
+// Overload for int64_t: pack each 64‑bit int into two 32‑bit integers
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const int64_t *data) {
+  assert(dtype == ki64); // unsupported: pack into two ki32s
+  size_t numElements = size(shape);
+  std::vector<int32_t> packed(numElements * 2);
+  for (size_t i = 0; i < numElements; ++i) {
+    int64_t val = data[i];
+    packed[2 * i] = static_cast<int32_t>(val & 0xFFFFFFFF);
+    packed[2 * i + 1] = static_cast<int32_t>((val >> 32) & 0xFFFFFFFF);
+  }
+  return createTensor(ctx, shape, ki32, packed.data());
 }
 
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
@@ -805,64 +839,51 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
   return tensor;
 }
 
+// Overload for uint8_t: pack four 8‑bit integers into one 32‑bit unsigned
+// integer
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const uint8_t *data) {
+  assert(dtype == ku8); // unsupported: pack into ku32
+  size_t numElements = size(shape);
+  size_t packedCount = (numElements + 3) / 4;
+  std::vector<uint32_t> packed(packedCount, 0);
+  for (size_t i = 0; i < numElements; ++i) {
+    size_t idx = i / 4;
+    size_t shift = (i % 4) * 8;
+    packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
+  }
+  return createTensor(ctx, shape, ku32, packed.data());
+}
+
+// Overload for uint16_t: pack two 16‑bit integers into one 32‑bit unsigned
+// integer
+inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
+                           const uint16_t *data) {
+  assert(dtype == ku16); // unsupported: pack into ku32
+  size_t numElements = size(shape);
+  size_t packedCount = (numElements + 1) / 2;
+  std::vector<uint32_t> packed(packedCount, 0);
+  for (size_t i = 0; i < numElements; ++i) {
+    size_t idx = i / 2;
+    size_t shift = (i % 2) * 16;
+    packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
+  }
+  return createTensor(ctx, shape, ku32, packed.data());
+}
+
+// Overload for uint64_t: pack each 64‑bit integer into two 32‑bit unsigned
+// integers
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
                            const uint64_t *data) {
-  assert(dtype == ku64);
-  Tensor tensor =
-      createTensor(ctx.pool, ctx.device, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
-}
-
-inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const int64_t *data) {
-  assert(dtype == ki64);
-  Tensor tensor =
-      createTensor(ctx.pool, ctx.device, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
-}
-
-inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const int8_t *data) {
-  assert(dtype == ki8);
-  Tensor tensor =
-      createTensor(ctx.pool, ctx.device, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
-}
-
-inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const int16_t *data) {
-  assert(dtype == ki16);
-  Tensor tensor =
-      createTensor(ctx.pool, ctx.device, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
-}
-
-inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
-                           const int32_t *data) {
-  assert(dtype == ki32);
-  Tensor tensor =
-      createTensor(ctx.pool, ctx.device, shape, dtype,
-                   WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
-                       WGPUBufferUsage_CopySrc);
-  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, data,
-                       tensor.data.size);
-  return tensor;
+  assert(dtype == ku64); // unsupported: pack into two ku32s
+  size_t numElements = size(shape);
+  std::vector<uint32_t> packed(numElements * 2);
+  for (size_t i = 0; i < numElements; ++i) {
+    uint64_t val = data[i];
+    packed[2 * i] = static_cast<uint32_t>(val & 0xFFFFFFFF);
+    packed[2 * i + 1] = static_cast<uint32_t>(val >> 32);
+  }
+  return createTensor(ctx, shape, ku32, packed.data());
 }
 
 /**
@@ -1757,6 +1778,117 @@ inline void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data,
                   size_t sourceOffset = 0) {
   auto future = toCPUAsync(ctx, tensor, data, sourceOffset);
   wait(ctx, future);
+}
+
+inline void toCPU(Context &ctx, Tensor &tensor, NumType dtype, void *output, size_t sourceOffset = 0) {
+  size_t numElements = size(tensor.shape);
+  switch (dtype) {
+  // These types are directly supported.
+  case kf16:
+  case kf32:
+  case ku32:
+  case ki32:
+      toCPU(ctx, tensor, output, tensor.data.size, sourceOffset);
+      break;
+
+  // For double, the tensor was created by packing doubles into floats.
+  case kf64: {
+      std::vector<float> tmp(numElements);
+      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(float), sourceOffset);
+      double *dst = static_cast<double*>(output);
+      for (size_t i = 0; i < numElements; ++i) {
+          dst[i] = static_cast<double>(tmp[i]);
+      }
+      break;
+  }
+
+  // For int8_t: four 8‑bit ints packed into one int32_t.
+  case ki8: {
+      size_t packedCount = (numElements + 3) / 4;
+      std::vector<int32_t> tmp(packedCount);
+      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
+      int8_t *dst = static_cast<int8_t*>(output);
+      for (size_t i = 0; i < numElements; ++i) {
+          size_t idx = i / 4;
+          size_t shift = (i % 4) * 8;
+          dst[i] = static_cast<int8_t>((tmp[idx] >> shift) & 0xFF);
+      }
+      break;
+  }
+
+  // For int16_t: two 16‑bit ints packed into one int32_t.
+  case ki16: {
+      size_t packedCount = (numElements + 1) / 2;
+      std::vector<int32_t> tmp(packedCount);
+      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
+      int16_t *dst = static_cast<int16_t*>(output);
+      for (size_t i = 0; i < numElements; ++i) {
+          size_t idx = i / 2;
+          size_t shift = (i % 2) * 16;
+          dst[i] = static_cast<int16_t>((tmp[idx] >> shift) & 0xFFFF);
+      }
+      break;
+  }
+
+  // For int64_t: each 64‑bit int was packed into two int32_t.
+  case ki64: {
+      std::vector<int32_t> tmp(numElements * 2);
+      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
+      int64_t *dst = static_cast<int64_t*>(output);
+      for (size_t i = 0; i < numElements; ++i) {
+          int32_t low  = tmp[2 * i];
+          int32_t high = tmp[2 * i + 1];
+          dst[i] = (static_cast<int64_t>(high) << 32) |
+                   (static_cast<uint32_t>(low));
+      }
+      break;
+  }
+
+  // For uint8_t: four 8‑bit uints packed into one uint32_t.
+  case ku8: {
+      size_t packedCount = (numElements + 3) / 4;
+      std::vector<uint32_t> tmp(packedCount);
+      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
+      uint8_t *dst = static_cast<uint8_t*>(output);
+      for (size_t i = 0; i < numElements; ++i) {
+          size_t idx = i / 4;
+          size_t shift = (i % 4) * 8;
+          dst[i] = static_cast<uint8_t>((tmp[idx] >> shift) & 0xFF);
+      }
+      break;
+  }
+
+  // For uint16_t: two 16‑bit uints packed into one uint32_t.
+  case ku16: {
+      size_t packedCount = (numElements + 1) / 2;
+      std::vector<uint32_t> tmp(packedCount);
+      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
+      uint16_t *dst = static_cast<uint16_t*>(output);
+      for (size_t i = 0; i < numElements; ++i) {
+          size_t idx = i / 2;
+          size_t shift = (i % 2) * 16;
+          dst[i] = static_cast<uint16_t>((tmp[idx] >> shift) & 0xFFFF);
+      }
+      break;
+  }
+
+  // For uint64_t: each 64‑bit unsigned int was packed into two uint32_t.
+  case ku64: {
+      std::vector<uint32_t> tmp(numElements * 2);
+      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
+      uint64_t *dst = static_cast<uint64_t*>(output);
+      for (size_t i = 0; i < numElements; ++i) {
+          uint32_t low  = tmp[2 * i];
+          uint32_t high = tmp[2 * i + 1];
+          dst[i] = (static_cast<uint64_t>(high) << 32) | low;
+      }
+      break;
+  }
+
+  default:
+      LOG(kDefLog, kError, "Unsupported dtype in toCPUUnpack");
+      break;
+  }
 }
 
 /**

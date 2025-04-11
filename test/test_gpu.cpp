@@ -29,9 +29,11 @@ void testToCPUWithUint16();
 void testToCPUWithUint32();
 void testToCPUWithUint64();
 void testNumTypeSizes();
+void testToCPUUnpack();
 
 int main() {
   LOG(kDefLog, kInfo, "Running GPU integration tests...");
+  testToCPUUnpack();
   testToCPUWithTensor();
   testToCPUWithBuffer();
   testToCPUWithTensorSourceOffset();
@@ -68,9 +70,126 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 )";
 
+void testToCPUUnpack() {
+  LOG(kDefLog, kInfo, "Running testToCPUUnpack...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  // Test for double (kf64 -> packed as kf32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<double> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<double>(i) * 3.14;
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, kf64, inputData.data());
+    toCPU(ctx, tensor, kf64, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      // Allow for a very small epsilon error due to float conversion.
+      assert(fabs(inputData[i] - outputData[i]) < 1e-4);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for double passed.");
+  }
+
+  // Test for int8_t (ki8 -> packed as ki32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<int8_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<int8_t>((i % 256) - 128);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ki8, inputData.data());
+    toCPU(ctx, tensor, ki8, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for int8_t passed.");
+  }
+
+  // Test for int16_t (ki16 -> packed as ki32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<int16_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<int16_t>((i % 65536) - 32768);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ki16, inputData.data());
+    toCPU(ctx, tensor, ki16, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for int16_t passed.");
+  }
+
+  // Test for int64_t (ki64 -> packed as two ki32s)
+  {
+    constexpr size_t N = 1024;
+    std::vector<int64_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<int64_t>(i) - 512;
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ki64, inputData.data());
+    toCPU(ctx, tensor, ki64, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for int64_t passed.");
+  }
+
+  // Test for uint8_t (ku8 -> packed as ku32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<uint8_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<uint8_t>(i % 256);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ku8, inputData.data());
+    toCPU(ctx, tensor, ku8, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for uint8_t passed.");
+  }
+
+  // Test for uint16_t (ku16 -> packed as ku32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<uint16_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<uint16_t>(i % 65536);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ku16, inputData.data());
+    toCPU(ctx, tensor, ku16, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for uint16_t passed.");
+  }
+
+  // Test for uint64_t (ku64 -> packed as two ku32s)
+  {
+    constexpr size_t N = 1024;
+    std::vector<uint64_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<uint64_t>(i) * 123456789ULL;
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ku64, inputData.data());
+    toCPU(ctx, tensor, ku64, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for uint64_t passed.");
+  }
+
+  LOG(kDefLog, kInfo, "All toCPUUnpack tests passed.");
+}
+
 void testNumTypeSizes() {
   LOG(kDefLog, kInfo, "Running testNumTypeSizes...");
-
 
   assert(sizeBytes(kf16) == 2);
   assert(sizeBytes(kf32) == 4);
@@ -200,8 +319,8 @@ void testToCPUWithint8() {
 
   // Validate the copy.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithint8 passed.");
@@ -234,8 +353,8 @@ void testToCPUWithint16() {
 
   // Validate the copy.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithint16 passed.");
@@ -268,8 +387,8 @@ void testToCPUWithint() {
 
   // Validate the copy.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithint passed.");
@@ -328,8 +447,8 @@ void testToCPUWithUint8() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithUint8 passed.");
@@ -360,8 +479,8 @@ void testToCPUWithUint16() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithUint16 passed.");
@@ -392,8 +511,8 @@ void testToCPUWithUint32() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithUint32 passed.");
@@ -462,8 +581,8 @@ void testToCPUWithTensor() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "inputData[%zu] = %f", i, inputData[i]);
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %f", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithTensor passed.");
@@ -500,7 +619,7 @@ void testToCPUWithBuffer() {
 
   // Verify that the CPU output matches the original data.
   for (size_t i = 0; i < N; ++i) {
-    //LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
     assert(outputData[i] == data[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithBuffer passed.");
@@ -542,8 +661,8 @@ void testToCPUWithTensorSourceOffset() {
   for (size_t i = 0; i < copyCount; ++i) {
     float expected = inputData[sourceOffsetElements + i];
     float actual = cpuOutput[i];
-    //LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
-    //LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
+    // LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
+    // LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
     assert(expected == actual);
   }
   LOG(kDefLog, kInfo, "testToCPUWithTensorSourceOffset passed.");
@@ -585,8 +704,8 @@ void testToCPUWithBufferSourceOffset() {
   for (size_t i = 0; i < copyCount; ++i) {
     float expected = inputData[sourceOffsetElements + i];
     float actual = cpuOutput[i];
-    //LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
-    //LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
+    // LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
+    // LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
     assert(expected == actual);
   }
   LOG(kDefLog, kInfo, "testToCPUWithBufferSourceOffset passed.");
