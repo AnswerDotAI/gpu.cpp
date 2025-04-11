@@ -1780,7 +1780,8 @@ inline void toCPU(Context &ctx, Tensor &tensor, std::array<float, N> &data,
   wait(ctx, future);
 }
 
-inline void toCPU(Context &ctx, Tensor &tensor, NumType dtype, void *output, size_t sourceOffset = 0) {
+inline void toCPU(Context &ctx, Tensor &tensor, NumType dtype, void *output,
+                  size_t sourceOffset = 0) {
   size_t numElements = size(tensor.shape);
   switch (dtype) {
   // These types are directly supported.
@@ -1788,106 +1789,221 @@ inline void toCPU(Context &ctx, Tensor &tensor, NumType dtype, void *output, siz
   case kf32:
   case ku32:
   case ki32:
-      toCPU(ctx, tensor, output, tensor.data.size, sourceOffset);
-      break;
+    toCPU(ctx, tensor, output, tensor.data.size, sourceOffset);
+    break;
 
   // For double, the tensor was created by packing doubles into floats.
   case kf64: {
-      std::vector<float> tmp(numElements);
-      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(float), sourceOffset);
-      double *dst = static_cast<double*>(output);
-      for (size_t i = 0; i < numElements; ++i) {
-          dst[i] = static_cast<double>(tmp[i]);
-      }
-      break;
+    std::vector<float> tmp(numElements);
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(float), sourceOffset);
+    double *dst = static_cast<double *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      dst[i] = static_cast<double>(tmp[i]);
+    }
+    break;
   }
 
   // For int8_t: four 8‑bit ints packed into one int32_t.
   case ki8: {
-      size_t packedCount = (numElements + 3) / 4;
-      std::vector<int32_t> tmp(packedCount);
-      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
-      int8_t *dst = static_cast<int8_t*>(output);
-      for (size_t i = 0; i < numElements; ++i) {
-          size_t idx = i / 4;
-          size_t shift = (i % 4) * 8;
-          dst[i] = static_cast<int8_t>((tmp[idx] >> shift) & 0xFF);
-      }
-      break;
+    size_t packedCount = (numElements + 3) / 4;
+    std::vector<int32_t> tmp(packedCount);
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
+    int8_t *dst = static_cast<int8_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 4;
+      size_t shift = (i % 4) * 8;
+      dst[i] = static_cast<int8_t>((tmp[idx] >> shift) & 0xFF);
+    }
+    break;
   }
 
   // For int16_t: two 16‑bit ints packed into one int32_t.
   case ki16: {
-      size_t packedCount = (numElements + 1) / 2;
-      std::vector<int32_t> tmp(packedCount);
-      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
-      int16_t *dst = static_cast<int16_t*>(output);
-      for (size_t i = 0; i < numElements; ++i) {
-          size_t idx = i / 2;
-          size_t shift = (i % 2) * 16;
-          dst[i] = static_cast<int16_t>((tmp[idx] >> shift) & 0xFFFF);
-      }
-      break;
+    size_t packedCount = (numElements + 1) / 2;
+    std::vector<int32_t> tmp(packedCount);
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
+    int16_t *dst = static_cast<int16_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 2;
+      size_t shift = (i % 2) * 16;
+      dst[i] = static_cast<int16_t>((tmp[idx] >> shift) & 0xFFFF);
+    }
+    break;
   }
 
   // For int64_t: each 64‑bit int was packed into two int32_t.
   case ki64: {
-      std::vector<int32_t> tmp(numElements * 2);
-      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
-      int64_t *dst = static_cast<int64_t*>(output);
-      for (size_t i = 0; i < numElements; ++i) {
-          int32_t low  = tmp[2 * i];
-          int32_t high = tmp[2 * i + 1];
-          dst[i] = (static_cast<int64_t>(high) << 32) |
-                   (static_cast<uint32_t>(low));
-      }
-      break;
+    std::vector<int32_t> tmp(numElements * 2);
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
+    int64_t *dst = static_cast<int64_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      int32_t low = tmp[2 * i];
+      int32_t high = tmp[2 * i + 1];
+      dst[i] =
+          (static_cast<int64_t>(high) << 32) | (static_cast<uint32_t>(low));
+    }
+    break;
   }
 
   // For uint8_t: four 8‑bit uints packed into one uint32_t.
   case ku8: {
-      size_t packedCount = (numElements + 3) / 4;
-      std::vector<uint32_t> tmp(packedCount);
-      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
-      uint8_t *dst = static_cast<uint8_t*>(output);
-      for (size_t i = 0; i < numElements; ++i) {
-          size_t idx = i / 4;
-          size_t shift = (i % 4) * 8;
-          dst[i] = static_cast<uint8_t>((tmp[idx] >> shift) & 0xFF);
-      }
-      break;
+    size_t packedCount = (numElements + 3) / 4;
+    std::vector<uint32_t> tmp(packedCount);
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
+    uint8_t *dst = static_cast<uint8_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 4;
+      size_t shift = (i % 4) * 8;
+      dst[i] = static_cast<uint8_t>((tmp[idx] >> shift) & 0xFF);
+    }
+    break;
   }
 
   // For uint16_t: two 16‑bit uints packed into one uint32_t.
   case ku16: {
-      size_t packedCount = (numElements + 1) / 2;
-      std::vector<uint32_t> tmp(packedCount);
-      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
-      uint16_t *dst = static_cast<uint16_t*>(output);
-      for (size_t i = 0; i < numElements; ++i) {
-          size_t idx = i / 2;
-          size_t shift = (i % 2) * 16;
-          dst[i] = static_cast<uint16_t>((tmp[idx] >> shift) & 0xFFFF);
-      }
-      break;
+    size_t packedCount = (numElements + 1) / 2;
+    std::vector<uint32_t> tmp(packedCount);
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
+    uint16_t *dst = static_cast<uint16_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 2;
+      size_t shift = (i % 2) * 16;
+      dst[i] = static_cast<uint16_t>((tmp[idx] >> shift) & 0xFFFF);
+    }
+    break;
   }
 
   // For uint64_t: each 64‑bit unsigned int was packed into two uint32_t.
   case ku64: {
-      std::vector<uint32_t> tmp(numElements * 2);
-      toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
-      uint64_t *dst = static_cast<uint64_t*>(output);
-      for (size_t i = 0; i < numElements; ++i) {
-          uint32_t low  = tmp[2 * i];
-          uint32_t high = tmp[2 * i + 1];
-          dst[i] = (static_cast<uint64_t>(high) << 32) | low;
-      }
-      break;
+    std::vector<uint32_t> tmp(numElements * 2);
+    toCPU(ctx, tensor, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
+    uint64_t *dst = static_cast<uint64_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      uint32_t low = tmp[2 * i];
+      uint32_t high = tmp[2 * i + 1];
+      dst[i] = (static_cast<uint64_t>(high) << 32) | low;
+    }
+    break;
   }
 
   default:
-      LOG(kDefLog, kError, "Unsupported dtype in toCPUUnpack");
-      break;
+    LOG(kDefLog, kError, "Unsupported dtype in toCPUUnpack");
+    break;
+  }
+}
+
+inline void toCPU(Context &ctx, WGPUBuffer buffer, NumType dtype, void *output,
+                  size_t numElements, size_t sourceOffset = 0) {
+  switch (dtype) {
+  // Directly supported types.
+  case kf16:
+  case kf32:
+  case ku32:
+  case ki32: {
+    size_t byteSize = numElements * sizeBytes(dtype);
+    toCPU(ctx, buffer, output, byteSize, sourceOffset);
+    break;
+  }
+
+  // For double, the buffer was written as floats.
+  case kf64: {
+    std::vector<float> tmp(numElements);
+    toCPU(ctx, buffer, tmp.data(), numElements * sizeof(float), sourceOffset);
+    double *dst = static_cast<double *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      dst[i] = static_cast<double>(tmp[i]);
+    }
+    break;
+  }
+
+  // For int8_t: four 8‑bit ints packed into one int32_t.
+  case ki8: {
+    size_t packedCount = (numElements + 3) / 4;
+    std::vector<int32_t> tmp(packedCount);
+    toCPU(ctx, buffer, tmp.data(), packedCount * sizeof(int32_t), sourceOffset);
+    int8_t *dst = static_cast<int8_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 4;
+      size_t shift = (i % 4) * 8;
+      dst[i] = static_cast<int8_t>((tmp[idx] >> shift) & 0xFF);
+    }
+    break;
+  }
+
+  // For int16_t: two 16‑bit ints packed into one int32_t.
+  case ki16: {
+    size_t packedCount = (numElements + 1) / 2;
+    std::vector<int32_t> tmp(packedCount);
+    toCPU(ctx, buffer, tmp.data(), packedCount * sizeof(int32_t), sourceOffset);
+    int16_t *dst = static_cast<int16_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 2;
+      size_t shift = (i % 2) * 16;
+      dst[i] = static_cast<int16_t>((tmp[idx] >> shift) & 0xFFFF);
+    }
+    break;
+  }
+
+  // For int64_t: each 64‑bit int is packed into two int32_t.
+  case ki64: {
+    std::vector<int32_t> tmp(numElements * 2);
+    toCPU(ctx, buffer, tmp.data(), tmp.size() * sizeof(int32_t), sourceOffset);
+    int64_t *dst = static_cast<int64_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      int32_t low = tmp[2 * i];
+      int32_t high = tmp[2 * i + 1];
+      dst[i] =
+          (static_cast<int64_t>(high) << 32) | (static_cast<uint32_t>(low));
+    }
+    break;
+  }
+
+  // For uint8_t: four 8‑bit uints packed into one uint32_t.
+  case ku8: {
+    size_t packedCount = (numElements + 3) / 4;
+    std::vector<uint32_t> tmp(packedCount);
+    toCPU(ctx, buffer, tmp.data(), packedCount * sizeof(uint32_t),
+          sourceOffset);
+    uint8_t *dst = static_cast<uint8_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 4;
+      size_t shift = (i % 4) * 8;
+      dst[i] = static_cast<uint8_t>((tmp[idx] >> shift) & 0xFF);
+    }
+    break;
+  }
+
+  // For uint16_t: two 16‑bit uints packed into one uint32_t.
+  case ku16: {
+    size_t packedCount = (numElements + 1) / 2;
+    std::vector<uint32_t> tmp(packedCount);
+    toCPU(ctx, buffer, tmp.data(), packedCount * sizeof(uint32_t),
+          sourceOffset);
+    uint16_t *dst = static_cast<uint16_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      size_t idx = i / 2;
+      size_t shift = (i % 2) * 16;
+      dst[i] = static_cast<uint16_t>((tmp[idx] >> shift) & 0xFFFF);
+    }
+    break;
+  }
+
+  // For uint64_t: each 64‑bit unsigned int packed into two uint32_t.
+  case ku64: {
+    std::vector<uint32_t> tmp(numElements * 2);
+    toCPU(ctx, buffer, tmp.data(), tmp.size() * sizeof(uint32_t), sourceOffset);
+    uint64_t *dst = static_cast<uint64_t *>(output);
+    for (size_t i = 0; i < numElements; ++i) {
+      uint32_t low = tmp[2 * i];
+      uint32_t high = tmp[2 * i + 1];
+      dst[i] = (static_cast<uint64_t>(high) << 32) | low;
+    }
+    break;
+  }
+
+  default:
+    LOG(kDefLog, kError, "Unsupported dtype in toCPU (raw buffer override)");
+    break;
   }
 }
 

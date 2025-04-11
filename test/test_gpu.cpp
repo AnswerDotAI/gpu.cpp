@@ -30,9 +30,11 @@ void testToCPUWithUint32();
 void testToCPUWithUint64();
 void testNumTypeSizes();
 void testToCPUUnpack();
+void testCopyShaderPackedUnpack_int8();
 
 int main() {
   LOG(kDefLog, kInfo, "Running GPU integration tests...");
+  testCopyShaderPackedUnpack_int8();
   testToCPUUnpack();
   testToCPUWithTensor();
   testToCPUWithBuffer();
@@ -69,6 +71,48 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 }
 )";
+
+void testCopyShaderPackedUnpack_int8() {
+  LOG(kDefLog, kInfo, "Running testCopyShaderPackedUnpack_int8...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::vector<int8_t> inputData(N), outputData(N);
+  for (size_t i = 0; i < N; ++i) {
+    // Values between -128 and 127.
+    inputData[i] = static_cast<int8_t>((i % 256) - 128);
+  }
+
+  // Create an input tensor using the int8_t overload.
+  // Under the hood the data is packed into int32_t.
+  Tensor inputTensor = createTensor(ctx, Shape{N}, ki8, inputData.data());
+
+  // Create an output tensor of the same shape and unsupported type.
+  Tensor outputTensor = createTensor(ctx, Shape{N}, ki8);
+
+  // Our copy shader (kCopyKernel) expects to work with supported types.
+  // Since int8_t is packed into int32_t, we pass 'ki32' as our shader
+  // precision.
+  Kernel copyKernel =
+      createKernel(ctx, {kCopyKernel, 256, ki32},
+                   Bindings{inputTensor, outputTensor}, {cdiv(N, 256), 1, 1});
+  dispatchKernel(ctx, copyKernel);
+
+  // Now retrieve the output from the GPU and unpack from the packed int32_t
+  // back to int8_t.
+  toCPU(ctx, outputTensor, ki8, outputData.data(), 0);
+
+  // Verify the unpacked data matches the original input.
+  for (size_t i = 0; i < N; ++i) {
+    assert(inputData[i] == outputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testCopyShaderPackedUnpack_int8 passed.");
+}
 
 void testToCPUUnpack() {
   LOG(kDefLog, kInfo, "Running testToCPUUnpack...");
