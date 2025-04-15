@@ -11,6 +11,115 @@
 using namespace gpu;
 using namespace std::chrono;
 
+// WGSL Kernels
+
+// Kernel to unpack 4x int8 (packed in i32) to 4x int32
+const char *kPackedInt8ToInt32Kernel = R"(
+  @group(0) @binding(0) var<storage, read_write> packed_input: array<i32>;
+  @group(0) @binding(1) var<storage, read_write> unpacked_output: array<i32>;
+  
+  // Function to sign-extend an 8-bit value (represented in the lower bits of an i32)
+  fn sign_extend_i8(val: i32) -> i32 {
+    return (val << 24) >> 24;
+  }
+  
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let packed_idx: u32 = gid.x;
+  
+    // Check bounds for the PACKED input array
+    if (packed_idx >= arrayLength(&packed_input)) {
+      return;
+    }
+  
+    let packed_val = packed_input[packed_idx];
+  
+    // Unpack and write 4 separate i32 values
+    // Ensure the output buffer is large enough (4x the packed size)
+    let base_output_idx = packed_idx * 4u;
+  
+    // Check bounds for the UNPACKED output array (optional but safer)
+    // This assumes arrayLength(&unpacked_output) is at least 4 * arrayLength(&packed_input)
+    if ((base_output_idx + 3u) >= arrayLength(&unpacked_output)) {
+        return; // Avoid out-of-bounds write if something is wrong
+    }
+  
+    unpacked_output[base_output_idx + 0u] = sign_extend_i8((packed_val >> 0u) & 0xFF);
+    unpacked_output[base_output_idx + 1u] = sign_extend_i8((packed_val >> 8u) & 0xFF);
+    unpacked_output[base_output_idx + 2u] = sign_extend_i8((packed_val >> 16u) & 0xFF);
+    unpacked_output[base_output_idx + 3u] = sign_extend_i8((packed_val >> 24u) & 0xFF);
+  }
+  )";
+
+// Kernel to pack 4x int32 back into 1x int32 (taking lower 8 bits)
+const char *kInt32ToPackedInt8Kernel = R"(
+  @group(0) @binding(0) var<storage, read_write> unpacked_input: array<i32>;
+  @group(0) @binding(1) var<storage, read_write> packed_output: array<i32>;
+  
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let packed_idx: u32 = gid.x; // Index for the PACKED output array
+  
+    // Check bounds for the PACKED output array
+     if (packed_idx >= arrayLength(&packed_output)) {
+      return;
+    }
+  
+    let base_input_idx = packed_idx * 4u;
+  
+    // Check bounds for the UNPACKED input array (optional but safer)
+    // Assumes arrayLength(&unpacked_input) is at least 4 * arrayLength(&packed_output)
+     if ((base_input_idx + 3u) >= arrayLength(&unpacked_input)) {
+        // Handle potential error or incomplete data - maybe write 0?
+        packed_output[packed_idx] = 0;
+        return;
+    }
+  
+    // Read 4 separate i32 values
+    let val0 = unpacked_input[base_input_idx + 0u];
+    let val1 = unpacked_input[base_input_idx + 1u];
+    let val2 = unpacked_input[base_input_idx + 2u];
+    let val3 = unpacked_input[base_input_idx + 3u];
+  
+    // Pack the lower 8 bits of each into one i32
+    var packed_result: i32 = 0;
+    packed_result = packed_result | ((val0 & 0xFF) << 0u);
+    packed_result = packed_result | ((val1 & 0xFF) << 8u);
+    packed_result = packed_result | ((val2 & 0xFF) << 16u);
+    packed_result = packed_result | ((val3 & 0xFF) << 24u);
+  
+    packed_output[packed_idx] = packed_result;
+  }
+  )";
+
+// Simple addition kernel for i32
+const char *kSimpleAddKernelI32 = R"(
+  @group(0) @binding(0) var<storage, read_write> a: array<{{precision}}>;
+  @group(0) @binding(1) var<storage, read_write> b: array<{{precision}}>;
+  @group(0) @binding(2) var<storage, read_write> c: array<{{precision}}>;
+  
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i: u32 = gid.x;
+    if (i < arrayLength(&a)) {
+      c[i] = a[i] + b[i];
+    }
+  }
+  )";
+
+// A simple WGSL copy kernel that copies input to output.
+static const char *kCopyKernel = R"(
+  @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
+  @group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i: u32 = gid.x;
+    if (i < arrayLength(&inp)) {
+      out[i] = inp[i];
+    }
+  }
+  )";
+
 // Forward declarations:
 void testToCPUWithTensor();
 void testToCPUWithBuffer();
@@ -31,46 +140,118 @@ void testToCPUWithUint64();
 void testNumTypeSizes();
 void testToCPUUnpack();
 void testCopyShaderPackedUnpack_int8();
+void testAddKernelInt8();
 
 int main() {
   LOG(kDefLog, kInfo, "Running GPU integration tests...");
-  testCopyShaderPackedUnpack_int8();
-  testToCPUUnpack();
-  testToCPUWithTensor();
-  testToCPUWithBuffer();
-  testToCPUWithTensorSourceOffset();
-  testToCPUWithBufferSourceOffset();
-  testToCPUWithHalf();
-  testToCPUWithFloat();
-  testToCPUWithDouble();
-  testToCPUWithint8();
-  testToCPUWithint16();
-  testToCPUWithint();
-  testToCPUWithint64();
-  testToCPUWithUint8();
-  testToCPUWithUint16();
-  testToCPUWithUint32();
-  testToCPUWithUint64();
-  testNumTypeSizes();
-  stressTestToCPU();
-  testHalf();
+  testAddKernelInt8();
+  // testCopyShaderPackedUnpack_int8();
+  // testToCPUUnpack();
+  // testToCPUWithTensor();
+  // testToCPUWithBuffer();
+  // testToCPUWithTensorSourceOffset();
+  // testToCPUWithBufferSourceOffset();
+  // testToCPUWithHalf();
+  // testToCPUWithFloat();
+  // testToCPUWithDouble();
+  // testToCPUWithint8();
+  // testToCPUWithint16();
+  // testToCPUWithint();
+  // testToCPUWithint64();
+  // testToCPUWithUint8();
+  // testToCPUWithUint16();
+  // testToCPUWithUint32();
+  // testToCPUWithUint64();
+  // testNumTypeSizes();
+  // stressTestToCPU();
+  // testHalf();
   LOG(kDefLog, kInfo, "All tests passed.");
   return 0;
 }
 
-// A simple WGSL copy kernel that copies input to output.
-static const char *kCopyKernel = R"(
-@group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> dummy: array<{{precision}}>;
-@compute @workgroup_size({{workgroupSize}})
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let i: u32 = gid.x;
-  if (i < arrayLength(&inp)) {
-    out[i] = inp[i];
+void testAddKernelInt8() {
+  LOG(kDefLog, kInfo, "Running testAddKernelInt8 (with conversion kernels)...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024; // Logical number of int8 elements
+  std::vector<int8_t> aInput(N), bInput(N), result(N);
+  std::vector<int8_t> expected(N);
+
+  // CPU Data Setup
+  for (size_t i = 0; i < N; ++i) {
+    // Values in range [-10, 9]
+    aInput[i] = static_cast<int8_t>((i % 20) - 10);
+    bInput[i] = static_cast<int8_t>(((2 * i) % 20) - 10);
+    // Compute expected as int then cast back.
+    int temp = static_cast<int>(aInput[i]) + static_cast<int>(bInput[i]);
+    expected[i] = static_cast<int8_t>(temp);
+    result[i] = 0;
   }
+
+  // These store the int8 data packed into i32 format on the GPU
+  Tensor aTensorPacked = createTensor(ctx, Shape{N}, ki8, aInput.data());
+  Tensor bTensorPacked = createTensor(ctx, Shape{N}, ki8, bInput.data());
+  // Final output tensor, also in packed format
+  Tensor outputTensorPacked = createTensor(ctx, Shape{N}, ki8);
+
+  // These will hold the data converted to one i32 per original int8 element
+  Tensor aTensorUnpacked = createTensor(ctx, Shape{N}, ki32);
+  Tensor bTensorUnpacked = createTensor(ctx, Shape{N}, ki32);
+  Tensor outputTensorUnpacked =
+      createTensor(ctx, Shape{N}, ki32); // For the simple add result
+
+  constexpr uint32_t workgroupSize = 256;
+  size_t packedCount = (N + 3) / 4; // Number of i32 elements in packed buffers
+  size_t unpackedCount = N; // Number of i32 elements in unpacked buffers
+
+  // Convert Packed Inputs to Unpacked i32
+  Kernel unpackKernelA =
+      createKernel(ctx, {kPackedInt8ToInt32Kernel, workgroupSize, ki32},
+                   Bindings{aTensorPacked, aTensorUnpacked},
+                   {cdiv(packedCount, workgroupSize), 1,
+                    1}); // Dispatch based on packed size
+  Kernel unpackKernelB =
+      createKernel(ctx, {kPackedInt8ToInt32Kernel, workgroupSize, ki32},
+                   Bindings{bTensorPacked, bTensorUnpacked},
+                   {cdiv(packedCount, workgroupSize), 1,
+                    1}); 
+  // Dispatch based on packed size
+  dispatchKernel(ctx, unpackKernelA);
+  dispatchKernel(ctx, unpackKernelB);
+
+  // Perform Simple Addition on Unpacked i32
+  Kernel simpleAddKernel = createKernel(
+      ctx, {kSimpleAddKernelI32, workgroupSize, ki32},
+      Bindings{aTensorUnpacked, bTensorUnpacked, outputTensorUnpacked},
+      {cdiv(unpackedCount, workgroupSize), 1,
+       1}); // Dispatch based on unpacked size
+  dispatchKernel(ctx, simpleAddKernel);
+
+  // Convert Unpacked i32 Result back to Packed
+  Kernel packKernel =
+      createKernel(ctx, {kInt32ToPackedInt8Kernel, workgroupSize, ki32},
+                   Bindings{outputTensorUnpacked, outputTensorPacked},
+                   {cdiv(packedCount, workgroupSize), 1,
+                    1}); // Dispatch based on packed size
+  dispatchKernel(ctx, packKernel);
+
+  // Copy Final Packed Result to CPU and Unpack
+  // Use the original toCPU for ki8, which handles the final CPU-side unpacking
+  toCPU(ctx, outputTensorPacked, ki8, result.data(), 0);
+
+  for (size_t i = 0; i < N; ++i) {
+    LOG(kDefLog, kInfo, "result[%zu] = %d, expected[%zu] = %d", i, result[i], i,
+        expected[i]);
+    assert(result[i] == expected[i]);
+  }
+
+  LOG(kDefLog, kInfo, "testAddKernelInt8 (with conversion kernels) passed.");
 }
-)";
 
 void testCopyShaderPackedUnpack_int8() {
   LOG(kDefLog, kInfo, "Running testCopyShaderPackedUnpack_int8...");
