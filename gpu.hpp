@@ -204,6 +204,7 @@ enum NumType {
   ku16,
   ku32,
   ku64,
+  kUnknown
 };
 
 /**
@@ -212,15 +213,15 @@ enum NumType {
 inline size_t sizeBytes(const NumType &type) {
   switch (type) {
   case kf16:
-    return sizeof(uint16_t);
+    return sizeof(half);
   case kf32:
     return sizeof(float);
   case kf64:
     return sizeof(double);
   case ki8:
-    return sizeof(uint8_t);
+    return sizeof(int8_t);
   case ki16:
-    return sizeof(uint16_t);
+    return sizeof(int16_t);
   case ki32:
     return sizeof(int32_t);
   case ki64:

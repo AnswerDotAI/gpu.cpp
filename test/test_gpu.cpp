@@ -218,8 +218,7 @@ void testAddKernelInt8() {
   Kernel unpackKernelB =
       createKernel(ctx, {kPackedInt8ToInt32Kernel, workgroupSize, ki32},
                    Bindings{bTensorPacked, bTensorUnpacked},
-                   {cdiv(packedCount, workgroupSize), 1,
-                    1}); 
+                   {cdiv(packedCount, workgroupSize), 1, 1});
   // Dispatch based on packed size
   dispatchKernel(ctx, unpackKernelA);
   dispatchKernel(ctx, unpackKernelB);
@@ -245,8 +244,6 @@ void testAddKernelInt8() {
   toCPU(ctx, outputTensorPacked, ki8, result.data(), 0);
 
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "result[%zu] = %d, expected[%zu] = %d", i, result[i], i,
-        expected[i]);
     assert(result[i] == expected[i]);
   }
 
