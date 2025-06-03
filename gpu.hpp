@@ -1521,6 +1521,7 @@ inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
   // Begin the asynchronous mapping of the readback buffer.
   wgpuBufferMapAsync(cbData->buffer, WGPUMapMode_Read, 0, cbData->bufferSize,
                      mapCallbackInfo);
+  wgpuBufferRelease(cbData->buffer);
 }
 
 /**
@@ -2074,7 +2075,9 @@ inline void toGPU(Context &ctx, const half *data, WGPUBuffer buffer,
 
 // Overload for double: bit-pack each double into two 32‑bit unsigned integers.
 inline void toGPU(Context &ctx, const double *data, WGPUBuffer buffer,
-                  size_t numElements) {
+                  size_t size) {
+  // Number of doubles = size / sizeof(double)
+  size_t numElements = size / sizeof(double);
   std::vector<uint32_t> packed(numElements * 2);
   for (size_t i = 0; i < numElements; ++i) {
     uint64_t bits;
@@ -2088,22 +2091,24 @@ inline void toGPU(Context &ctx, const double *data, WGPUBuffer buffer,
 
 // Overload for int8_t: pack four 8‑bit ints into one 32‑bit integer.
 inline void toGPU(Context &ctx, const int8_t *data, WGPUBuffer buffer,
-                  size_t numElements) {
+                  size_t size) {
   // Number of int8_t elements equals size (sizeof(int8_t)==1)
+  size_t numElements = size;
   size_t packedCount = (numElements + 3) / 4;
   std::vector<int32_t> packed(packedCount, 0);
   for (size_t i = 0; i < numElements; ++i) {
-    size_t idx = i / 4;
-    size_t shift = (i % 4) * 8;
-    packed[idx] |= (static_cast<uint8_t>(data[i]) << shift);
-    //LOG(kDefLog, kInfo, "toGPU: %d %d %d", data[i], packed[idx], idx);
+  size_t idx = i / 4;
+  size_t shift = (i % 4) * 8;
+  packed[idx] |= (static_cast<uint8_t>(data[i]) << shift);
+  // LOG(kDefLog, kInfo, "toGPU: %d %d %d", data[i], packed[idx], idx);
   }
   toGPU(ctx, packed.data(), buffer, packedCount * sizeof(int32_t));
 }
 
 // Overload for int16_t: pack two 16‑bit ints into one 32‑bit integer.
 inline void toGPU(Context &ctx, const int16_t *data, WGPUBuffer buffer,
-                  size_t numElements) {
+                  size_t size) {
+  size_t numElements = size / sizeof(int16_t);
   size_t packedCount = (numElements + 1) / 2;
   std::vector<int32_t> packed(packedCount, 0);
   for (size_t i = 0; i < numElements; ++i) {
@@ -2116,7 +2121,8 @@ inline void toGPU(Context &ctx, const int16_t *data, WGPUBuffer buffer,
 
 // Overload for int64_t: pack each 64‑bit int into two 32‑bit integers.
 inline void toGPU(Context &ctx, const int64_t *data, WGPUBuffer buffer,
-                  size_t numElements) {
+                  size_t size) {
+  size_t numElements = size / sizeof(int64_t);
   std::vector<int32_t> packed(numElements * 2);
   for (size_t i = 0; i < numElements; ++i) {
     int64_t val = data[i];
@@ -2128,13 +2134,14 @@ inline void toGPU(Context &ctx, const int64_t *data, WGPUBuffer buffer,
 
 // Overload for uint8_t: pack four 8‑bit uints into one 32‑bit unsigned integer.
 inline void toGPU(Context &ctx, const uint8_t *data, WGPUBuffer buffer,
-                  size_t numElements) {
+                  size_t size) {
+  size_t numElements = size; // sizeof(uint8_t)==1
   size_t packedCount = (numElements + 3) / 4;
   std::vector<uint32_t> packed(packedCount, 0);
   for (size_t i = 0; i < numElements; ++i) {
-    size_t idx = i / 4;
-    size_t shift = (i % 4) * 8;
-    packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
+  size_t idx = i / 4;
+  size_t shift = (i % 4) * 8;
+  packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
   }
   toGPU(ctx, packed.data(), buffer, packedCount * sizeof(uint32_t));
 }
@@ -2142,13 +2149,14 @@ inline void toGPU(Context &ctx, const uint8_t *data, WGPUBuffer buffer,
 // Overload for uint16_t: pack two 16‑bit uints into one 32‑bit unsigned
 // integer.
 inline void toGPU(Context &ctx, const uint16_t *data, WGPUBuffer buffer,
-                  size_t numElements) {
+                  size_t size) {
+  size_t numElements = size / sizeof(uint16_t);
   size_t packedCount = (numElements + 1) / 2;
   std::vector<uint32_t> packed(packedCount, 0);
   for (size_t i = 0; i < numElements; ++i) {
-    size_t idx = i / 2;
-    size_t shift = (i % 2) * 16;
-    packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
+  size_t idx = i / 2;
+  size_t shift = (i % 2) * 16;
+  packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
   }
   toGPU(ctx, packed.data(), buffer, packedCount * sizeof(uint32_t));
 }
@@ -2156,7 +2164,8 @@ inline void toGPU(Context &ctx, const uint16_t *data, WGPUBuffer buffer,
 // Overload for uint64_t: pack each 64‑bit uint into two 32‑bit unsigned
 // integers.
 inline void toGPU(Context &ctx, const uint64_t *data, WGPUBuffer buffer,
-                  size_t numElements) {
+                  size_t size) {
+  size_t numElements = size / sizeof(uint64_t);
   std::vector<uint32_t> packed(numElements * 2);
   for (size_t i = 0; i < numElements; ++i) {
     uint64_t val = data[i];
