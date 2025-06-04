@@ -625,28 +625,46 @@ struct Context {
 
   ~Context() {
     LOG(kDefLog, kTrace, "Destroying context");
+
+#ifdef __EMSCRIPTEN__
+    // For WebAssembly, do NOT call processEvents during destruction
+    // This prevents "Asyncify cannot be done during or after runtime exits"
+    LOG(kDefLog, kTrace,
+        "WebAssembly context destruction - skipping processEvents");
+#endif
+
     if (queue) {
       wgpuQueueRelease(queue);
+      queue = nullptr;
     } else {
-      LOG(kDefLog, kTrace, "Queue is null");
+      LOG(kDefLog, kTrace, "Queue already null");
     }
+
     if (device) {
       wgpuDeviceRelease(device);
-      processEvents(instance);
+      device = nullptr;
     } else {
-      LOG(kDefLog, kTrace, "Device is null");
+      LOG(kDefLog, kTrace, "Device already null");
     }
+
     if (adapter) {
       wgpuAdapterRelease(adapter);
-      processEvents(instance);
+      adapter = nullptr;
     } else {
-      LOG(kDefLog, kTrace, "Adapter is null");
+      LOG(kDefLog, kTrace, "Adapter already null");
     }
+
     if (instance) {
+#ifndef __EMSCRIPTEN__
+      // Only call processEvents on native platforms during cleanup
+      processEvents(instance);
+#endif
       wgpuInstanceRelease(instance);
+      instance = nullptr;
     } else {
-      LOG(kDefLog, kTrace, "Instance is null");
+      LOG(kDefLog, kTrace, "Instance already null");
     }
+
     LOG(kDefLog, kTrace, "Context destroyed");
   }
 };
@@ -983,21 +1001,63 @@ inline void check(bool condition, const char *message,
  * devDescriptor); WGPUDevice device = wait(instance, deviceFuture);
  * @endcode
  */
+#ifdef __EMSCRIPTEN__
+// Global flag to prevent overlapping async operations in WebAssembly
+static std::atomic<bool> asyncOperationInProgress{false};
+#endif
+
 template <typename T> T wait(Context &ctx, std::future<T> &f) {
 #ifdef __EMSCRIPTEN__
-  // Poll until the future is ready.
-  while (f.wait_for(std::chrono::milliseconds(0)) !=
-         std::future_status::ready) {
-    // Yield control to the JS event loop.
-    emscripten_sleep(1);
+  // Check if another async operation is in progress
+  if (asyncOperationInProgress.load()) {
+    LOG(kDefLog, kWarn,
+        "wait(): Another async operation in progress, skipping wait");
+    if constexpr (std::is_void_v<T>) {
+      return; // For void functions, just return
+    } else {
+      return T{}; // Return default-constructed value for non-void types
+    }
   }
-  return f.get();
+
+  // Set the flag before starting async operation
+  asyncOperationInProgress.store(true);
+
+  try {
+    // Poll until the future is ready
+    while (f.wait_for(std::chrono::milliseconds(0)) !=
+           std::future_status::ready) {
+      emscripten_sleep(1);
+    }
+
+    // Handle void vs non-void return types
+    if constexpr (std::is_void_v<T>) {
+      f.get(); // Just call get() without storing result
+      asyncOperationInProgress.store(false);
+      return; // void return
+    } else {
+      T result = f.get();
+      asyncOperationInProgress.store(false);
+      return result;
+    }
+
+  } catch (...) {
+    asyncOperationInProgress.store(false);
+    throw;
+  }
 #else
+  // Native implementation unchanged
   while (f.wait_for(std::chrono::milliseconds(0)) !=
          std::future_status::ready) {
     wgpuInstanceProcessEvents(ctx.instance);
   }
-  return f.get();
+
+  // Handle void vs non-void for native too
+  if constexpr (std::is_void_v<T>) {
+    f.get();
+    return;
+  } else {
+    return f.get();
+  }
 #endif
 }
 
@@ -2097,10 +2157,10 @@ inline void toGPU(Context &ctx, const int8_t *data, WGPUBuffer buffer,
   size_t packedCount = (numElements + 3) / 4;
   std::vector<int32_t> packed(packedCount, 0);
   for (size_t i = 0; i < numElements; ++i) {
-  size_t idx = i / 4;
-  size_t shift = (i % 4) * 8;
-  packed[idx] |= (static_cast<uint8_t>(data[i]) << shift);
-  // LOG(kDefLog, kInfo, "toGPU: %d %d %d", data[i], packed[idx], idx);
+    size_t idx = i / 4;
+    size_t shift = (i % 4) * 8;
+    packed[idx] |= (static_cast<uint8_t>(data[i]) << shift);
+    // LOG(kDefLog, kInfo, "toGPU: %d %d %d", data[i], packed[idx], idx);
   }
   toGPU(ctx, packed.data(), buffer, packedCount * sizeof(int32_t));
 }
@@ -2139,9 +2199,9 @@ inline void toGPU(Context &ctx, const uint8_t *data, WGPUBuffer buffer,
   size_t packedCount = (numElements + 3) / 4;
   std::vector<uint32_t> packed(packedCount, 0);
   for (size_t i = 0; i < numElements; ++i) {
-  size_t idx = i / 4;
-  size_t shift = (i % 4) * 8;
-  packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
+    size_t idx = i / 4;
+    size_t shift = (i % 4) * 8;
+    packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
   }
   toGPU(ctx, packed.data(), buffer, packedCount * sizeof(uint32_t));
 }
@@ -2154,9 +2214,9 @@ inline void toGPU(Context &ctx, const uint16_t *data, WGPUBuffer buffer,
   size_t packedCount = (numElements + 1) / 2;
   std::vector<uint32_t> packed(packedCount, 0);
   for (size_t i = 0; i < numElements; ++i) {
-  size_t idx = i / 2;
-  size_t shift = (i % 2) * 16;
-  packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
+    size_t idx = i / 2;
+    size_t shift = (i % 2) * 16;
+    packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
   }
   toGPU(ctx, packed.data(), buffer, packedCount * sizeof(uint32_t));
 }
@@ -2798,7 +2858,6 @@ inline std::future<void> dispatchKernelAsync(Context &ctx, Kernel &kernel) {
   workDoneCallbackInfo.userdata1 = reinterpret_cast<void *>(promise);
   workDoneCallbackInfo.userdata2 = nullptr;
 
-  // IMPORTANT: Pass the address of the callback info structure.
   wgpuQueueOnSubmittedWorkDone(ctx.queue, workDoneCallbackInfo);
 
   return future;
