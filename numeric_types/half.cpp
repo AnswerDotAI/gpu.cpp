@@ -214,13 +214,7 @@ fn main(
     }
 }
 )";
-  Context ctx = createContext(
-      {}, {},
-      /*device descriptor, enabling f16 in WGSL*/
-      {
-          .requiredFeatureCount = 1,
-          .requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data(),
-      });
+  Context ctx = createContext();
   static constexpr size_t N = 10000;
   std::array<half, N> inputArr, outputArr;
   for (int i = 0; i < N; ++i) {
@@ -238,7 +232,7 @@ fn main(
   }
 }
 
-int testHalfMain() {
+int testHalf() {
   printf("\nHalf-precision float tests\n==========================\n");
 
   printf("\nRegular values float round trips\n\n");

@@ -15,7 +15,6 @@ message(STATUS "PROJECT_ROOT: ${PROJECT_ROOT}")
 set(GPU_SOURCES
     "${PROJECT_ROOT}/gpu.cpp"
     "${PROJECT_ROOT}/numeric_types/half.cpp"
-    "${DAWN_BUILD_DIR}/gen/include/dawn/webgpu.h"
 )
 
 # Add headers

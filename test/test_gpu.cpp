@@ -1,4 +1,5 @@
 #include "gpu.hpp"
+#include "numeric_types/half.hpp"
 #include <array>
 #include <cassert>
 #include <chrono>
@@ -10,6 +11,114 @@
 using namespace gpu;
 using namespace std::chrono;
 
+// WGSL Kernels
+
+// Kernel to unpack 4x int8 (packed in i32) to 4x int32
+const char *kPackedInt8ToInt32Kernel = R"(
+  @group(0) @binding(0) var<storage, read_write> packed_input: array<i32>;
+  @group(0) @binding(1) var<storage, read_write> unpacked_output: array<i32>;
+  
+  // Function to sign-extend an 8-bit value (represented in the lower bits of an i32)
+  fn sign_extend_i8(val: i32) -> i32 {
+    return (val << 24) >> 24;
+  }
+  
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let packed_idx: u32 = gid.x;
+  
+    // Check bounds for the PACKED input array
+    if (packed_idx >= arrayLength(&packed_input)) {
+      return;
+    }
+  
+    let packed_val = packed_input[packed_idx];
+  
+    // Unpack and write 4 separate i32 values
+    // Ensure the output buffer is large enough (4x the packed size)
+    let base_output_idx = packed_idx * 4u;
+  
+    // Check bounds for the UNPACKED output array (optional but safer)
+    // This assumes arrayLength(&unpacked_output) is at least 4 * arrayLength(&packed_input)
+    if ((base_output_idx + 3u) >= arrayLength(&unpacked_output)) {
+        return; // Avoid out-of-bounds write if something is wrong
+    }
+  
+    unpacked_output[base_output_idx + 0u] = sign_extend_i8((packed_val >> 0u) & 0xFF);
+    unpacked_output[base_output_idx + 1u] = sign_extend_i8((packed_val >> 8u) & 0xFF);
+    unpacked_output[base_output_idx + 2u] = sign_extend_i8((packed_val >> 16u) & 0xFF);
+    unpacked_output[base_output_idx + 3u] = sign_extend_i8((packed_val >> 24u) & 0xFF);
+  }
+  )";
+
+// Kernel to pack 4x int32 back into 1x int32 (taking lower 8 bits)
+const char *kInt32ToPackedInt8Kernel = R"(
+  @group(0) @binding(0) var<storage, read_write> unpacked_input: array<i32>;
+  @group(0) @binding(1) var<storage, read_write> packed_output: array<i32>;
+  
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let packed_idx: u32 = gid.x; // Index for the PACKED output array
+  
+    // Check bounds for the PACKED output array
+     if (packed_idx >= arrayLength(&packed_output)) {
+      return;
+    }
+  
+    let base_input_idx = packed_idx * 4u;
+  
+    // Check bounds for the UNPACKED input array (optional but safer)
+    // Assumes arrayLength(&unpacked_input) is at least 4 * arrayLength(&packed_output)
+     if ((base_input_idx + 3u) >= arrayLength(&unpacked_input)) {
+        // Handle potential error or incomplete data - maybe write 0?
+        packed_output[packed_idx] = 0;
+        return;
+    }
+  
+    // Read 4 separate i32 values
+    let val0 = unpacked_input[base_input_idx + 0u];
+    let val1 = unpacked_input[base_input_idx + 1u];
+    let val2 = unpacked_input[base_input_idx + 2u];
+    let val3 = unpacked_input[base_input_idx + 3u];
+  
+    // Pack the lower 8 bits of each into one i32
+    var packed_result: i32 = 0;
+    packed_result = packed_result | ((val0 & 0xFF) << 0u);
+    packed_result = packed_result | ((val1 & 0xFF) << 8u);
+    packed_result = packed_result | ((val2 & 0xFF) << 16u);
+    packed_result = packed_result | ((val3 & 0xFF) << 24u);
+  
+    packed_output[packed_idx] = packed_result;
+  }
+  )";
+
+// Simple addition kernel for i32
+const char *kSimpleAddKernelI32 = R"(
+  @group(0) @binding(0) var<storage, read_write> a: array<{{precision}}>;
+  @group(0) @binding(1) var<storage, read_write> b: array<{{precision}}>;
+  @group(0) @binding(2) var<storage, read_write> c: array<{{precision}}>;
+  
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i: u32 = gid.x;
+    if (i < arrayLength(&a)) {
+      c[i] = a[i] + b[i];
+    }
+  }
+  )";
+
+// A simple WGSL copy kernel that copies input to output.
+static const char *kCopyKernel = R"(
+  @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
+  @group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
+  @compute @workgroup_size({{workgroupSize}})
+  fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i: u32 = gid.x;
+    if (i < arrayLength(&inp)) {
+      out[i] = inp[i];
+    }
+  }
+  )";
 
 // Forward declarations:
 void testToCPUWithTensor();
@@ -17,33 +126,649 @@ void testToCPUWithBuffer();
 void testToCPUWithTensorSourceOffset();
 void testToCPUWithBufferSourceOffset();
 void stressTestToCPU();
+void testToCPUWithHalf();
+void testToCPUWithFloat();
+void testToCPUWithDouble();
+void testToCPUWithint8();
+void testToCPUWithint16();
+void testToCPUWithint();
+void testToCPUWithint64();
+void testToCPUWithUint8();
+void testToCPUWithUint16();
+void testToCPUWithUint32();
+void testToCPUWithUint64();
+void testNumTypeSizes();
+void testToCPUUnpack();
+void testCopyShaderPackedUnpack_int8();
+void testAddKernelInt8();
 
 int main() {
   LOG(kDefLog, kInfo, "Running GPU integration tests...");
+  testAddKernelInt8();
+  testCopyShaderPackedUnpack_int8();
+  testToCPUUnpack();
   testToCPUWithTensor();
   testToCPUWithBuffer();
   testToCPUWithTensorSourceOffset();
   testToCPUWithBufferSourceOffset();
+  testToCPUWithHalf();
+  testToCPUWithFloat();
+  testToCPUWithDouble();
+  testToCPUWithint8();
+  testToCPUWithint16();
+  testToCPUWithint();
+  testToCPUWithint64();
+  testToCPUWithUint8();
+  testToCPUWithUint16();
+  testToCPUWithUint32();
+  testToCPUWithUint64();
+  testNumTypeSizes();
   stressTestToCPU();
+  testHalf();
   LOG(kDefLog, kInfo, "All tests passed.");
   return 0;
 }
 
+void testAddKernelInt8() {
+  LOG(kDefLog, kInfo, "Running testAddKernelInt8 (with conversion kernels)...");
 
-// A simple WGSL copy kernel that copies input to output.
-static const char *kCopyKernel = R"(
-@group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> dummy: array<{{precision}}>;
-@compute @workgroup_size({{workgroupSize}})
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let i: u32 = gid.x;
-  if (i < arrayLength(&inp)) {
-    out[i] = inp[i];
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024; // Logical number of int8 elements
+  std::vector<int8_t> aInput(N), bInput(N), result(N);
+  std::vector<int8_t> expected(N);
+
+  // CPU Data Setup
+  for (size_t i = 0; i < N; ++i) {
+    // Values in range [-10, 9]
+    aInput[i] = static_cast<int8_t>((i % 20) - 10);
+    bInput[i] = static_cast<int8_t>(((2 * i) % 20) - 10);
+    // Compute expected as int then cast back.
+    int temp = static_cast<int>(aInput[i]) + static_cast<int>(bInput[i]);
+    expected[i] = static_cast<int8_t>(temp);
+    result[i] = 0;
   }
-}
-)";
 
+  // These store the int8 data packed into i32 format on the GPU
+  Tensor aTensorPacked = createTensor(ctx, Shape{N}, ki8, aInput.data());
+  Tensor bTensorPacked = createTensor(ctx, Shape{N}, ki8, bInput.data());
+  // Final output tensor, also in packed format
+  Tensor outputTensorPacked = createTensor(ctx, Shape{N}, ki8);
+
+  // These will hold the data converted to one i32 per original int8 element
+  Tensor aTensorUnpacked = createTensor(ctx, Shape{N}, ki32);
+  Tensor bTensorUnpacked = createTensor(ctx, Shape{N}, ki32);
+  Tensor outputTensorUnpacked =
+      createTensor(ctx, Shape{N}, ki32); // For the simple add result
+
+  constexpr uint32_t workgroupSize = 256;
+  size_t packedCount = (N + 3) / 4; // Number of i32 elements in packed buffers
+  size_t unpackedCount = N; // Number of i32 elements in unpacked buffers
+
+  // Convert Packed Inputs to Unpacked i32
+  Kernel unpackKernelA =
+      createKernel(ctx, {kPackedInt8ToInt32Kernel, workgroupSize, ki32},
+                   Bindings{aTensorPacked, aTensorUnpacked},
+                   {cdiv(packedCount, workgroupSize), 1,
+                    1}); // Dispatch based on packed size
+  Kernel unpackKernelB =
+      createKernel(ctx, {kPackedInt8ToInt32Kernel, workgroupSize, ki32},
+                   Bindings{bTensorPacked, bTensorUnpacked},
+                   {cdiv(packedCount, workgroupSize), 1, 1});
+  // Dispatch based on packed size
+  dispatchKernel(ctx, unpackKernelA);
+  dispatchKernel(ctx, unpackKernelB);
+
+  // Perform Simple Addition on Unpacked i32
+  Kernel simpleAddKernel = createKernel(
+      ctx, {kSimpleAddKernelI32, workgroupSize, ki32},
+      Bindings{aTensorUnpacked, bTensorUnpacked, outputTensorUnpacked},
+      {cdiv(unpackedCount, workgroupSize), 1,
+       1}); // Dispatch based on unpacked size
+  dispatchKernel(ctx, simpleAddKernel);
+
+  // Convert Unpacked i32 Result back to Packed
+  Kernel packKernel =
+      createKernel(ctx, {kInt32ToPackedInt8Kernel, workgroupSize, ki32},
+                   Bindings{outputTensorUnpacked, outputTensorPacked},
+                   {cdiv(packedCount, workgroupSize), 1,
+                    1}); // Dispatch based on packed size
+  dispatchKernel(ctx, packKernel);
+
+  // Copy Final Packed Result to CPU and Unpack
+  // Use the original toCPU for ki8, which handles the final CPU-side unpacking
+  toCPU(ctx, outputTensorPacked, ki8, result.data(), 0);
+
+  for (size_t i = 0; i < N; ++i) {
+    assert(result[i] == expected[i]);
+  }
+
+  LOG(kDefLog, kInfo, "testAddKernelInt8 (with conversion kernels) passed.");
+}
+
+void testCopyShaderPackedUnpack_int8() {
+  LOG(kDefLog, kInfo, "Running testCopyShaderPackedUnpack_int8...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::vector<int8_t> inputData(N), outputData(N);
+  for (size_t i = 0; i < N; ++i) {
+    // Values between -128 and 127.
+    inputData[i] = static_cast<int8_t>((i % 256) - 128);
+  }
+
+  // Create an input tensor using the int8_t overload.
+  // Under the hood the data is packed into int32_t.
+  Tensor inputTensor = createTensor(ctx, Shape{N}, ki8, inputData.data());
+
+  // Create an output tensor of the same shape and unsupported type.
+  Tensor outputTensor = createTensor(ctx, Shape{N}, ki8);
+
+  // Our copy shader (kCopyKernel) expects to work with supported types.
+  // Since int8_t is packed into int32_t, we pass 'ki32' as our shader
+  // precision.
+  Kernel copyKernel =
+      createKernel(ctx, {kCopyKernel, 256, ki32},
+                   Bindings{inputTensor, outputTensor}, {cdiv(N, 256), 1, 1});
+  dispatchKernel(ctx, copyKernel);
+
+  // Now retrieve the output from the GPU and unpack from the packed int32_t
+  // back to int8_t.
+  toCPU(ctx, outputTensor, ki8, outputData.data(), 0);
+
+  // Verify the unpacked data matches the original input.
+  for (size_t i = 0; i < N; ++i) {
+    assert(inputData[i] == outputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testCopyShaderPackedUnpack_int8 passed.");
+}
+
+void testToCPUUnpack() {
+  LOG(kDefLog, kInfo, "Running testToCPUUnpack...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  // Test for double (kf64 -> packed as kf32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<double> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<double>(i) * 3.14;
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, kf64, inputData.data());
+    toCPU(ctx, tensor, kf64, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      // Allow for a very small epsilon error due to float conversion.
+      assert(fabs(inputData[i] - outputData[i]) < 1e-4);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for double passed.");
+  }
+
+  // Test for int8_t (ki8 -> packed as ki32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<int8_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<int8_t>((i % 256) - 128);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ki8, inputData.data());
+    toCPU(ctx, tensor, ki8, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for int8_t passed.");
+  }
+
+  // Test for int16_t (ki16 -> packed as ki32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<int16_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<int16_t>((i % 65536) - 32768);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ki16, inputData.data());
+    toCPU(ctx, tensor, ki16, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for int16_t passed.");
+  }
+
+  // Test for int64_t (ki64 -> packed as two ki32s)
+  {
+    constexpr size_t N = 1024;
+    std::vector<int64_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<int64_t>(i) - 512;
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ki64, inputData.data());
+    toCPU(ctx, tensor, ki64, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for int64_t passed.");
+  }
+
+  // Test for uint8_t (ku8 -> packed as ku32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<uint8_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<uint8_t>(i % 256);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ku8, inputData.data());
+    toCPU(ctx, tensor, ku8, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for uint8_t passed.");
+  }
+
+  // Test for uint16_t (ku16 -> packed as ku32)
+  {
+    constexpr size_t N = 1024;
+    std::vector<uint16_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<uint16_t>(i % 65536);
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ku16, inputData.data());
+    toCPU(ctx, tensor, ku16, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for uint16_t passed.");
+  }
+
+  // Test for uint64_t (ku64 -> packed as two ku32s)
+  {
+    constexpr size_t N = 1024;
+    std::vector<uint64_t> inputData(N), outputData(N);
+    for (size_t i = 0; i < N; ++i) {
+      inputData[i] = static_cast<uint64_t>(i) * 123456789ULL;
+    }
+    Tensor tensor = createTensor(ctx, Shape{N}, ku64, inputData.data());
+    toCPU(ctx, tensor, ku64, outputData.data(), 0);
+    for (size_t i = 0; i < N; ++i) {
+      assert(inputData[i] == outputData[i]);
+    }
+    LOG(kDefLog, kInfo, "toCPUUnpack for uint64_t passed.");
+  }
+
+  LOG(kDefLog, kInfo, "All toCPUUnpack tests passed.");
+}
+
+void testNumTypeSizes() {
+  LOG(kDefLog, kInfo, "Running testNumTypeSizes...");
+
+  assert(sizeBytes(kf16) == 2);
+  assert(sizeBytes(kf32) == 4);
+  assert(sizeBytes(ki8) == sizeof(uint8_t));   // typically 1
+  assert(sizeBytes(ki16) == sizeof(uint16_t)); // typically 2
+  assert(sizeBytes(ki32) == sizeof(int32_t));  // typically 4
+  assert(sizeBytes(ku8) == sizeof(uint8_t));   // typically 1
+  assert(sizeBytes(ku16) == sizeof(uint16_t)); // typically 2
+  assert(sizeBytes(ku32) == sizeof(uint32_t)); // typically 4
+
+  LOG(kDefLog, kInfo, "testNumTypeSizes passed.");
+}
+
+// Test using half-precision (16-bit float) data.
+void testToCPUWithHalf() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithHalf...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<half, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    // Construct half from float.
+    inputData[i] = half(static_cast<float>(i));
+  }
+
+  Tensor inputTensor = createTensor(ctx, Shape{N}, kf16, inputData.data());
+
+  // Copy GPU output to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy (using float conversion for approximate equality).
+  for (size_t i = 0; i < N; ++i) {
+    float inVal = static_cast<float>(inputData[i]);
+    float outVal = static_cast<float>(outputData[i]);
+    // Use a small epsilon to compare half values.
+    assert(fabs(inVal - outVal) <= 0.01f);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithHalf passed.");
+}
+
+// Test using float (32-bit) data.
+void testToCPUWithFloat() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithFloat...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<float, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] = static_cast<float>(i * 1.5f);
+    outputData[i] = 0.0f;
+  }
+
+  Tensor inputTensor = createTensor(ctx, Shape{N}, kf32, inputData.data());
+
+  // Copy GPU output to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy.
+  for (size_t i = 0; i < N; ++i) {
+    assert(inputData[i] == outputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithFloat passed.");
+}
+
+// Test using double (64-bit floating point) data.
+void testToCPUWithDouble() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithDouble...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<double, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] = static_cast<double>(i) * 2.5;
+    outputData[i] = 0.0;
+  }
+
+  Tensor inputTensor = createTensor(ctx, Shape{N}, kf64, inputData.data());
+
+  // Copy GPU output to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy.
+  for (size_t i = 0; i < N; ++i) {
+    assert(inputData[i] == outputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithDouble passed.");
+}
+
+void testToCPUWithint8() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithint8...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<int8_t, N> inputData, outputData;
+  // Use a range that includes negative values.
+  for (size_t i = 0; i < N; ++i) {
+    // Values between -128 and 127.
+    inputData[i] = static_cast<int8_t>((i % 256) - 128);
+    outputData[i] = 0;
+  }
+
+  // Create a tensor for int8_t.
+  Tensor inputTensor = createTensor(ctx, Shape{N}, ki8, inputData.data());
+
+  // Synchronously copy the GPU tensor data to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy.
+  for (size_t i = 0; i < N; ++i) {
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    assert(outputData[i] == inputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithint8 passed.");
+}
+
+// Test using int16_t data.
+void testToCPUWithint16() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithint16...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<int16_t, N> inputData, outputData;
+  // Use a range that includes negative values.
+  for (size_t i = 0; i < N; ++i) {
+    // Values between -32768 and 32767.
+    inputData[i] = static_cast<int16_t>((i % 65536) - 32768);
+    outputData[i] = 0;
+  }
+
+  // Create a tensor for int16_t.
+  Tensor inputTensor = createTensor(ctx, Shape{N}, ki16, inputData.data());
+
+  // Synchronously copy the GPU tensor data to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy.
+  for (size_t i = 0; i < N; ++i) {
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    assert(outputData[i] == inputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithint16 passed.");
+}
+
+// Test using int (int32_t) data.
+void testToCPUWithint() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithint...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<int32_t, N> inputData, outputData;
+  // Fill with sample data.
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] =
+        static_cast<int32_t>(i - 512); // Negative and positive values.
+    outputData[i] = 0;
+  }
+
+  // Create a tensor for int32_t.
+  Tensor inputTensor = createTensor(ctx, Shape{N}, ki32, inputData.data());
+
+  // Synchronously copy the GPU tensor data to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy.
+  for (size_t i = 0; i < N; ++i) {
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %d", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %d", i, outputData[i]);
+    assert(outputData[i] == inputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithint passed.");
+}
+
+// Test using int64_t (64-bit signed integer) data.
+void testToCPUWithint64() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithint64...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<int64_t, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] =
+        static_cast<int64_t>(i) - 512; // Some negative and positive values.
+    outputData[i] = 0;
+  }
+
+  Tensor inputTensor = createTensor(ctx, Shape{N}, ki64, inputData.data());
+
+  // Copy GPU output to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy.
+  for (size_t i = 0; i < N; ++i) {
+    assert(inputData[i] == outputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithint64 passed.");
+}
+
+void testToCPUWithUint8() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithUint8...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<uint8_t, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] = static_cast<uint8_t>(i % 256);
+    outputData[i] = 0;
+  }
+
+  Tensor inputTensor = createTensor(
+      ctx, Shape{N}, ku8, reinterpret_cast<const uint8_t *>(inputData.data()));
+
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Verify the output matches the input.
+  for (size_t i = 0; i < N; ++i) {
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    assert(outputData[i] == inputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithUint8 passed.");
+}
+
+void testToCPUWithUint16() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithUint16...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<uint16_t, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] = static_cast<uint16_t>(i % 65536);
+    outputData[i] = 0;
+  }
+
+  Tensor inputTensor =
+      createTensor(ctx, Shape{N}, ku16,
+                   reinterpret_cast<const uint16_t *>(inputData.data()));
+
+  // Synchronously copy GPU output to CPU using the tensor overload.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Verify the output matches the input.
+  for (size_t i = 0; i < N; ++i) {
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    assert(outputData[i] == inputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithUint16 passed.");
+}
+
+void testToCPUWithUint32() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithUint32...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<uint32_t, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] = static_cast<uint32_t>(i);
+    outputData[i] = 0;
+  }
+
+  Tensor inputTensor =
+      createTensor(ctx, Shape{N}, ku32,
+                   reinterpret_cast<const uint32_t *>(inputData.data()));
+
+  // Synchronously copy GPU output to CPU using the tensor overload.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Verify the output matches the input.
+  for (size_t i = 0; i < N; ++i) {
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %u", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %u", i, outputData[i]);
+    assert(outputData[i] == inputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithUint32 passed.");
+}
+
+// Test using uint64_t (64-bit unsigned integer) data.
+void testToCPUWithUint64() {
+  LOG(kDefLog, kInfo, "Running testToCPUWithUint64...");
+
+#ifdef USE_DAWN_API
+  Context ctx = createContextByGpuIdx(0);
+#else
+  Context ctx = createContext();
+#endif
+
+  constexpr size_t N = 1024;
+  std::array<uint64_t, N> inputData, outputData;
+  for (size_t i = 0; i < N; ++i) {
+    inputData[i] = static_cast<uint64_t>(i);
+    outputData[i] = 0;
+  }
+
+  // Assuming a new NumType 'ku64' for 64-bit unsigned integers.
+  Tensor inputTensor = createTensor(ctx, Shape{N}, ku64, inputData.data());
+
+  // Copy GPU output to CPU.
+  toCPU(ctx, inputTensor, outputData.data(), sizeof(outputData));
+
+  // Validate the copy.
+  for (size_t i = 0; i < N; ++i) {
+    assert(inputData[i] == outputData[i]);
+  }
+  LOG(kDefLog, kInfo, "testToCPUWithUint64 passed.");
+}
 
 // Test using the overload that takes a Tensor.
 void testToCPUWithTensor() {
@@ -78,8 +803,8 @@ void testToCPUWithTensor() {
 
   // Verify the output matches the input.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "inputData[%zu] = %f", i, inputData[i]);
-    LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "inputData[%zu] = %f", i, inputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
     assert(outputData[i] == inputData[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithTensor passed.");
@@ -116,7 +841,7 @@ void testToCPUWithBuffer() {
 
   // Verify that the CPU output matches the original data.
   for (size_t i = 0; i < N; ++i) {
-    LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
+    // LOG(kDefLog, kInfo, "outputData[%zu] = %f", i, outputData[i]);
     assert(outputData[i] == data[i]);
   }
   LOG(kDefLog, kInfo, "testToCPUWithBuffer passed.");
@@ -158,8 +883,8 @@ void testToCPUWithTensorSourceOffset() {
   for (size_t i = 0; i < copyCount; ++i) {
     float expected = inputData[sourceOffsetElements + i];
     float actual = cpuOutput[i];
-    LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
-    LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
+    // LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
+    // LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
     assert(expected == actual);
   }
   LOG(kDefLog, kInfo, "testToCPUWithTensorSourceOffset passed.");
@@ -201,8 +926,8 @@ void testToCPUWithBufferSourceOffset() {
   for (size_t i = 0; i < copyCount; ++i) {
     float expected = inputData[sourceOffsetElements + i];
     float actual = cpuOutput[i];
-    LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
-    LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
+    // LOG(kDefLog, kInfo, "cpuOutput[%zu] = %f", i, actual);
+    // LOG(kDefLog, kInfo, "expected[%zu] = %f", i, expected);
     assert(expected == actual);
   }
   LOG(kDefLog, kInfo, "testToCPUWithBufferSourceOffset passed.");
@@ -229,22 +954,24 @@ void stressTestToCPU() {
   auto startTime = high_resolution_clock::now();
   size_t opCount = 0;
   while (high_resolution_clock::now() - startTime < seconds(2)) {
-    // Allocate an output buffer (using a shared_ptr so it stays valid until the future completes)
+    // Allocate an output buffer (using a shared_ptr so it stays valid until the
+    // future completes)
     auto outputData = std::make_shared<std::vector<float>>(N, 0.0f);
     // Use the tensor overload; we’re copying the entire tensor (destOffset = 0)
-    LOG(kDefLog, kInfo, "Copying %zu bytes from GPU to CPU...", N * sizeof(float));
     // log count
-    LOG(kDefLog, kInfo, "opCount = %zu", opCount);
-    auto fut = toCPUAsync(ctx, tensor, outputData->data(), N * sizeof(float), 0);
+    auto fut =
+        toCPUAsync(ctx, tensor, outputData->data(), N * sizeof(float), 0);
     wait(ctx, fut);
     ++opCount;
   }
-  
+
   auto endTime = high_resolution_clock::now();
   auto totalMs = duration_cast<milliseconds>(endTime - startTime).count();
   double throughput = (opCount / (totalMs / 1000.0));
 
-  LOG(kDefLog, kInfo, "Stress test completed:\n"
-            "  %zu GPU to CPU operations in %lld ms\n"
-            "  Throughput: %.2f ops/sec", opCount, totalMs, throughput);
+  LOG(kDefLog, kInfo,
+      "Stress test completed:\n"
+      "  %zu GPU to CPU operations in %lld ms\n"
+      "  Throughput: %.2f ops/sec",
+      opCount, totalMs, throughput);
 }
