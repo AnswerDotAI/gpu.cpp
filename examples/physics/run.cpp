@@ -84,10 +84,7 @@ int main() {
   printf("\033[2J\033[H");
   while (true) {
     auto start = std::chrono::high_resolution_clock::now();
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    dispatchKernel(ctx, update, promise);
-    wait(ctx, future);
+    dispatchKernel(ctx, update);
     toCPU(ctx, pos, posArr.data(), sizeof(posArr));
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;

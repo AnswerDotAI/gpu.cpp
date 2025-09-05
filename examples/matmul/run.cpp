@@ -838,12 +838,9 @@ void runTest(int version, size_t M, size_t K, size_t N,
 
   // Initialize Kernel and bind GPU buffers
   // pre-allocate for async dispatch
-  std::array<std::promise<void>, nIter> promises;
-  std::array<std::future<void>, nIter> futures;
   std::array<Kernel, nIter> kernels;
   std::array<Tensor, nIter> outputs;
   for (int i = 0; i < nIter; i++) {
-    futures[i] = promises[i].get_future();
     outputs[i] = createTensor(ctx, Shape{M, N}, numtype);
     kernels[i] = selectMatmul(ctx, version, {input, weights, outputs[i]}, M, K, N, numtype);
   }
@@ -854,10 +851,7 @@ void runTest(int version, size_t M, size_t K, size_t N,
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < nIter; i++) {
-    dispatchKernel(ctx, kernels[i], promises[i]);
-  }
-  for (int i = 0; i < nIter; i++) {
-    wait(ctx, futures[i]);
+    dispatchKernel(ctx, kernels[i]);
   }
   auto end = std::chrono::high_resolution_clock::now();
 
