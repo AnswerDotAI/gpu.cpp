@@ -13,7 +13,7 @@ else
     STDLIB := -stdlib=libc++
 endif
 
-FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib
+FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I$(GPUCPP)/third_party/headers/webgpu -L$(GPUCPP)/third_party/lib
 LFLAGS=-ldl -lwebgpu_dawn
 
 .PHONY: default all_release all_debug dawnlib run_setup check-python

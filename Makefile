@@ -6,7 +6,7 @@ CXX=clang++
 GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
-INCLUDES ?= -I$(GPUCPP) -I$(GPUCPP)/third_party/headers
+INCLUDES ?= -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I$(GPUCPP)/third_party/headers/webgpu
 ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
     STDLIB :=
 else
