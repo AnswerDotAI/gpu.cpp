@@ -97,6 +97,9 @@ debug-cmake: check-clang check-cmake
 all-cmake: check-clang check-cmake
 	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
 
+test-cmake: check-clang check-cmake
+	./build/test_gpu
+
 ################################################################################
 # Cleanup
 ################################################################################

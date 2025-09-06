@@ -1,0 +1,41 @@
+name: CMake CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    types: [opened, reopened, labeled, unlabeled, synchronize]
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake
+        sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-tools
+        sudo apt-get install -y libxrandr-dev
+
+    - name: Build with CMake
+      run: CMAKE_VERBOSE_MAKEFILE=1 make all-cmake
+
+    - name: Test
+      run: make test-cmake

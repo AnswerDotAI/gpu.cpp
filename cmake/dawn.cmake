@@ -66,17 +66,18 @@ endif()
 if(NOT DAWN_BUILD_FOUND)
   message(STATUS "Dawn build not found - pre-building Dawn.")
 
-  # Force Dawn build options.
   set(DAWN_ALWAYS_ASSERT           ON CACHE INTERNAL "Always assert in Dawn" FORCE)
+  set(DAWN_BUILD_PROTOBUF          OFF CACHE INTERNAL "Build protobuf" FORCE)
   set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE INTERNAL "Build Dawn monolithically" FORCE)
   set(DAWN_BUILD_EXAMPLES          OFF CACHE INTERNAL "Build Dawn examples" FORCE)
   set(DAWN_BUILD_SAMPLES           OFF CACHE INTERNAL "Build Dawn samples" FORCE)
   set(DAWN_BUILD_TESTS             OFF CACHE INTERNAL "Build Dawn tests" FORCE)
-  set(DAWN_ENABLE_INSTALL          OFF  CACHE INTERNAL "Enable Dawn installation" FORCE)
+  set(DAWN_ENABLE_INSTALL          ON  CACHE INTERNAL "Enable Dawn installation" FORCE)
   set(DAWN_FETCH_DEPENDENCIES      ON  CACHE INTERNAL "Fetch Dawn dependencies" FORCE)
   set(TINT_BUILD_TESTS             OFF CACHE INTERNAL "Build Tint Tests" FORCE)
   set(TINT_BUILD_IR_BINARY         OFF CACHE INTERNAL "Build Tint IR binary" FORCE)
   set(TINT_BUILD_CMD_TOOLS         OFF CACHE INTERNAL "Build Tint command line tools" FORCE)
+  set(TINT_BUILD_DOCS              OFF CACHE INTERNAL "Build Tint docs" FORCE)
   set(DAWN_EMSCRIPTEN_TOOLCHAIN    ${EMSCRIPTEN_DIR} CACHE INTERNAL "Emscripten toolchain" FORCE)
 
   set(DAWN_COMMIT "66d57f910357befb441b91162f29a97f687af6d9" CACHE STRING "Dawn commit to checkout" FORCE)
@@ -100,10 +101,28 @@ if(NOT DAWN_BUILD_FOUND)
   WORKING_DIRECTORY "${DAWN_DIR}"
   )
   execute_process(
+  COMMAND git submodule init
+  WORKING_DIRECTORY "${DAWN_DIR}"
+  )
+  execute_process(
+  COMMAND git submodule update
+  WORKING_DIRECTORY "${DAWN_DIR}"
+  )
+  execute_process(
   COMMAND git reset --hard ${DAWN_COMMIT}
   WORKING_DIRECTORY "${DAWN_DIR}"
   )
-  # Fetch the Dawn repository if not already present.
+
+  if(APPLE)
+    set(ABSEIL_COPTS_FILE "${DAWN_DIR}/third_party/abseil-cpp/absl/copts/GENERATED_AbseilCopts.cmake")
+    if(EXISTS "${ABSEIL_COPTS_FILE}")
+      file(READ  "${ABSEIL_COPTS_FILE}" COPTS_CONTENT)
+      string(REGEX REPLACE "-msse4\\.1" "" COPTS_CONTENT "${COPTS_CONTENT}")
+      file(WRITE "${ABSEIL_COPTS_FILE}" "${COPTS_CONTENT}")
+    endif()
+  endif()
+
+# Fetch the Dawn repository if not already present.
   FetchContent_Declare(
     dawn
     SOURCE_DIR   ${DAWN_DIR}
