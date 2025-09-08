@@ -101,11 +101,7 @@ if(NOT DAWN_BUILD_FOUND)
   WORKING_DIRECTORY "${DAWN_DIR}"
   )
   execute_process(
-  COMMAND git submodule init
-  WORKING_DIRECTORY "${DAWN_DIR}"
-  )
-  execute_process(
-  COMMAND git submodule update
+  COMMAND git submodule update --init third_party/abseil-cpp
   WORKING_DIRECTORY "${DAWN_DIR}"
   )
   execute_process(

@@ -194,8 +194,8 @@ void testAddKernelInt8() {
   }
 
   // These store the int8 data packed into i32 format on the GPU
-  Tensor aTensorPacked = createTensor(ctx, Shape{N}, ki8, aInput.data());
-  Tensor bTensorPacked = createTensor(ctx, Shape{N}, ki8, bInput.data());
+  Tensor aTensorPacked = createTensor(ctx, Shape{N}, ki8, (const int8_t *)aInput.data());
+  Tensor bTensorPacked = createTensor(ctx, Shape{N}, ki8, (const int8_t *)bInput.data());
   // Final output tensor, also in packed format
   Tensor outputTensorPacked = createTensor(ctx, Shape{N}, ki8);
 

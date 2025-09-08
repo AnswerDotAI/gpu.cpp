@@ -17,7 +17,7 @@ endif()
 option(DEBUG "Option to enable debug flags" OFF)
 if(DEBUG)
     set(CMAKE_BUILD_TYPE Debug)
-    set(CMAKE_CXX_FLAGS "-O0 -g")
+    set(CMAKE_CXX_FLAGS "-O0 -g -fsanitize=address -fno-omit-frame-pointer")
 endif()
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dawn.cmake")
