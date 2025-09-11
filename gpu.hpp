@@ -1581,7 +1581,9 @@ inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
   // Begin the asynchronous mapping of the readback buffer.
   wgpuBufferMapAsync(cbData->buffer, WGPUMapMode_Read, 0, cbData->bufferSize,
                      mapCallbackInfo);
-  wgpuBufferRelease(cbData->buffer);
+
+  // cbData->buffer needs to be freed, but calling it here will cause a segmentation fault.
+  // wgpuBufferRelease(cbData->buffer);
 }
 
 /**
