@@ -415,11 +415,11 @@ void testNumTypeSizes() {
 
   assert(sizeBytes(kf16) == 2);
   assert(sizeBytes(kf32) == 4);
-  assert(sizeBytes(ki8) == sizeof(uint8_t));   // typically 1
-  assert(sizeBytes(ki16) == sizeof(uint16_t)); // typically 2
+  assert(sizeBytes(ki8) == sizeof(uint32_t));   // ki8 is packed into uint32_t.
+  assert(sizeBytes(ki16) == sizeof(uint32_t)); // ki16 is packed into uint32_t.
   assert(sizeBytes(ki32) == sizeof(int32_t));  // typically 4
-  assert(sizeBytes(ku8) == sizeof(uint8_t));   // typically 1
-  assert(sizeBytes(ku16) == sizeof(uint16_t)); // typically 2
+  assert(sizeBytes(ku8) == sizeof(uint32_t));  // ku8 is packed into uint32_t.
+  assert(sizeBytes(ku16) == sizeof(uint32_t)); // ku16 is packed into uint32_t.
   assert(sizeBytes(ku32) == sizeof(uint32_t)); // typically 4
 
   LOG(kDefLog, kInfo, "testNumTypeSizes passed.");

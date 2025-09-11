@@ -69,6 +69,9 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/shadertui && make build/shadertui
 	cd examples/transpose && make build/transpose
 
+test-gpu: dawnlib check-clang
+	$(LIBSPEC) && clang++ -std=c++17 -g -fsanitize=address -fno-omit-frame-pointer -Wall $(INCLUDES) test/test_gpu.cpp  numeric_types/half.cpp -L$(LIBDIR) -lwebgpu_dawn  -Wl,-rpath,$(GPUCPP)/third_party/lib -ldl -o build/test_gpu && ./build/test_gpu
+
 # Test 16-bit floating point type
 test-half: dawnlib check-clang
 	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -lwebgpu_dawn -ldl -o build/half && ./build/half

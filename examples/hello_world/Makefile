@@ -23,7 +23,7 @@ build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -DNO_LOG -o ./build/$(TARGET)
 
 debug: run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -g -Wall -o ./build/$(TARGET)
+	mkdir -p build && $(CXX) $(FLAGS) -g -fsanitize=address -fno-omit-frame-pointer -Wall -o ./build/$(TARGET)
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*

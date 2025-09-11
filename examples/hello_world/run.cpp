@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
   for (int i = 0; i < N; ++i) {
     inputArr[i] = static_cast<float>(i) / 10.0; // dummy input data
   }
+  std::cout << Shape{N} << std::endl;
   Tensor input = createTensor(ctx, Shape{N}, kf32, inputArr.data());
   Tensor output = createTensor(ctx, Shape{N}, kf32);
   Kernel op = createKernel(ctx, {kGelu, 256, kf32},
