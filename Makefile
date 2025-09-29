@@ -1,4 +1,8 @@
+ifeq ($(shell uname),Darwin)
+NUM_JOBS=$(shell sysctl -n hw.ncpu)
+else
 NUM_JOBS=$(shell nproc)
+endif
 CXX=clang++
 
 .PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-clang clean-build clean all watch-tests docs
