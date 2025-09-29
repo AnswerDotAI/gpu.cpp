@@ -39,3 +39,23 @@ jobs:
 
     - name: Test
       run: make test-cmake
+
+    - name: Upload WebGPU artifacts (macOS)
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: webgpu-macos-arm64
+        path: |
+          external/dawn/build_mac_arm64/src/dawn/native/libwebgpu_dawn.dylib
+          external/dawn/build_mac_arm64/gen/include/dawn/webgpu.h
+        retention-days: 7
+
+    - name: Upload WebGPU artifacts (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: webgpu-linux-x86_64
+        path: |
+          external/dawn/build_unix_x86_64/src/dawn/native/libwebgpu_dawn.so
+          external/dawn/build_unix_x86_64/gen/include/dawn/webgpu.h
+        retention-days: 7
