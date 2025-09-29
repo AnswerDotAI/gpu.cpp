@@ -1581,6 +1581,7 @@ inline void bufferMapCallback(WGPUMapAsyncStatus status, WGPUStringView message,
  * @param userdata2 Unused.
  */
 inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
+                                  WGPUStringView message,
                                   void *userdata1, void * /*userdata2*/) {
   const CallbackData *cbData = static_cast<CallbackData *>(userdata1);
   // Ensure the queue work finished successfully.
@@ -2824,6 +2825,7 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
  * @param userdata2 Unused.
  */
 inline void dispatchKernelCallback(WGPUQueueWorkDoneStatus status,
+                                   WGPUStringView message,
                                    void *userdata1, void * /*userdata2*/) {
   // Cast the userdata pointer back to our heap‑allocated promise.
   auto *p = reinterpret_cast<std::promise<void> *>(userdata1);
