@@ -71,20 +71,6 @@ struct Shape {
   }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const Shape& shape)
-{
-  int size = shape.rank;
-  os << "Shape: [";
-  for (int i=0;i<size-1;i++){
-    os << shape.data[i] << ",";
-  }
-  if ( size != 0 ) {
-    os << shape.data[size-1];
-  }
-  os << "]";
-  return os;
-}
-
 /**
  * @brief Returns the number of elements in a tensor with the given shape,
  * which is equal to the product of the dimensions.
