@@ -23,11 +23,8 @@ template <size_t N> std::array<float, N> makeData() {
 
 template <size_t N, size_t R = N, size_t C = 1> void showResult(Context &ctx, Kernel &op, Tensor &output) {
 
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  dispatchKernel(ctx, op, promise);
+  dispatchKernel(ctx, op);
   std::array<float, R * C> outputArr;
-  wait(ctx, future);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
   printf("%s", show<float, R, C>(outputArr, "output").c_str());
 }

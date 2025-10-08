@@ -46,12 +46,9 @@ int main(int argc, char **argv) {
   }
   Tensor input = createTensor(ctx, Shape{N}, kf16, inputArr.data());
   Tensor output = createTensor(ctx, Shape{N}, kf16);
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
   Kernel op = createKernel(ctx, {kGelu, 256, kf16}, Bindings{input, output},
                            {cdiv(N, 256), 1, 1});
-  dispatchKernel(ctx, op, promise);
-  wait(ctx, future);
+  dispatchKernel(ctx, op);
   toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
 
   for (int i = 0; i < 12; ++i) {

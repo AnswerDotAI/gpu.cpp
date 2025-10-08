@@ -210,30 +210,30 @@ enum NumType {
 /**
  * @brief Returns the number of bytes of a number type.
  */
-inline size_t sizeBytes(const NumType &type) {
+inline size_t sizeBytes(const NumType &type, int numElements = 1) {
   switch (type) {
   case kf16:
-    return sizeof(half);
+    return sizeof(half) * numElements;
   case kf32:
-    return sizeof(float);
+    return sizeof(float) * numElements;
   case kf64:
-    return sizeof(double);
+    return sizeof(double) * numElements;
   case ki8:
-    return sizeof(int8_t);
+    return sizeof(uint32_t) * ((numElements + 3) / 4);
   case ki16:
-    return sizeof(int16_t);
+    return sizeof(uint32_t) * ((numElements + 1) / 2);
   case ki32:
-    return sizeof(int32_t);
+    return sizeof(int32_t) * numElements;
   case ki64:
-    return sizeof(int64_t);
+    return sizeof(int64_t) * numElements;
   case ku8:
-    return sizeof(uint8_t);
+    return sizeof(uint32_t) * ((numElements + 3) / 4);
   case ku16:
-    return sizeof(uint16_t);
+    return sizeof(uint32_t) * ((numElements + 1) / 2);
   case ku32:
-    return sizeof(uint32_t);
+    return sizeof(uint32_t) * numElements;
   case ku64:
-    return sizeof(uint64_t);
+    return sizeof(uint64_t) * numElements;
   default:
     LOG(kDefLog, kError, "Invalid NumType in size calculation.");
     return 0;
@@ -697,7 +697,7 @@ inline Tensor createTensor(TensorPool &pool, WGPUDevice &device,
                                                    WGPUBufferUsage_CopySrc) {
   LOG(kDefLog, kTrace, "Creating tensor");
   size_t numElements = size(shape);
-  size_t size = sizeBytes(dtype) * numElements;
+  size_t size = sizeBytes(dtype, numElements);
   WGPUBufferDescriptor bufferDesc = {
       .label = {.data = nullptr, .length = 0},
       .usage = usage,
@@ -828,7 +828,10 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
     // unpacking
     packed[idx] |= (static_cast<uint8_t>(data[i]) << shift);
   }
-  return createTensor(ctx, shape, ki32, packed.data());
+  Tensor tensor = createTensor(ctx, shape, ki8);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
+                       tensor.data.size);
+  return tensor;
 }
 
 // Overload for int16_t: pack two 16‑bit ints into one 32‑bit integer
@@ -843,7 +846,10 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
     size_t shift = (i % 2) * 16;
     packed[idx] |= (static_cast<uint16_t>(data[i]) << shift);
   }
-  return createTensor(ctx, shape, ki32, packed.data());
+  Tensor tensor = createTensor(ctx, shape, ki16);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
+                       tensor.data.size);
+  return tensor;
 }
 
 // Overload for int64_t: pack each 64‑bit int into two 32‑bit integers
@@ -857,7 +863,10 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
     packed[2 * i] = static_cast<int32_t>(val & 0xFFFFFFFF);
     packed[2 * i + 1] = static_cast<int32_t>((val >> 32) & 0xFFFFFFFF);
   }
-  return createTensor(ctx, shape, ki32, packed.data());
+  Tensor tensor = createTensor(ctx, shape, ki64);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
+                       tensor.data.size);
+  return tensor;
 }
 
 inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
@@ -885,7 +894,10 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
     size_t shift = (i % 4) * 8;
     packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
   }
-  return createTensor(ctx, shape, ku32, packed.data());
+  Tensor tensor = createTensor(ctx, shape, ku8);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
+                       tensor.data.size);
+  return tensor;
 }
 
 // Overload for uint16_t: pack two 16‑bit integers into one 32‑bit unsigned
@@ -901,7 +913,10 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
     size_t shift = (i % 2) * 16;
     packed[idx] |= (static_cast<uint32_t>(data[i]) << shift);
   }
-  return createTensor(ctx, shape, ku32, packed.data());
+  Tensor tensor = createTensor(ctx, shape, ku16);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
+                       tensor.data.size);
+  return tensor;
 }
 
 // Overload for uint64_t: pack each 64‑bit integer into two 32‑bit unsigned
@@ -916,7 +931,10 @@ inline Tensor createTensor(Context &ctx, const Shape &shape, NumType dtype,
     packed[2 * i] = static_cast<uint32_t>(val & 0xFFFFFFFF);
     packed[2 * i + 1] = static_cast<uint32_t>(val >> 32);
   }
-  return createTensor(ctx, shape, ku32, packed.data());
+  Tensor tensor = createTensor(ctx, shape, ku64);
+  wgpuQueueWriteBuffer(ctx.queue, tensor.data.buffer, 0, packed.data(),
+                       tensor.data.size);
+  return tensor;
 }
 
 /**
@@ -1563,6 +1581,7 @@ inline void bufferMapCallback(WGPUMapAsyncStatus status, WGPUStringView message,
  * @param userdata2 Unused.
  */
 inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
+                                  WGPUStringView message,
                                   void *userdata1, void * /*userdata2*/) {
   const CallbackData *cbData = static_cast<CallbackData *>(userdata1);
   // Ensure the queue work finished successfully.
@@ -1581,7 +1600,9 @@ inline void queueWorkDoneCallback(WGPUQueueWorkDoneStatus status,
   // Begin the asynchronous mapping of the readback buffer.
   wgpuBufferMapAsync(cbData->buffer, WGPUMapMode_Read, 0, cbData->bufferSize,
                      mapCallbackInfo);
-  wgpuBufferRelease(cbData->buffer);
+
+  // cbData->buffer needs to be freed, but calling it here will cause a segmentation fault.
+  // wgpuBufferRelease(cbData->buffer);
 }
 
 /**
@@ -1985,7 +2006,7 @@ inline void toCPU(Context &ctx, WGPUBuffer buffer, NumType dtype, void *output,
   case kf32:
   case ku32:
   case ki32: {
-    size_t byteSize = numElements * sizeBytes(dtype);
+    size_t byteSize = sizeBytes(dtype, numElements);
     toCPU(ctx, buffer, output, byteSize, sourceOffset);
     break;
   }
@@ -2804,6 +2825,7 @@ Kernel createKernel(Context &ctx, const KernelCode &code,
  * @param userdata2 Unused.
  */
 inline void dispatchKernelCallback(WGPUQueueWorkDoneStatus status,
+                                   WGPUStringView message,
                                    void *userdata1, void * /*userdata2*/) {
   // Cast the userdata pointer back to our heap‑allocated promise.
   auto *p = reinterpret_cast<std::promise<void> *>(userdata1);

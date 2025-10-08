@@ -10,10 +10,13 @@ ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/nu
 else
     STDLIB := -stdlib=libc++
 endif
-FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -lwebgpu_dawn
+FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I$(GPUCPP)/third_party/headers/webgpu -L$(GPUCPP)/third_party/lib run.cpp -ldl -lwebgpu_dawn -Wl,-rpath,$(GPUCPP)/third_party/lib
 
 run: ./build/$(TARGET)
 	$(LIBSPEC) && ./build/$(TARGET)
+
+debug: run.cpp
+	mkdir -p build && $(CXX) $(FLAGS) -g -fsanitize=address -fno-omit-frame-pointer -Wall -o ./build/$(TARGET)
 
 run_with_metal_profiler: ./build/$(TARGET)_with_metal_profiler
 	$(LIBSPEC) && export METAL_CAPTURE_ENABLED=1 && ./build/$(TARGET)_with_metal_profiler

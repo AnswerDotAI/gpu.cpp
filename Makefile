@@ -1,4 +1,8 @@
+ifeq ($(shell uname),Darwin)
+NUM_JOBS=$(shell sysctl -n hw.ncpu)
+else
 NUM_JOBS=$(shell nproc)
+endif
 CXX=clang++
 
 .PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-clang clean-build clean all watch-tests docs
@@ -6,7 +10,7 @@ CXX=clang++
 GPUCPP ?= $(PWD)
 LIBDIR ?= $(GPUCPP)/third_party/lib
 LIBSPEC ?= . $(GPUCPP)/source
-INCLUDES ?= -I$(GPUCPP) -I$(GPUCPP)/third_party/headers
+INCLUDES ?= -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I$(GPUCPP)/third_party/headers/webgpu
 ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/null 2>&1 ; echo $$?),0)
     STDLIB :=
 else
@@ -69,6 +73,9 @@ all: dawnlib check-clang check-linux-vulkan lib pch
 	cd examples/shadertui && make build/shadertui
 	cd examples/transpose && make build/transpose
 
+test-gpu: dawnlib check-clang
+	$(LIBSPEC) && clang++ -std=c++17 -g -fsanitize=address -fno-omit-frame-pointer -Wall $(INCLUDES) test/test_gpu.cpp  numeric_types/half.cpp -L$(LIBDIR) -lwebgpu_dawn  -Wl,-rpath,$(GPUCPP)/third_party/lib -ldl -o build/test_gpu && ./build/test_gpu
+
 # Test 16-bit floating point type
 test-half: dawnlib check-clang
 	$(LIBSPEC) && clang++ -std=c++17 $(INCLUDES) numeric_types/half.cpp -L$(LIBDIR) -lwebgpu_dawn -ldl -o build/half && ./build/half
@@ -96,6 +103,9 @@ debug-cmake: check-clang check-cmake
 
 all-cmake: check-clang check-cmake
 	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
+
+test-cmake: check-clang check-cmake
+	./build/test_gpu
 
 ################################################################################
 # Cleanup

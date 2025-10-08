@@ -162,20 +162,11 @@ void runTest(int version, size_t M, size_t N,
   LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...",
       version, nIter);
 
-  // pre-allocate promises and futures for async dispatch
-  // TODO(avh): implement a pooling mechanism for promises/futures in gpu.h
-  std::array<std::promise<void>, nIter> promises;
-  std::array<std::future<void>, nIter> futures;
-  for (int i = 0; i < nIter; i++) {
-    futures[i] = promises[i].get_future();
-  }
-
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < nIter; i++) {
     if (!isCPU) {
-      dispatchKernel(ctx, kernel, promises[i]);
-      wait(ctx, futures[i]);
+      dispatchKernel(ctx, kernel);
       resetCommandBuffer(ctx.device, kernel);
     } else {
       transpose(inputPtr.get(), outputPtr.get(), M, N);

@@ -194,8 +194,8 @@ void testAddKernelInt8() {
   }
 
   // These store the int8 data packed into i32 format on the GPU
-  Tensor aTensorPacked = createTensor(ctx, Shape{N}, ki8, aInput.data());
-  Tensor bTensorPacked = createTensor(ctx, Shape{N}, ki8, bInput.data());
+  Tensor aTensorPacked = createTensor(ctx, Shape{N}, ki8, (const int8_t *)aInput.data());
+  Tensor bTensorPacked = createTensor(ctx, Shape{N}, ki8, (const int8_t *)bInput.data());
   // Final output tensor, also in packed format
   Tensor outputTensorPacked = createTensor(ctx, Shape{N}, ki8);
 
@@ -415,11 +415,11 @@ void testNumTypeSizes() {
 
   assert(sizeBytes(kf16) == 2);
   assert(sizeBytes(kf32) == 4);
-  assert(sizeBytes(ki8) == sizeof(uint8_t));   // typically 1
-  assert(sizeBytes(ki16) == sizeof(uint16_t)); // typically 2
+  assert(sizeBytes(ki8) == sizeof(uint32_t));   // ki8 is packed into uint32_t.
+  assert(sizeBytes(ki16) == sizeof(uint32_t)); // ki16 is packed into uint32_t.
   assert(sizeBytes(ki32) == sizeof(int32_t));  // typically 4
-  assert(sizeBytes(ku8) == sizeof(uint8_t));   // typically 1
-  assert(sizeBytes(ku16) == sizeof(uint16_t)); // typically 2
+  assert(sizeBytes(ku8) == sizeof(uint32_t));  // ku8 is packed into uint32_t.
+  assert(sizeBytes(ku16) == sizeof(uint32_t)); // ku16 is packed into uint32_t.
   assert(sizeBytes(ku32) == sizeof(uint32_t)); // typically 4
 
   LOG(kDefLog, kInfo, "testNumTypeSizes passed.");

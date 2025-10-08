@@ -9,7 +9,7 @@ ifeq ($(shell $(CXX) -std=c++17 -x c++ -E -include array - < /dev/null > /dev/nu
 else
     STDLIB := -stdlib=libc++
 endif
-FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib run.cpp -ldl -lwebgpu_dawn
+FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I$(GPUCPP)/third_party/headers/webgpu -L$(GPUCPP)/third_party/lib run.cpp -ldl -lwebgpu_dawn -Wl,-rpath,$(GPUCPP)/third_party/lib
 
 run: ./build/$(TARGET) dawnlib
 	$(LIBSPEC) && ./build/$(TARGET)
@@ -23,7 +23,7 @@ build/$(TARGET): run.cpp
 	mkdir -p build && $(CXX) $(FLAGS) -DNO_LOG -o ./build/$(TARGET)
 
 debug: run.cpp
-	mkdir -p build && $(CXX) $(FLAGS) -g -o ./build/$(TARGET)
+	mkdir -p build && $(CXX) $(FLAGS) -g -fsanitize=address -fno-omit-frame-pointer -Wall -o ./build/$(TARGET)
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*

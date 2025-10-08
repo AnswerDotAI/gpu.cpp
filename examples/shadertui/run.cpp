@@ -126,10 +126,7 @@ int main() {
     params.time = getCurrentTimeInMilliseconds(start);
     toGPU(ctx, params, renderKernel);
     auto frameStart = std::chrono::high_resolution_clock::now();
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    dispatchKernel(ctx, renderKernel, promise);
-    wait(ctx, future);
+    dispatchKernel(ctx, renderKernel);
     resetCommandBuffer(ctx.device, renderKernel);
     toCPU(ctx, screen, screenArr);
     rasterize<kRows, kCols>(screenArr, raster);

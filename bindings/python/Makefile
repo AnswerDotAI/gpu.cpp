@@ -10,7 +10,7 @@ else
     STDLIB := -stdlib=libc++
 endif
 
-FLAGS=-shared -fPIC -std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib -lwebgpu_dawn \
+FLAGS=-shared -fPIC -std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -I$(GPUCPP)/third_party/headers/webgpu -L$(GPUCPP)/third_party/lib -lwebgpu_dawn \
   `python3 -m pybind11 --includes` \
   `python3-config --includes --ldflags`
 

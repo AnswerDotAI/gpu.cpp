@@ -1,0 +1,61 @@
+name: CMake CI
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    types: [opened, reopened, labeled, unlabeled, synchronize]
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake
+        sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-tools
+        sudo apt-get install -y libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl-dev libx11-xcb-dev
+
+    - name: Build with CMake
+      run: CMAKE_VERBOSE_MAKEFILE=1 make all-cmake
+
+    - name: Test
+      run: make test-cmake
+
+    - name: Upload WebGPU artifacts (macOS)
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: webgpu-macos-arm64
+        path: |
+          external/dawn/build_mac_arm64/src/dawn/native/libwebgpu_dawn.dylib
+          external/dawn/build_mac_arm64/gen/include/dawn/webgpu.h
+        retention-days: 7
+
+    - name: Upload WebGPU artifacts (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      uses: actions/upload-artifact@v4
+      with:
+        name: webgpu-linux-x86_64
+        path: |
+          external/dawn/build_unix_x86_64/src/dawn/native/libwebgpu_dawn.so
+          external/dawn/build_unix_x86_64/gen/include/dawn/webgpu.h
+        retention-days: 7
