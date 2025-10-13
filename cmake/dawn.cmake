@@ -168,7 +168,7 @@ if(NOT DAWN_BUILD_FOUND)
 
   # Ensure source present on required commit (idempotent remote setup)
   if(NOT DEFINED DAWN_COMMIT OR DAWN_COMMIT STREQUAL "")
-    set(DAWN_COMMIT "e1d6e12337080cf9f6d8726209e86df449bc6e9a" CACHE STRING "Dawn commit to checkout" FORCE)
+    set(DAWN_COMMIT "3f79f3aefe0b0a498002564fcfb13eb21ab6c047" CACHE STRING "Dawn commit to checkout" FORCE)
   endif()
   file(MAKE_DIRECTORY ${DAWN_DIR})
   execute_process(COMMAND git init WORKING_DIRECTORY "${DAWN_DIR}")
