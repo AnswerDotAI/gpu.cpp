@@ -41,7 +41,11 @@ Optionally, Dawn can be built from scratch with gpu.cpp using the cmake build sc
 After cloning the repo, from the top-level gpu.cpp, you should be able to build and run the hello world GELU example by typing:
 
 ```
-make
+make libgpu-cmake
+cd examples
+make clean
+make hello_world
+make run_hello_world
 ```
 
 The first time you build and run the project this way, it will download a prebuilt shared library for the Dawn native WebGPU implementation automatically (using the setup.py script). This places the Dawn shared library in the `third_party/lib` directory. Afterwards you should see `libdawn.dylib` on MacOS or `libdawn.so` on Linux. This download only occurs once.
