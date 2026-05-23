@@ -14,7 +14,7 @@ else
 endif
 
 FLAGS=-std=c++17 $(STDLIB) -I$(GPUCPP) -I$(GPUCPP)/third_party/headers -L$(GPUCPP)/third_party/lib
-LFLAGS=-ldl -lwebgpu_dawn
+LFLAGS=-Wl,-rpath,$(GPUCPP)/third_party/lib -ldl -lwebgpu_dawn
 
 .PHONY: default all_release all_debug dawnlib run_setup check-python
 .PHONY: $(addsuffix _release, $(TARGETS))
@@ -57,7 +57,7 @@ $(foreach target,$(TARGETS),$(eval $(call CLEAN_RULES,$(target))))
 
 clean: $(addprefix clean_, $(TARGETS))
 
-dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libdawn.so $(GPUCPP)/third_party/lib/libdawn.dylib),,run_setup)
+dawnlib: $(if $(wildcard $(GPUCPP)/third_party/lib/libwebgpu_dawn.so $(GPUCPP)/third_party/lib/libwebgpu_dawn.dylib),,run_setup)
 
 run_setup: check-python
 	cd $(GPUCPP) && (command -v python3 >/dev/null 2>&1 && python3 setup.py || python setup.py)

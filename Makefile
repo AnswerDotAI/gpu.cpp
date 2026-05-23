@@ -1,4 +1,11 @@
-NUM_JOBS=$(shell nproc)
+OS := $(shell uname | tr -d '\n')
+
+ifeq ($(OS),Darwin)
+NUM_JOBS := $(shell sysctl -n hw.ncpu)
+else
+NUM_JOBS := $(shell nproc)
+endif
+
 CXX=clang++
 
 .PHONY: default examples/hello_world/build/hello_world tests libgpu debug build check-clang clean-build clean all watch-tests docs
@@ -20,7 +27,7 @@ pch:
 
 # TODO(avh): change extension based on platform
 # Get the current OS name
-OS = $(shell uname | tr -d '\n')
+
 # Set the specific variables for each platform
 LIB_PATH ?= /usr/lib
 HEADER_PATH ?= /usr/include
@@ -89,7 +96,13 @@ RELEASE_FLAGS = $(FLAGS) -DFASTBUILD:BOOL=OFF
 TARGET_LIB=gpu
 
 libgpu-cmake: check-clang check-cmake
-	$(CMAKE_CMD) $(RELEASE_FLAGS) && make -j$(NUM_JOBS) gpu
+	$(CMAKE_CMD) $(RELEASE_FLAGS) && cmake --build . --parallel $(NUM_JOBS) --target gpud
+	mkdir -p third_party/lib
+ifeq ($(OS),Darwin)
+	find third_party/fetchcontent -name "*.dylib" -exec cp {} third_party/lib/ \;
+else ifeq ($(OS),Linux)
+	find third_party/fetchcontent -name "*.so*" -exec cp {} third_party/lib/ \;
+endif
 
 debug-cmake: check-clang check-cmake
 	$(CMAKE_CMD) $(DEBUG_FLAGS) && make -j$(NUM_JOBS) $(TARGET_ALL)
@@ -102,7 +115,7 @@ all-cmake: check-clang check-cmake
 ################################################################################
 
 clean-dawnlib:
-	rm -f third_party/lib/libwebgpu_dawn.so third_party/lib/libwebgpu_dawn.dylib
+	rm -f third_party/lib/*.so third_party/lib/*.so.* third_party/lib/*.dylib
 
 clean:
 	read -r -p "This will delete the contents of build/*. Are you sure? [CTRL-C to abort] " response && rm -rf build/*
