@@ -1,4 +1,4 @@
-import struct
+import asyncio, struct
 
 import numpy as np
 
@@ -30,16 +30,18 @@ bindings = [gpu.read(gpu_values), gpu.read_write(gpu_output)]
 kernel = gpu.create_kernel(context, shader, bindings, workgroups=[3, 1, 1], parameters=struct.pack('<f', 3))
 
 dispatched = gpu.dispatch_kernel(context, kernel)
-gpu.wait(context, dispatched)
-np.testing.assert_array_equal(gpu.to_numpy(context, gpu_output), values * 3)
+gpu.wait(dispatched)
+np.testing.assert_array_equal(gpu.wait(gpu.to_numpy(context, gpu_output)), values * 3)
 assert gpu_output.shape == [12]
 assert gpu_output.dtype == gpu.f32
 
 # The tensor and compiled kernel remain reusable with new input data.
 updated = np.arange(12, dtype=np.float32)[::-1].copy()
 gpu.to_gpu(context, gpu_values, updated)
-dispatched = gpu.dispatch_kernel(context, kernel)
-gpu.wait(context, dispatched)
-np.testing.assert_array_equal(gpu.to_numpy(context, gpu_output), updated * 3)
 
-print('Python upload, reusable dispatch, and NumPy readback story passed')
+async def reuse_kernel():
+    await gpu.dispatch_kernel(context, kernel)
+    np.testing.assert_array_equal(await gpu.to_numpy(context, gpu_output), updated * 3)
+
+asyncio.run(reuse_kernel())
+print('Python blocking and async dispatch/readback story passed')

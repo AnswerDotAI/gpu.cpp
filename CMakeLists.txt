@@ -81,7 +81,7 @@ target_link_libraries(gpucpp INTERFACE Dawn::webgpu)
 endif()
 
 if(GPUCPP_BUILD_PYTHON)
-  find_package(Python 3.9 COMPONENTS Interpreter Development.Module REQUIRED)
+  find_package(Python 3.10 COMPONENTS Interpreter Development.Module REQUIRED)
   include(FetchContent)
   FetchContent_Declare(pybind11
     GIT_REPOSITORY https://github.com/pybind/pybind11.git
@@ -89,8 +89,26 @@ if(GPUCPP_BUILD_PYTHON)
     GIT_SHALLOW TRUE)
   FetchContent_MakeAvailable(pybind11)
 
-  pybind11_add_module(gpu_cpp bindings/python/gpu_cpp.cpp)
-  target_link_libraries(gpu_cpp PRIVATE gpucpp)
+  set(GPUCPP_PYTHON_PACKAGE_DIR
+      "${CMAKE_CURRENT_BINARY_DIR}/python/gpu_cpp")
+  file(MAKE_DIRECTORY "${GPUCPP_PYTHON_PACKAGE_DIR}")
+  configure_file(python/gpu_cpp/__init__.py
+                 "${GPUCPP_PYTHON_PACKAGE_DIR}/__init__.py" COPYONLY)
+  configure_file(python/gpu_cpp/_async.py
+                 "${GPUCPP_PYTHON_PACKAGE_DIR}/_async.py" COPYONLY)
+
+  pybind11_add_module(_gpu_cpp bindings/python/gpu_cpp.cpp)
+  target_link_libraries(_gpu_cpp PRIVATE gpucpp)
+  set_target_properties(_gpu_cpp PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${GPUCPP_PYTHON_PACKAGE_DIR}")
+  if(APPLE)
+    set_target_properties(_gpu_cpp PROPERTIES INSTALL_RPATH "@loader_path")
+  elseif(UNIX)
+    set_target_properties(_gpu_cpp PROPERTIES INSTALL_RPATH "$ORIGIN")
+  endif()
+
+  install(TARGETS _gpu_cpp LIBRARY DESTINATION gpu_cpp)
+  install(FILES "${DAWN_LIBRARY}" DESTINATION gpu_cpp)
 endif()
 
 if(GPUCPP_BUILD_EXAMPLES)
@@ -114,7 +132,7 @@ if(GPUCPP_BUILD_EXAMPLES)
 
 endif()
 
-enable_testing()
+include(CTest)
 if(EMSCRIPTEN)
   add_library(gpu_cpp_web_bindings OBJECT bindings/web/gpu_cpp.cpp)
   target_link_libraries(gpu_cpp_web_bindings PRIVATE gpucpp)
@@ -126,14 +144,16 @@ if(EMSCRIPTEN)
     "-sMODULARIZE=1" "-sEXPORT_ES6=1" "-sEXPORT_NAME=createGpuCpp"
     "-sENVIRONMENT=web" "-sALLOW_MEMORY_GROWTH=1")
 
-  add_executable(web_binding_test tests/web_binding_test.cpp
-                 $<TARGET_OBJECTS:gpu_cpp_web_bindings>)
-  set_target_properties(web_binding_test PROPERTIES SUFFIX ".html")
-  target_link_libraries(web_binding_test PRIVATE gpucpp)
-  target_link_options(web_binding_test PRIVATE "--bind" "--emrun"
-                                              "-sMODULARIZE=1" "-sEXPORT_ES6=1"
-                                              "-sALLOW_MEMORY_GROWTH=1")
-else()
+  if(BUILD_TESTING)
+    add_executable(web_binding_test tests/web_binding_test.cpp
+                   $<TARGET_OBJECTS:gpu_cpp_web_bindings>)
+    set_target_properties(web_binding_test PROPERTIES SUFFIX ".html")
+    target_link_libraries(web_binding_test PRIVATE gpucpp)
+    target_link_options(web_binding_test PRIVATE "--bind" "--emrun"
+                                                "-sMODULARIZE=1" "-sEXPORT_ES6=1"
+                                                "-sALLOW_MEMORY_GROWTH=1")
+  endif()
+elseif(BUILD_TESTING)
   set(TEST_SPIRV "${CMAKE_CURRENT_BINARY_DIR}/write42.spv")
   add_custom_command(
     OUTPUT "${TEST_SPIRV}"
@@ -146,9 +166,9 @@ else()
   target_link_libraries(gpu_test PRIVATE gpucpp)
   add_test(NAME gpu COMMAND gpu_test "${TEST_SPIRV}")
 endif()
-if(GPUCPP_BUILD_PYTHON)
+if(BUILD_TESTING AND GPUCPP_BUILD_PYTHON)
   add_test(NAME python
     COMMAND "${Python_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/bindings/python/test_gpu_cpp.py")
   set_tests_properties(python PROPERTIES
-    ENVIRONMENT "PYTHONPATH=$<TARGET_FILE_DIR:gpu_cpp>")
+    ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/python")
 endif()
