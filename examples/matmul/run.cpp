@@ -4,18 +4,13 @@
 #include <random>
 #include <cstdlib>
 
-#include "gpu.hpp" // createContext, createTensor, createKernel, dispatchKernel,
-                   // wait, resetCommandBuffer, toCPU
+#include "gpu.hpp"
 
 #include "llmc/reference_impls.h"   // for CPU reference implementation
 #include "utils/array_utils.hpp"    // show, isclose, randn, randint
 #include "utils/logging.hpp"        // LOG
-#include "experimental/wgsl.h"      // loopUnrolling
+#include "utils/wgsl.hpp"
 #include "numeric_types/half.hpp"
-
-#ifdef METAL_PROFILER
-#include "experimental/profiler/metal.hpp"
-#endif
 
 using namespace gpu;
 
@@ -33,10 +28,10 @@ void matmulf16_forward_cpu(half* out,
       half* out_bt = out + b * T * OC + t * OC;
       const half* inp_bt = inp + b * T * C + t * C;
       for (int o = 0; o < OC; o++) {
-	float val = (bias != NULL) ? halfToFloat(bias[o]) : 0.0f;
+	float val = (bias != NULL) ? static_cast<float>(bias[o]) : 0.0f;
 	const half* wrow = weight + o*C;
 	for (int i = 0; i < C; i++) {
-	  val += halfToFloat(inp_bt[i]) * halfToFloat(wrow[i]);
+	  val += static_cast<float>(inp_bt[i]) * static_cast<float>(wrow[i]);
 	}
 	out_bt[o] = val;
       }
@@ -45,8 +40,8 @@ void matmulf16_forward_cpu(half* out,
 }
 
 static const char *kShaderMatmul1 = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> A: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read> B: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
@@ -65,7 +60,7 @@ fn main(
 }
 )";
 
-inline KernelCode createMatmul1(const char *shaderTemplate, const size_t M,
+inline WGSL createMatmul1(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N,
                                 const Shape &workgroupSize = {256, 1, 1},
                                 NumType precision = kf32) {
@@ -80,8 +75,8 @@ inline KernelCode createMatmul1(const char *shaderTemplate, const size_t M,
 
 // Shared memory cache-blocking
 static const char *kShaderMatmul2 = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> A: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read> B: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
 var<workgroup> As: array<{{precision}}, {{tileSize}} * {{tileSize}}>;
 var<workgroup> Bs: array<{{precision}}, {{tileSize}} * {{tileSize}}>;
@@ -123,7 +118,7 @@ fn main(
 }
 )";
 
-inline KernelCode createMatmul2(const char *shaderTemplate, const size_t M,
+inline WGSL createMatmul2(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N,
                                 const Shape &workgroupSize = {256, 1, 1},
                                 NumType precision = kf32) {
@@ -161,8 +156,8 @@ inline KernelCode createMatmul2(const char *shaderTemplate, const size_t M,
  *
  */
 static const char *kShaderMatmul3 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> b: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> a: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read> b: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> c: array<{{precision}}>;
 var<workgroup> tileA: array<{{precision}}, {{BM}} * {{BK}}>;
 var<workgroup> tileB: array<{{precision}}, {{BN}} * {{BK}}>;
@@ -225,7 +220,7 @@ fn main(
 }
 )";
 
-inline KernelCode createMatmul3(const char *shaderTemplate, const size_t M,
+inline WGSL createMatmul3(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N, const size_t BM,
                                 const size_t BK, const size_t BN,
                                 const size_t TM,
@@ -250,7 +245,7 @@ inline KernelCode createMatmul3(const char *shaderTemplate, const size_t M,
                           {"{{BN}}", toString(BN)},
                           {"{{TM}}", toString(TM)}});
   if (unrolling) {
-    std::string unrolledCode = loopUnrolling(codeString);
+    std::string unrolledCode = unrollLoops(codeString);
     // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return {unrolledCode, workgroupSize, precision};
   } else {
@@ -262,8 +257,8 @@ inline KernelCode createMatmul3(const char *shaderTemplate, const size_t M,
  *
  */
 static const char *kShaderMatmul4 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> b: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> a: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read> b: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> c: array<{{precision}}>;
 var<workgroup> tileA: array<{{precision}}, {{BM}} * {{BK}}>;
 var<workgroup> tileB: array<{{precision}}, {{BN}} * {{BK}}>;
@@ -337,7 +332,7 @@ fn main(
 }
 )";
 
-inline KernelCode createMatmul4(const char *shaderTemplate, const size_t M,
+inline WGSL createMatmul4(const char *shaderTemplate, const size_t M,
                                 const size_t K, const size_t N, const size_t BM,
                                 const size_t BK, const size_t BN,
                                 const size_t TM, const size_t TN,
@@ -366,7 +361,7 @@ inline KernelCode createMatmul4(const char *shaderTemplate, const size_t M,
                           {"{{NUM_TILEB}}", toString(BN * BK / num_threads)}
                           });
   if (unrolling) {
-    std::string unrolledCode = loopUnrolling(codeString);
+    std::string unrolledCode = unrollLoops(codeString);
     // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return {unrolledCode, workgroupSize, precision};
   } else {
@@ -378,8 +373,8 @@ inline KernelCode createMatmul4(const char *shaderTemplate, const size_t M,
  *
  */
 static const char *kShaderMatmulWithVectorization = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> b: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> a: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read> b: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> c: array<vec4<{{precision}}>>;
 var<workgroup> tileA: array<{{precision}}, {{BM}} * {{BK}}>;
 var<workgroup> tileB: array<{{precision}}, {{BN}} * {{BK}}>;
@@ -456,7 +451,7 @@ fn main(
 }
 )";
 
-inline KernelCode createMatmulWithVectorization(const char *shaderTemplate, const size_t M,
+inline WGSL createMatmulWithVectorization(const char *shaderTemplate, const size_t M,
                                                 const size_t K, const size_t N, const size_t BM,
                                                 const size_t BK, const size_t BN,
                                                 const size_t TM, const size_t TN,
@@ -488,7 +483,7 @@ inline KernelCode createMatmulWithVectorization(const char *shaderTemplate, cons
                           {"{{BN4}}", toString(BN / 4)},
                           });
   if (unrolling) {
-    std::string unrolledCode = loopUnrolling(codeString);
+    std::string unrolledCode = unrollLoops(codeString);
     // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
     return {unrolledCode, workgroupSize, precision};
   } else {
@@ -500,8 +495,8 @@ inline KernelCode createMatmulWithVectorization(const char *shaderTemplate, cons
  *
  */
 static const char *kShaderMatmulWithTranspose = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> b: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> a: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read> b: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> c: array<vec4<{{precision}}>>;
 var<workgroup> tileA: array<{{precision}}, {{BM}} * {{BK}}>;
 var<workgroup> tileB: array<{{precision}}, {{BK}} * {{BN}}>;
@@ -578,7 +573,7 @@ fn main(
 }
 )";
 
-inline KernelCode createMatmulWithTranspose(const char *shaderTemplate, const size_t M,
+inline WGSL createMatmulWithTranspose(const char *shaderTemplate, const size_t M,
                                                 const size_t K, const size_t N, const size_t BM,
                                                 const size_t BK, const size_t BN,
                                                 const size_t TM, const size_t TN,
@@ -608,7 +603,7 @@ inline KernelCode createMatmulWithTranspose(const char *shaderTemplate, const si
                           {"{{N4}}", toString(N / 4)},
                           {"{{BN4}}", toString(BN / 4)},
                           });
-  std::string unrolledCode = loopUnrolling(codeString);
+  std::string unrolledCode = unrollLoops(codeString);
   // LOG(kDefLog, kInfo, "Unrolled code:\n%s", unrolledCode.c_str());
   return {unrolledCode, workgroupSize, precision};
 }
@@ -617,8 +612,8 @@ inline KernelCode createMatmulWithTranspose(const char *shaderTemplate, const si
  * @brief No-Op shader with matmul bindings for performance testing
  */
 static const char *kShaderNoOp = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
-@group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> A: array<{{precision}}>;
+@group(0) @binding(1) var<storage, read> B: array<{{precision}}>;
 @group(0) @binding(2) var<storage, read_write> C: array<{{precision}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
@@ -626,7 +621,7 @@ fn main(
 }
 )";
 
-inline KernelCode createNoOp(const char *shaderTemplate,
+inline WGSL createNoOp(const char *shaderTemplate,
                              const Shape &workgroupSize = {256, 1, 1},
                              NumType precision = kf32) {
   std::string codeString(shaderTemplate);
@@ -685,24 +680,24 @@ Kernel selectMatmul(Context &ctx, int version,
   Kernel kernel;
   if (version == 1) {
     Shape wgSize = {256, 1, 1};
-    Shape nWorkgroups = cdiv({M, N, 1}, {16, 16, 1});
-    KernelCode matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
+    Shape nWorkgroups = ceilDiv({M, N, 1}, {16, 16, 1});
+    WGSL matmul = createNoOp(kShaderNoOp, /*wgsize*/ wgSize);
     kernel = createKernel(ctx, matmul, bindings,
                           /*nWorkgroups*/ nWorkgroups);
   } else if (version == 2) {
     Shape wgSize = {16, 16, 1};
     LOG(kDefLog, kInfo, "wgSize: %s", toString(wgSize).c_str());
-    KernelCode matmul =
+    WGSL matmul =
       createMatmul1(kShaderMatmul1, M, K, N, /*wgsize*/ wgSize, numtype);
     kernel = createKernel(ctx, matmul, bindings,
-                          /*nWorkgroups*/ cdiv({M, N, 1}, wgSize));
+                          /*nWorkgroups*/ ceilDiv({M, N, 1}, wgSize));
   } else if (version == 3) {
     static constexpr size_t tileSize = 16;
-    KernelCode matmul = createMatmul2(kShaderMatmul2, M, K, N,
+    WGSL matmul = createMatmul2(kShaderMatmul2, M, K, N,
                                       /*wgSize*/ {tileSize * tileSize, 1, 1}, numtype);
     kernel =
         createKernel(ctx, matmul, bindings,
-                     /* nWorkgroups*/ cdiv({M, N, 1}, {tileSize, tileSize, 1}));
+                     /* nWorkgroups*/ ceilDiv({M, N, 1}, {tileSize, tileSize, 1}));
   } else if (version == 4 || version == 6) {
     static constexpr size_t BM = 64;
     static constexpr size_t BK = 4;
@@ -711,12 +706,12 @@ Kernel selectMatmul(Context &ctx, int version,
         BN / BK; //  BM * BN / TM == BM * BK, therefore TM == BN / BK
     Shape wgSize = {BM * BN / TM, 1,
                     1}; // BM * BN values per workgroup, TM values per thread
-    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
+    Shape nWorkgroups = {ceilDiv(M, BM), ceilDiv(N, BN), 1};
     LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
     LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d", BM, BK, BN, TM);
     LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
     LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    KernelCode matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
+    WGSL matmul = createMatmul3(kShaderMatmul3, M, K, N, BM, BK, BN, TM,
                                       /*wgSize*/ wgSize,
 				      numtype,
 				      /*Loop unrolling*/ version == 6 ? true: false);
@@ -729,12 +724,12 @@ Kernel selectMatmul(Context &ctx, int version,
     static constexpr size_t TM = BM / BK;
     static constexpr size_t TN = BN / BK;
     Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
-    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
+    Shape nWorkgroups = {ceilDiv(M, BM), ceilDiv(N, BN), 1};
     LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
     LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d, TN: %d", BM, BK, BN, TM, TN);
     LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
     LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    KernelCode matmul = createMatmul4(kShaderMatmul4, M, K, N, BM, BK, BN, TM, TN,
+    WGSL matmul = createMatmul4(kShaderMatmul4, M, K, N, BM, BK, BN, TM, TN,
                                       /*wgSize*/ wgSize,
 				      numtype,
 				      /*Loop unrolling*/ version == 7 ? true: false);
@@ -747,12 +742,12 @@ Kernel selectMatmul(Context &ctx, int version,
     static constexpr size_t TM = BM / BK;
     static constexpr size_t TN = BN / BK;
     Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
-    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
+    Shape nWorkgroups = {ceilDiv(M, BM), ceilDiv(N, BN), 1};
     LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
     LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d, TN: %d", BM, BK, BN, TM, TN);
     LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
     LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    KernelCode matmul = createMatmulWithVectorization(kShaderMatmulWithVectorization, M, K, N, BM, BK, BN, TM, TN,
+    WGSL matmul = createMatmulWithVectorization(kShaderMatmulWithVectorization, M, K, N, BM, BK, BN, TM, TN,
                                                       /*wgSize*/ wgSize,
 						      numtype,
 						      /*Loop unrolling*/ true);
@@ -765,12 +760,12 @@ Kernel selectMatmul(Context &ctx, int version,
     static constexpr size_t TM = BM / BK;
     static constexpr size_t TN = BN / BK;
     Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
-    Shape nWorkgroups = {cdiv(M, BM), cdiv(N, BN), 1};
+    Shape nWorkgroups = {ceilDiv(M, BM), ceilDiv(N, BN), 1};
     LOG(kDefLog, kInfo, "M: %d, K: %d, N: %d", M, K, N);
     LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d, TN: %d", BM, BK, BN, TM, TN);
     LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
     LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    KernelCode matmul = createMatmulWithTranspose(kShaderMatmulWithTranspose, M, K, N, BM, BK, BN, TM, TN,
+    WGSL matmul = createMatmulWithTranspose(kShaderMatmulWithTranspose, M, K, N, BM, BK, BN, TM, TN,
 						  /*wgSize*/ wgSize,
 						  numtype);
     kernel = createKernel(ctx, matmul, bindings,
@@ -791,61 +786,29 @@ void runTest(int version, size_t M, size_t K, size_t N,
     assert(numtype == kf16);
   }
 
-  // Allocate GPU buffers and copy data
-  WGPUDeviceDescriptor devDescriptor = {};
-  devDescriptor.requiredFeatureCount = 1;
-  devDescriptor.requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data();
+  ContextOptions options;
+  if (numtype == kf16)
+    options.requiredFeatures = {wgpu::FeatureName::ShaderF16};
+  Context ctx = createContext(options);
 
-  Context ctx;
-  if (numtype == kf16) {
-    ctx = createContext(
-        {}, {},
-        /*device descriptor, enabling f16 in WGSL*/
-        {
-          .requiredFeatureCount = 1,
-          .requiredFeatures = std::array{WGPUFeatureName_ShaderF16}.data()
-        });
-    if (ctx.adapterStatus != WGPURequestAdapterStatus_Success) {
-      LOG(kDefLog, kError, "Failed to create adapter with f16 support, try running an f32 test instead (`export MATMUL_VERSION=9).");
-      exit(1);
-    }
-    if (ctx.deviceStatus != WGPURequestDeviceStatus_Success) {
-      LOG(kDefLog, kError, "Failed to create device with f16 support, try running an f32 test instead. (`export MATMUL_VERSION=9)");
-      exit(1);
-    }
-  }
+  Tensor input = createTensor(
+      ctx, Shape{M, K}, numtype,
+      std::span<const precision>(inputPtr.get(), M * K));
+  Tensor weights = createTensor(
+      ctx, Shape{N, K}, numtype,
+      std::span<const precision>(weightsPtr.get(), N * K)); // column-major
 
-  if (numtype == kf32) {
-    ctx = createContext({}, {}, {});
-    if (ctx.adapterStatus != WGPURequestAdapterStatus_Success ||
-        ctx.deviceStatus != WGPURequestDeviceStatus_Success) {
-      LOG(kDefLog, kError, "Failed to create adapter or device");
-      // stop execution
-      exit(1);
-    } else {
-      LOG(kDefLog, kInfo, "Successfully created adapter and device");
-    }
-  } 
-
-  Tensor input = createTensor(ctx, Shape{M, K}, numtype, inputPtr.get());
-  Tensor weights = createTensor(ctx, Shape{N, K}, numtype, weightsPtr.get()); // column-major
-
-#ifdef METAL_PROFILER
-  constexpr size_t nIter = 1;
-#else
   constexpr size_t nIter = 30;
-#endif
 
-  // Initialize Kernel and bind GPU buffers
-  // pre-allocate for async dispatch
-  std::array<std::promise<void>, nIter> promises;
-  std::array<std::future<void>, nIter> futures;
+  std::array<gpu::Future, nIter> futures;
   std::array<Kernel, nIter> kernels;
   std::array<Tensor, nIter> outputs;
   for (int i = 0; i < nIter; i++) {
-    futures[i] = promises[i].get_future();
     outputs[i] = createTensor(ctx, Shape{M, N}, numtype);
-    kernels[i] = selectMatmul(ctx, version, {input, weights, outputs[i]}, M, K, N, numtype);
+    kernels[i] = selectMatmul(
+        ctx, version,
+        Bindings{read(input), read(weights), readWrite(outputs[i])}, M, K, N,
+        numtype);
   }
 
   LOG(kDefLog, kInfo, "Dispatching Kernel version %d: %s, %d iterations ...",
@@ -854,7 +817,7 @@ void runTest(int version, size_t M, size_t K, size_t N,
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < nIter; i++) {
-    dispatchKernel(ctx, kernels[i], promises[i]);
+    futures[i] = dispatchKernel(ctx, kernels[i]);
   }
   for (int i = 0; i < nIter; i++) {
     wait(ctx, futures[i]);
@@ -871,7 +834,9 @@ void runTest(int version, size_t M, size_t K, size_t N,
                  1000000000.0 * static_cast<float>(nIter);
 
   LOG(kDefLog, kInfo, "Copying result to CPU");
-  toCPU(ctx, outputs[0], outputPtr.get(), M * N * sizeof(precision));
+  auto readback = toCPU(
+      ctx, outputs[0], std::span<precision>(outputPtr.get(), M * N));
+  wait(ctx, readback);
   LOG(kDefLog, kInfo, "%s",
       show<precision>(outputPtr.get(), M, N, "Output[0]").c_str());
 
@@ -961,17 +926,11 @@ int main() {
     N = 2 * 4096;
   }
 
-#ifdef METAL_PROFILER
-  startCapture();
-#endif
   if (enableF16) {
     runTestWithCheck<half>(version, M, K, N, transposedInput, kTestSize, numtype);
   } else {
     runTestWithCheck<float>(version, M, K, N, transposedInput, kTestSize, numtype);
   }
-#ifdef METAL_PROFILER
-  stopCapture();
-#endif
 
   LOG(kDefLog, kInfo, "Done.");
   return 0;

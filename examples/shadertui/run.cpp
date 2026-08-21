@@ -1,7 +1,6 @@
 #include <array>
 #include <cstdio>
 #include <fstream>
-#include <future>
 #include <random>
 #include <string>
 #include <thread>
@@ -45,7 +44,6 @@ void loadKernelCode(const std::string &filename, std::string &codeString) {
   FILE *file = fopen(filename.c_str(), "r");
   int nTries = 0;
   while (!file) {
-    fclose(file);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     file = fopen(filename.c_str(), "r");
     if (++nTries > 5) {
@@ -76,10 +74,7 @@ int main() {
   // std::fill(begin(screenArr), end(screenArr), 0.0);
   auto gen = std::mt19937{std::random_device{}()};
   randint(screenArr, gen, 0, 1);
-  Tensor screen = createTensor(ctx, {kRows, kCols}, kf32, screenArr.data());
-
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
+  Tensor screen = createTensor(ctx, {kRows, kCols}, kf32, screenArr);
 
   std::string codeString;
   struct Params {
@@ -91,10 +86,10 @@ int main() {
   LOG(kDefLog, kInfo, "Loading shader code from shader.wgsl");
 
   loadKernelCode("shader.wgsl", codeString);
-  KernelCode shader{codeString.c_str(), Shape{16, 16, 1}};
+  WGSL shader{codeString, Shape{16, 16, 1}};
   Kernel renderKernel =
-      createKernel(ctx, shader, Bindings{screen},
-                   cdiv({kCols, kRows, 1}, shader.workgroupSize), params);
+      createKernel(ctx, shader, Bindings{readWrite(screen)},
+                   ceilDiv(Shape{kCols, kRows, 1}, shader.workgroupSize), params);
 
   LOG(kDefLog, kInfo, "Starting render loop");
 
@@ -109,15 +104,16 @@ int main() {
   while (true) {
     if (frame % framesPerLoad == 0) { 
       loadKernelCode("shader.wgsl", codeString);
-      if (codeString != shader.data) {
+      if (codeString != shader.code) {
         // TODO(avh): Use a better way to avoid write/read race conditions
         // and recover from partial write errors
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
         loadKernelCode("shader.wgsl", codeString);
-        shader = {codeString.c_str(), Shape{16, 16, 1}};
+        shader = {codeString, Shape{16, 16, 1}};
         renderKernel =
-            createKernel(ctx, shader, Bindings{screen},
-                         cdiv({kCols, kRows, 1}, shader.workgroupSize), params);
+            createKernel(ctx, shader, Bindings{readWrite(screen)},
+                         ceilDiv(Shape{kCols, kRows, 1}, shader.workgroupSize),
+                         params);
         ticks++;
         start = std::chrono::high_resolution_clock::now();
       }
@@ -126,17 +122,16 @@ int main() {
     params.time = getCurrentTimeInMilliseconds(start);
     toGPU(ctx, params, renderKernel);
     auto frameStart = std::chrono::high_resolution_clock::now();
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    dispatchKernel(ctx, renderKernel, promise);
+    auto future = dispatchKernel(ctx, renderKernel);
     wait(ctx, future);
-    resetCommandBuffer(ctx.device, renderKernel);
-    toCPU(ctx, screen, screenArr);
+    auto readback = toCPU(ctx, screen, screenArr);
+    wait(ctx, readback);
     rasterize<kRows, kCols>(screenArr, raster);
     auto frameEnd = std::chrono::high_resolution_clock::now();
     std::chrono::duration<float> frameElapsed = frameEnd - frameStart;
     elapsed = frameEnd - start;
-    std::this_thread::sleep_for(std::chrono::milliseconds(10) - frameElapsed);
+    auto delay = std::chrono::duration<float, std::milli>(10) - frameElapsed;
+    if (delay.count() > 0) std::this_thread::sleep_for(delay);
     printf("\033[H%s\nRender loop running (full screen recommended) ...\nEdit and save shader.wgsl to see changes here.\nReloaded shader.wgsl %zu times\n", raster.data(), ticks);
     fflush(stdout);
   }

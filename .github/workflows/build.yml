@@ -1,36 +1,39 @@
-name: gpucpp-ci
+name: gpu.cpp
 
-on: 
+on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    types: [opened, reopened, labeled, unlabeled, synchronize]
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
-  build:
+  test:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers ninja-build
+      - run: python3 -m pip install numpy
+      - run: tools/build_dawn.sh
+      - run: ./test
+
+  browser-build:
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-
-    - name: No-op Step
-      run: echo "This is a no-op action"
-
-    - name: Install CMake
-      run: sudo apt-get install cmake
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-tools
-        sudo apt-get install -y libxrandr-dev
-
-    - name: Build
-      run: make all
-
-    - name: Run hello world
-      run: make
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: emscripten-core/emsdk
+          path: emsdk
+          fetch-depth: 1
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+      - run: ./test --build-web
+        env:
+          GPUCPP_EMSDK_ROOT: ${{ github.workspace }}/emsdk
