@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <exception>
 #include <future>
 #include <initializer_list>
 #include <mutex>
@@ -265,8 +266,8 @@ inline constexpr wgpu::CallbackMode persistentMode() {
 }
 
 template <typename T>
-T await(const wgpu::Instance &instance, std::future<T> &result,
-        wgpu::Future event) {
+void waitReady(const wgpu::Instance &instance, std::future<T> &result,
+               wgpu::Future event) {
 #if defined(__EMSCRIPTEN__)
   if (instance.WaitAny(event, UINT64_MAX) != wgpu::WaitStatus::Success)
     throw std::runtime_error("could not wait for WebGPU operation");
@@ -278,6 +279,12 @@ T await(const wgpu::Instance &instance, std::future<T> &result,
     std::this_thread::sleep_for(std::chrono::microseconds(100));
   }
 #endif
+}
+
+template <typename T>
+T await(const wgpu::Instance &instance, std::future<T> &result,
+        wgpu::Future event) {
+  waitReady(instance, result, event);
   return result.get();
 }
 
@@ -309,6 +316,21 @@ struct Context {
 class Future {
   std::future<void> result;
   wgpu::Future event;
+  std::exception_ptr failure;
+  bool completed = false;
+
+  void finish(Context &context) {
+    if (!completed) {
+      try {
+        result.get();
+        context.check();
+      } catch (...) {
+        failure = std::current_exception();
+      }
+      completed = true;
+    }
+    if (failure) std::rethrow_exception(failure);
+  }
 
 public:
   Future() = default;
@@ -319,6 +341,7 @@ public:
   Future(Future &&) = default;
   Future &operator=(Future &&) = default;
 
+  friend bool poll(Context &, Future &);
   friend void wait(Context &, Future &);
 };
 
@@ -679,12 +702,36 @@ inline Future dispatchKernel(Context &context, const Kernel &kernel) {
 }
 
 inline void wait(Context &context, Future &future) {
-  detail::await(context.instance, future.result, future.event);
-  context.check();
+  if (!future.completed)
+    detail::waitReady(context.instance, future.result, future.event);
+  future.finish(context);
 }
 
+inline bool poll(Context &context, Future &future) {
+  if (future.completed) {
+    future.finish(context);
+    return true;
+  }
+#if defined(__EMSCRIPTEN__)
+  const auto status = context.instance.WaitAny(future.event, 0);
+  if (status == wgpu::WaitStatus::TimedOut) return false;
+  if (status != wgpu::WaitStatus::Success)
+    throw std::runtime_error("could not poll WebGPU operation");
+#else
+  context.instance.ProcessEvents();
+#endif
+  if (future.result.wait_for(std::chrono::milliseconds(0)) !=
+      std::future_status::ready)
+    return false;
+  future.finish(context);
+  return true;
+}
+
+namespace detail {
+
 template <typename T>
-Future toCPU(Context &context, const Tensor &tensor, std::span<T> output) {
+Future toCPU(Context &context, const Tensor &tensor, std::span<T> output,
+             std::shared_ptr<void> lifetime) {
   if (sizeof(T) != sizeBytes(tensor.type))
     throw std::invalid_argument("host and tensor element sizes differ");
   if (output.size_bytes() != tensor.bytes)
@@ -706,8 +753,8 @@ Future toCPU(Context &context, const Tensor &tensor, std::span<T> output) {
   auto event = readback.MapAsync(
       wgpu::MapMode::Read, 0, tensor.bytes,
       detail::completionMode(),
-      [promise, readback, output](wgpu::MapAsyncStatus status,
-                                  wgpu::StringView message) {
+      [promise, readback, output, lifetime = std::move(lifetime)](
+          wgpu::MapAsyncStatus status, wgpu::StringView message) {
         if (status != wgpu::MapAsyncStatus::Success) {
           promise->set_exception(std::make_exception_ptr(std::runtime_error(
               "WebGPU readback failed: " + detail::string(message))));
@@ -720,6 +767,19 @@ Future toCPU(Context &context, const Tensor &tensor, std::span<T> output) {
         promise->set_value();
       });
   return {std::move(future), event};
+}
+
+} // namespace detail
+
+template <typename T>
+Future toCPU(Context &context, const Tensor &tensor, std::span<T> output) {
+  return detail::toCPU(context, tensor, output, {});
+}
+
+template <typename T>
+Future toCPU(Context &context, const Tensor &tensor,
+             const std::shared_ptr<std::vector<T>> &output) {
+  return detail::toCPU(context, tensor, std::span<T>(*output), output);
 }
 
 template <typename T>

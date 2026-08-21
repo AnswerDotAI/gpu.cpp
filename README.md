@@ -18,7 +18,7 @@ driver; Mesa's Vulkan driver is sufficient for development and CI.
 ./test                 # configure, build, and run the native GPU stories
 ./test --rebuild-web   # first browser setup
 ./test --web           # build and run the browser story in Chrome
-make run               # run the hello-world example
+./build/hello_gpu      # run the hello-world example after building
 ```
 
 `tools/build_dawn.sh` checks out exact revisions, builds a monolithic shared
@@ -134,9 +134,10 @@ See [DEV.md](DEV.md) for the dependency layout and update process, and
 
 ## Python
 
-The optional pybind11 module is built by default when gpu.cpp is the top-level
-CMake project. It accepts C-contiguous NumPy arrays and preserves tensor shape
-and `float16`, `float32`, or `int32` dtype information:
+Install the self-contained macOS ARM64 wheel from PyPI with `pip install
+gpu-cpp`. The optional pybind11 module is also built by default when gpu.cpp is
+the top-level CMake project. It accepts C-contiguous NumPy arrays and preserves
+tensor shape and `float16`, `float32`, or `int32` dtype information:
 
 ```python
 import numpy as np
@@ -150,8 +151,17 @@ kernel = gpu.create_kernel(
     context, gpu.WGSL(source, workgroup_size=[4, 1, 1]),
     [gpu.read(gpu_values), gpu.read_write(gpu_output)])
 dispatched = gpu.dispatch_kernel(context, kernel)
-gpu.wait(context, dispatched)
-result = gpu.to_numpy(context, gpu_output)
+gpu.wait(dispatched)
+result = gpu.wait(gpu.to_numpy(context, gpu_output))
+```
+
+Futures own their context and support both blocking scripts and native
+`asyncio`/notebook execution. Readback futures also own their destination array
+and return it on completion:
+
+```python
+await gpu.dispatch_kernel(context, kernel)
+result = await gpu.to_numpy(context, gpu_output)
 ```
 
 Set `GPUCPP_BUILD_PYTHON=OFF` when embedding gpu.cpp in a CMake project that

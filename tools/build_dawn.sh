@@ -13,7 +13,8 @@ readonly STAGE="$ROOT/third_party/dawn"
 
 backend_flags=(-DDAWN_ENABLE_NULL=OFF)
 case "$(uname -s)" in
-  Darwin) backend_flags+=(-DDAWN_ENABLE_METAL=ON -DDAWN_ENABLE_VULKAN=OFF) ;;
+  Darwin) backend_flags+=(-DDAWN_ENABLE_METAL=ON -DDAWN_ENABLE_VULKAN=OFF
+    -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-12.0}") ;;
   Linux) backend_flags+=(-DDAWN_ENABLE_METAL=OFF -DDAWN_ENABLE_VULKAN=ON) ;;
   *) echo "gpu.cpp supports Dawn on macOS and Linux" >&2; exit 1 ;;
 esac

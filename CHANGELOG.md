@@ -16,13 +16,15 @@ browser target.
   Chrome story covering browser errors, context reuse, dispatch, and readback.
 - Reproducible scripts pinning Dawn, Emdawn, emsdk, SPIRV-Tools, and
   SPIRV-Headers to exact revisions.
+- A self-contained macOS ARM64 Python wheel and direct PyPI publish workflow.
 
 ### Changed
 
 - WebGPU objects now use Dawn's generated C++ RAII facade and normal C++ value
   semantics.
 - The Python binding now follows the C++ API and preserves NumPy shape and
-  `float16`, `float32`, and `int32` dtypes.
+  `float16`, `float32`, and `int32` dtypes. Futures retain their context and
+  support blocking waits or native `asyncio` dispatch and NumPy readback.
 - Host-side f16 uses native `_Float16` where supported; the portable core
   treats f16 as two-byte IEEE 754 storage.
 - Examples and the build are consolidated under the root CMake project and the

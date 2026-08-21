@@ -57,7 +57,14 @@ reviewable. Avoid adding tests that merely restate Dawn validation; add a new
 story only when gpu.cpp itself owns meaningful behavior.
 
 The Python story covers NumPy upload/readback, explicit binding access,
-uniform parameters, and reuse of a compiled kernel with updated tensor data.
+uniform parameters, reuse of a compiled kernel, blocking waits, and native
+`asyncio` dispatch and readback.
+
+`tools/build_python_wheel.sh` packages the staged macOS 12 Dawn runtime into a
+self-contained ARM64 wheel and checks its metadata. Publish that fresh wheel
+with `twine upload dist/*.whl`, using the developer's standard `~/.pypirc`
+credentials. Publishing from other platforms belongs in CI rather than this
+local release path.
 
 `./test --web` cross-compiles the same public core and Embind API against
 Emdawnwebgpu, opens the result with `emrun`, and checks rejected invalid WGSL,
@@ -79,6 +86,11 @@ they write into `Context` error state, which foreground API calls surface.
 `gpu::Future` retains both the callback result and Dawn's `wgpu::Future`.
 Native waits pump `ProcessEvents`; browser waits call `WaitAny`, allowing JSPI
 to suspend Wasm while JavaScript and WebGPU make progress.
+
+Python futures retain shared ownership of their context. Their awaiter polls
+`ProcessEvents` on the asyncio thread rather than moving Dawn work to an
+executor thread. Async readback uses callback-owned storage, so abandoning a
+future cannot leave Dawn writing into a freed NumPy buffer.
 
 The browser Embind layer owns one persistent `Context`. Each `run()` creates
 short-lived tensors and a kernel from JavaScript typed arrays, rejects
