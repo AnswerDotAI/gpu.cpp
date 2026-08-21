@@ -51,7 +51,8 @@ static void expect(const std::vector<T> &actual,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 2) throw std::runtime_error("expected assembled SPIR-V path");
+  if (argc != 2 && argc != 3)
+    throw std::runtime_error("expected assembled SPIR-V path");
 
   // Ordinary WGSL covers upload, explicit binding access, dispatch, and readback.
   auto context = createContext();
@@ -97,6 +98,20 @@ int main(int argc, char **argv) {
   auto answerDownloaded = toCPU(spirvContext, gpuAnswer, answer);
   wait(spirvContext, answerDownloaded);
   expect(answer, std::vector<int32_t>{42}, "SPIR-V compute");
+
+  if (argc == 3) {
+    std::vector<int32_t> externalAnswer(1);
+    auto externalOutput = createTensor(spirvContext, {1}, ki32);
+    auto external = createKernel(
+        spirvContext, SPIRV{readSPIRV(argv[2]), "external SPIR-V", "main"},
+        Bindings{readWrite(externalOutput)});
+    auto externalDispatched = dispatchKernel(spirvContext, external);
+    wait(spirvContext, externalDispatched);
+    auto externalDownloaded =
+        toCPU(spirvContext, externalOutput, externalAnswer);
+    wait(spirvContext, externalDownloaded);
+    expect(externalAnswer, std::vector<int32_t>{42}, "external SPIR-V compute");
+  }
 
   std::cout << "WGSL, f16, and SPIR-V compute stories passed\n";
 }

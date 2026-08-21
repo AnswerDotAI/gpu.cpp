@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+external_spirv=
 if [[ ${1:-} == --web || ${1:-} == --build-web || \
       ${1:-} == --rebuild-web ]]; then
   if [[ ${1:-} == --rebuild-web || \
@@ -9,15 +10,6 @@ if [[ ${1:-} == --web || ${1:-} == --build-web || \
   fi
   export EMSDK_QUIET=1
   source "${GPUCPP_EMSDK_ROOT:-../emsdk}/emsdk_env.sh" >/dev/null
-  if [[ $(uname -s) == Darwin ]]; then
-    if [[ -x /opt/homebrew/opt/openjdk/bin/java ]]; then
-      export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
-    fi
-    if ! java -version >/dev/null 2>&1; then
-      echo "Closure requires Java on macOS; install it with brew install openjdk" >&2
-      exit 1
-    fi
-  fi
   emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
   cmake --build build-web --target gpu_cpp_web web_binding_test
   if [[ ${1:-} != --build-web ]]; then
@@ -26,8 +18,10 @@ if [[ ${1:-} == --web || ${1:-} == --build-web || \
   exit
 elif [[ ${1:-} == --rebuild-dawn ]]; then
   tools/build_dawn.sh
+elif [[ ${1:-} == --spirv && $# -eq 2 ]]; then
+  external_spirv=$2
 elif [[ $# -ne 0 ]]; then
-  echo "usage: ./test [--rebuild-dawn|--web|--build-web|--rebuild-web]" >&2
+  echo "usage: ./test [--rebuild-dawn|--web|--build-web|--rebuild-web|--spirv FILE]" >&2
   exit 2
 elif [[ ! -f third_party/dawn/include/dawn/webgpu_cpp.h &&
         ! -f third_party/local/dawn/build-latest/gen/include/dawn/webgpu_cpp.h ]]; then
@@ -37,3 +31,6 @@ fi
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
+if [[ -n $external_spirv ]]; then
+  build/gpu_test build/write42.spv "$external_spirv"
+fi

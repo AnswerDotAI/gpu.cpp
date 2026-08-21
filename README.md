@@ -27,11 +27,10 @@ Dawn library, and stages its headers, library, and `spirv-as` under
 and build trees under `third_party/local/dawn/` directly.
 
 Browser builds require Chrome with WebGPU and JSPI, plus a sibling `../emsdk`
-clone. On macOS they also require OpenJDK for Closure:
+clone:
 
 ```bash
 git clone --depth 1 https://github.com/emscripten-core/emsdk.git ../emsdk
-brew install openjdk
 ./test --rebuild-web
 ```
 
@@ -131,6 +130,23 @@ target_link_libraries(my_program PRIVATE gpucpp)
 
 See [DEV.md](DEV.md) for the dependency layout and update process, and
 [CHANGELOG.md](CHANGELOG.md) for release notes.
+
+Browser consumers can supply their own Embind surface while inheriting the
+Emdawnwebgpu, Wasm-exception, and JSPI settings from `gpucpp`:
+
+```cmake
+add_subdirectory(path/to/gpu.cpp EXCLUDE_FROM_ALL)
+add_executable(my_web_app app.cpp)
+set_target_properties(my_web_app PROPERTIES SUFFIX ".js")
+target_link_libraries(my_web_app PRIVATE gpucpp)
+target_link_options(my_web_app PRIVATE "--bind" "--no-entry"
+  "-sMODULARIZE=1" "-sEXPORT_NAME=createModule" "-sENVIRONMENT=web"
+  "-sALLOW_MEMORY_GROWTH=1")
+```
+
+The Embind functions that call `createContext()`, `wait()`, or browser-facing
+helpers containing them must use `emscripten::async()` so JSPI can suspend the
+Wasm stack.
 
 ## Python
 

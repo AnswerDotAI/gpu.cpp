@@ -30,10 +30,7 @@ if(EMSCRIPTEN)
   endif()
   target_compile_options(gpucpp INTERFACE "${EMDAWN_PORT}" "-fwasm-exceptions")
   target_link_options(gpucpp INTERFACE "${EMDAWN_PORT}" "-fwasm-exceptions"
-                                           "-sJSPI=1" "--closure=1")
-  if(CMAKE_HOST_APPLE)
-    target_link_options(gpucpp INTERFACE "--closure-args=--platform=java")
-  endif()
+                                           "-sJSPI=1")
 else()
 
 set(GPUCPP_DAWN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/dawn" CACHE PATH
