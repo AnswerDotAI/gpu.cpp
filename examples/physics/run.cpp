@@ -1,11 +1,10 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
-#include <future>
 #include <thread>
 
-#include "experimental/tui.h" // rasterize
 #include "gpu.hpp"
+#include "utils/tui.hpp"
 
 using namespace gpu;
 
@@ -16,7 +15,7 @@ const dt: f32 = 0.03;
 @group(0) @binding(1) var<storage, read_write> theta2: array<f32>;
 @group(0) @binding(2) var<storage, read_write> thetaVel1: array<f32>;
 @group(0) @binding(3) var<storage, read_write> thetaVel2: array<f32>;
-@group(0) @binding(4) var<storage, read_write> length: array<f32>;
+@group(0) @binding(4) var<storage, read> length: array<f32>;
 @group(0) @binding(5) var<storage, read_write> pos: array<f32>;  // x1, y1 for each pendulum
 //@group(0) @binding(6) var<storage, read_write> pos2: array<f32>;  // x2, y2 for each pendulum
 @compute @workgroup_size({{workgroupSize}})
@@ -64,31 +63,32 @@ int main() {
   }
 
   // GPU buffers
-  Tensor theta1 = createTensor(ctx, Shape{N}, kf32, theta1Arr.data());
-  Tensor theta2 = createTensor(ctx, Shape{N}, kf32, theta2Arr.data());
-  Tensor vel1 = createTensor(ctx, Shape{N}, kf32, v1Arr.data());
-  Tensor vel2 = createTensor(ctx, Shape{N}, kf32, v2Arr.data());
-  Tensor length = createTensor(ctx, Shape{N}, kf32, lengthArr.data());
+  Tensor theta1 = createTensor(ctx, Shape{N}, kf32, theta1Arr);
+  Tensor theta2 = createTensor(ctx, Shape{N}, kf32, theta2Arr);
+  Tensor vel1 = createTensor(ctx, Shape{N}, kf32, v1Arr);
+  Tensor vel2 = createTensor(ctx, Shape{N}, kf32, v2Arr);
+  Tensor length = createTensor(ctx, Shape{N}, kf32, lengthArr);
   std::array<float, 2 * 2 * N> posArr; // x, y outputs for each pendulum
   std::string screen(80 * 40, ' ');
   Tensor pos = createTensor(ctx, Shape{N * 4}, kf32);
 
   // Prepare computation
-  KernelCode kernel{kUpdateSim, 256, kf32};
-  printf("WGSL code: %s\n", kernel.data.c_str());
+  WGSL kernel{kUpdateSim, 256, kf32};
+  printf("WGSL code: %s\n", kernel.code.c_str());
   Kernel update = createKernel(
-      ctx, kernel, Bindings{theta1, theta2, vel1, vel2, length, pos},
-      /* nWorkgroups */ cdiv({N, 1, 1}, kernel.workgroupSize));
+      ctx, kernel,
+      Bindings{readWrite(theta1), readWrite(theta2), readWrite(vel1),
+               readWrite(vel2), read(length), readWrite(pos)},
+      ceilDiv(Shape{N, 1, 1}, kernel.workgroupSize));
 
   // Main simulation update loop
   printf("\033[2J\033[H");
   while (true) {
     auto start = std::chrono::high_resolution_clock::now();
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    dispatchKernel(ctx, update, promise);
+    auto future = dispatchKernel(ctx, update);
     wait(ctx, future);
-    toCPU(ctx, pos, posArr.data(), sizeof(posArr));
+    auto readback = toCPU(ctx, pos, posArr);
+    wait(ctx, readback);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end - start;
     // N * 2 because there's two objects per pendulum
@@ -96,8 +96,7 @@ int main() {
     printf("\033[1;1H" // reset cursor
            "# simulations: %lu\n%s",
            N, screen.c_str());
-    resetCommandBuffer(ctx.device, update); // Prepare kernel command
-                                            // buffer for nxt iteration
-    std::this_thread::sleep_for(std::chrono::milliseconds(8) - elapsed);
+    auto delay = std::chrono::duration<double, std::milli>(8) - elapsed;
+    if (delay.count() > 0) std::this_thread::sleep_for(delay);
   }
 }

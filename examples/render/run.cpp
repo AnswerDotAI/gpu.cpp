@@ -115,24 +115,23 @@ int main(int argc, char **argv) {
   std::fill(begin(screen), end(screen), 0.0f);
 
   Context ctx = createContext();
-  Tensor devScreen = createTensor(ctx, {NROWS, NCOLS}, kf32, screen.data());
+  Tensor devScreen = createTensor(ctx, {NROWS, NCOLS}, kf32, screen);
   uint32_t zeroTime = getCurrentTimeInMilliseconds();
 
   Shape wgSize = {16, 16, 1};
-  KernelCode code = {kSDF, wgSize};
-  Kernel renderKernel = createKernel(ctx, code, Bindings{devScreen},
-                                     cdiv({NCOLS, NROWS, 1}, wgSize), params);
+  WGSL code = {kSDF, wgSize};
+  Kernel renderKernel =
+      createKernel(ctx, code, Bindings{readWrite(devScreen)},
+                   ceilDiv(Shape{NCOLS, NROWS, 1}, wgSize), params);
   printf("\033[2J\033[H");
   while (true) {
-    std::promise<void> promise;
-    std::future<void> future = promise.get_future();
-    dispatchKernel(ctx, renderKernel, promise);
+    auto future = dispatchKernel(ctx, renderKernel);
     wait(ctx, future);
-    toCPU(ctx, devScreen, screen.data(), sizeof(screen));
+    auto readback = toCPU(ctx, devScreen, screen);
+    wait(ctx, readback);
     params.time = getCurrentTimeInMilliseconds() - zeroTime;
 
     toGPU(ctx, params, renderKernel);
-    resetCommandBuffer(ctx.device, renderKernel);
 
     static const char intensity[] =
         "@B%8&WM#$Z0OQLCJUYX/"

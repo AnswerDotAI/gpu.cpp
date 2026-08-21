@@ -1,39 +1,45 @@
-import gpu_cpp as gpu
+import struct
+
 import numpy as np
 
-ctx = gpu.create_context()
+import gpu_cpp as gpu
 
-N = 12
 
-input = gpu.create_tensor(ctx, [N], gpu.kf32)
-output = gpu.create_tensor(ctx, [N], gpu.kf32)
-kernel_code = gpu.create_kernel_code(
-    """
-    const GELU_SCALING_FACTOR: f32 = 0.7978845608028654; // sqrt(2.0 / PI)
-    @group(0) @binding(0) var<storage, read_write> inp: array<{{precision}}>;
-    @group(0) @binding(1) var<storage, read_write> out: array<{{precision}}>;
-    @group(0) @binding(1) var<storage, read_write> dummy: array<{{precision}}>;
-    @compute @workgroup_size({{workgroupSize}})
-    fn main(
-        @builtin(global_invocation_id) GlobalInvocationID: vec3<u32>) {
-        let i: u32 = GlobalInvocationID.x;
-        if (i < arrayLength(&inp)) {
-            let x: f32 = inp[i];
-            out[i] = select(0.5 * x * (1.0 + tanh(GELU_SCALING_FACTOR 
-                     * (x + .044715 * x * x * x))), x, x > 10.0);
-        }
-    }
-    """,
-    256,
-    gpu.kf32
-    )
+scale = r'''
+struct Params { factor: f32 }
+@group(0) @binding(0) var<storage, read> input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> output: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
 
-kernel = gpu.create_kernel(ctx, kernel_code, [input, output], [0,0], [12,1,1])
+@compute @workgroup_size({{workgroupSize}})
+fn main(@builtin(global_invocation_id) id: vec3<u32>) {
+  if (id.x < arrayLength(&input)) {
+    output[id.x] = input[id.x] * params.factor;
+  }
+}
+'''
 
-gpu.to_gpu_float(ctx, np.array([1,2,3,4,1,2,3,4,1,2,3,4],np.float32), input)
 
-gpu_async = gpu.dispatch_kernel(ctx, kernel);
+# Upload NumPy data, bind access explicitly, dispatch, and recover its shape and dtype.
+context = gpu.Context()
+values = np.arange(12, dtype=np.float32)
+gpu_values = gpu.tensor(context, values)
+gpu_output = gpu.create_tensor(context, values.shape, gpu.f32)
+shader = gpu.WGSL(scale, workgroup_size=[4, 1, 1])
+bindings = [gpu.read(gpu_values), gpu.read_write(gpu_output)]
+kernel = gpu.create_kernel(context, shader, bindings, workgroups=[3, 1, 1], parameters=struct.pack('<f', 3))
 
-gpu.wait(ctx, gpu_async);
+dispatched = gpu.dispatch_kernel(context, kernel)
+gpu.wait(context, dispatched)
+np.testing.assert_array_equal(gpu.to_numpy(context, gpu_output), values * 3)
+assert gpu_output.shape == [12]
+assert gpu_output.dtype == gpu.f32
 
-print(gpu.to_cpu_float(ctx, output))
+# The tensor and compiled kernel remain reusable with new input data.
+updated = np.arange(12, dtype=np.float32)[::-1].copy()
+gpu.to_gpu(context, gpu_values, updated)
+dispatched = gpu.dispatch_kernel(context, kernel)
+gpu.wait(context, dispatched)
+np.testing.assert_array_equal(gpu.to_numpy(context, gpu_output), updated * 3)
+
+print('Python upload, reusable dispatch, and NumPy readback story passed')

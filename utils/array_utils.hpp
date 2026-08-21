@@ -86,7 +86,7 @@ std::string show(const numtype *a, size_t rows, size_t cols,
         } else
           snprintf(buffer, 16, "%10.2e", a[i * cols + j]);
       } else if constexpr (std::is_same<numtype, half>::value) {
-	float tmp = halfToFloat(a[i * cols + j]);
+	float tmp = static_cast<float>(a[i * cols + j]);
         if (std::abs(tmp) < 1000 &&
                 std::abs(tmp) > 0.01 ||
             tmp == 0.0) {
@@ -222,7 +222,7 @@ inline void randn(half *a, size_t N, std::mt19937 &gen, float mean = 0.0,
                   float std = 1.0) {
   std::normal_distribution<float> dist(mean, std);
   for (int i = 0; i < N; i++) {
-    a[i] = halfFromFloat(dist(gen));
+    a[i] = static_cast<half>(dist(gen));
   }
 }
 
@@ -324,8 +324,8 @@ inline bool isclose(float *a, float *b, size_t n, float tol = 1e-3) {
 
 inline bool isclose(half *a, half *b, size_t n, float tol = 1) {
   for (size_t i = 0; i < n; i++) {
-    float ai = halfToFloat(a[i]);
-    float bi = halfToFloat(b[i]);
+    float ai = static_cast<float>(a[i]);
+    float bi = static_cast<float>(b[i]);
     if (std::abs(ai - bi) > tol || std::isnan(ai) || std::isnan(bi)) {
       LOG(kDefLog, kError, "Mismatch at index %d: %f != %f", i, ai, bi);
       return false;

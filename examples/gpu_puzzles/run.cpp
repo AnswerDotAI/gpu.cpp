@@ -7,7 +7,6 @@
 #include "utils/array_utils.hpp"
 #include <array>
 #include <cstdio>
-#include <future>
 
 using namespace gpu;
 
@@ -21,14 +20,13 @@ template <size_t N> std::array<float, N> makeData() {
   return inputArr;
 }
 
-template <size_t N, size_t R = N, size_t C = 1> void showResult(Context &ctx, Kernel &op, Tensor &output) {
-
-  std::promise<void> promise;
-  std::future<void> future = promise.get_future();
-  dispatchKernel(ctx, op, promise);
+template <size_t N, size_t R = N, size_t C = 1>
+void showResult(Context &ctx, const Kernel &op, const Tensor &output) {
+  auto future = dispatchKernel(ctx, op);
   std::array<float, R * C> outputArr;
   wait(ctx, future);
-  toCPU(ctx, output, outputArr.data(), sizeof(outputArr));
+  auto readback = toCPU(ctx, output, outputArr);
+  wait(ctx, readback);
   printf("%s", show<float, R, C>(outputArr, "output").c_str());
 }
 
@@ -36,7 +34,7 @@ template <size_t N, size_t R = N, size_t C = 1> void showResult(Context &ctx, Ke
 // Implement a "kernel" (GPU function) that adds 10 to each position of vector
 // a and stores it in vector out. You have 1 thread per position.
 const char *kPuzzle1 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
@@ -48,9 +46,9 @@ fn main(
 void puzzle1(Context &ctx) {
   printf("\n\nPuzzle 1\n\n");
   static constexpr size_t N = 4;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {N}, kf32);
-  Kernel op = createKernel(ctx, {kPuzzle1, N}, Bindings{a, output},
+  Kernel op = createKernel(ctx, WGSL{kPuzzle1, N}, Bindings{read(a), readWrite(output)},
                            /*nWorkgroups */ {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
@@ -59,8 +57,8 @@ void puzzle1(Context &ctx) {
 // Implement a kernel that adds together each position of a and b and stores it
 // in out. You have 1 thread per position.
 const char *kPuzzle2 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
-@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
+@group(0) @binding(1) var<storage, read> b: array<f32>;
 @group(0) @binding(2) var<storage, read_write> output : array<f32>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
@@ -72,10 +70,10 @@ fn main(
 void puzzle2(Context &ctx) {
   printf("\n\nPuzzle 2\n\n");
   static constexpr size_t N = 4;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
-  Tensor b = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
+  Tensor b = createTensor(ctx, {N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {N}, kf32);
-  Kernel op = createKernel(ctx, {kPuzzle2, N}, Bindings{a, b, output},
+  Kernel op = createKernel(ctx, WGSL{kPuzzle2, N}, Bindings{read(a), read(b), readWrite(output)},
                            {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
@@ -84,7 +82,7 @@ void puzzle2(Context &ctx) {
 // Implement a kernel that adds 10 to each position of a and stores it in out.
 // You have more threads than positions.
 const char *kPuzzle3 = R"(
-@group(0) @binding(0) var<storage, read_write> input: array<f32>;
+@group(0) @binding(0) var<storage, read> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
@@ -95,10 +93,10 @@ fn main(
 void puzzle3(Context &ctx) {
   printf("\n\nPuzzle 3\n\n");
   static constexpr size_t N = 8;
-  Tensor input = createTensor(ctx, {N/2}, kf32, makeData<N>().data());
+  Tensor input = createTensor(ctx, {N/2}, kf32, makeData<N/2>());
   Tensor output = createTensor(ctx, {N/2}, kf32);
   Kernel op =
-      createKernel(ctx, {kPuzzle3, N}, Bindings{input, output}, {1, 1, 1});
+      createKernel(ctx, WGSL{kPuzzle3, N}, Bindings{read(input), readWrite(output)}, {1, 1, 1});
   showResult<N>(ctx, op, output);
 }
 
@@ -106,7 +104,7 @@ void puzzle3(Context &ctx) {
 // Implement a kernel that adds 10 to each position of a and stores it in out.
 // Input a is 2D and square. You have more threads than positions.
 const char *kPuzzle4 = R"(
-@group(0) @binding(0) var<storage, read_write> input: array<f32>;
+@group(0) @binding(0) var<storage, read> input: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @group(0) @binding(2) var<uniform> params: Params;
 struct Params {
@@ -124,14 +122,14 @@ void puzzle4(Context &ctx) {
   static constexpr size_t Wx = 3;
   static constexpr size_t Wy = 3;
   static constexpr size_t N = 2;
-  Tensor input = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor input = createTensor(ctx, {N, N}, kf32, makeData<N * N>());
   Tensor output = createTensor(ctx, {N, N}, kf32);
   struct Params {
     uint32_t size = N;
   };
   Kernel op =
-      createKernel(ctx, {kPuzzle4, /*workgroup size*/ {Wx, Wy, 1}},
-                   Bindings{input, output}, /* nWorkgroups */ {1, 1, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle4, /*workgroup size*/ {Wx, Wy, 1}},
+                   Bindings{read(input), readWrite(output)}, /* nWorkgroups */ {1, 1, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 
@@ -139,8 +137,8 @@ void puzzle4(Context &ctx) {
 // Implement a kernel that adds a and b and stores it in out. Inputs a and b
 // are vectors. You have more threads than positions.
 const char *kPuzzle5 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
-@group(0) @binding(1) var<storage, read_write> b : array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
+@group(0) @binding(1) var<storage, read> b : array<f32>;
 @group(0) @binding(2) var<storage, read_write> output : array<f32>;
 @group(0) @binding(3) var<uniform> params: Params;
 struct Params {
@@ -158,16 +156,16 @@ void puzzle5(Context &ctx) {
   static constexpr size_t N = 2;
   static constexpr size_t Wx = 3;
   static constexpr size_t Wy = 3;
-  Tensor a = createTensor(ctx, {N, 1}, kf32, makeData<N>().data());
-  Tensor b = createTensor(ctx, {1, N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N, 1}, kf32, makeData<N>());
+  Tensor b = createTensor(ctx, {1, N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {N, N}, kf32);
   struct Params {
     uint32_t size = N;
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle5, /*workgroup size*/ {Wx, Wy, 1}},
-                   Bindings{a, b, output}, {1, 1, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle5, /*workgroup size*/ {Wx, Wy, 1}},
+                   Bindings{read(a), read(b), readWrite(output)}, {1, 1, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 
@@ -176,7 +174,7 @@ void puzzle5(Context &ctx) {
 // You have fewer threads per block than the size of a.
 
 const char *kPuzzle6 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @group(0) @binding(2) var<uniform> params: Params;
 struct Params {
@@ -194,15 +192,15 @@ void puzzle6(Context &ctx) {
   static constexpr size_t N = 9;
   static constexpr size_t Wx = 4;
   static constexpr size_t Bx = 3;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {N}, kf32);
   struct Params {
     uint32_t size = N;
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle6, {Wx, 1, 1}},
-                   Bindings{a, output}, {Bx, 1, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle6, {Wx, 1, 1}},
+                   Bindings{read(a), readWrite(output)}, {Bx, 1, 1}, Params{N});
   showResult<N>(ctx, op, output);
 }
 
@@ -211,7 +209,7 @@ void puzzle6(Context &ctx) {
 // You have fewer threads per block than the size of a in both directions.
 
 const char *kPuzzle7 = R"(
-@group(0)@binding(0) var<storage, read_write> a: array<f32>;
+@group(0)@binding(0) var<storage, read> a: array<f32>;
 @group(0)@binding(1) var<storage, read_write> output : array<f32>;
 @group(0)@binding(2) var<uniform> params: Params;
 struct Params {
@@ -231,15 +229,15 @@ void puzzle7(Context &ctx) {
   static constexpr size_t Wy = 3;
   static constexpr size_t Bx = 2;
   static constexpr size_t By = 2;
-  Tensor a = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor a = createTensor(ctx, {N, N}, kf32, makeData<N * N>());
   Tensor output = createTensor(ctx, {N, N}, kf32);
   struct Params {
     uint32_t size = N;
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle7, {Wx, Wy, 1}},
-                   Bindings{a, output}, {Bx, By, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle7, {Wx, Wy, 1}},
+                   Bindings{read(a), readWrite(output)}, {Bx, By, 1}, Params{N});
   showResult<N, N, N>(ctx, op, output);
 }
 
@@ -250,7 +248,7 @@ void puzzle7(Context &ctx) {
 // (This example does not really need shared memory or syncthreads, but it is a demo.)
 
 const char *kPuzzle8 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @group(0) @binding(2) var<uniform> params: Params;
 struct Params {
@@ -269,7 +267,7 @@ void puzzle8(Context &ctx) {
   static constexpr size_t N = 8;
   static constexpr size_t Wx = 4;
   static constexpr size_t Bx = 2;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {N}, kf32);
   struct Params {
     uint32_t size = N;
@@ -277,8 +275,8 @@ void puzzle8(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle8, {Wx, 1, 1}},
-                   Bindings{a, output}, {Bx, 1, 1}, Params{N, 8});
+      createKernel(ctx, WGSL{kPuzzle8, {Wx, 1, 1}},
+                   Bindings{read(a), readWrite(output)}, {Bx, 1, 1}, Params{N, 8});
   showResult<N>(ctx, op, output);
 }
 
@@ -287,7 +285,7 @@ void puzzle8(Context &ctx) {
 // You have 1 thread per position. You only need 1 global read and 1 global write per thread.
 
 const char *kPuzzle9 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @group(0) @binding(2) var<uniform> params: Params;
 struct Params {
@@ -305,15 +303,15 @@ void puzzle9(Context &ctx) {
   printf("\n\nPuzzle 9\n\n");
   static constexpr size_t N = 8;
   static constexpr size_t Wx = 8;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {N}, kf32);
   struct Params {
     uint32_t size = N;
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle9, {Wx, 1, 1}},
-                   Bindings{a, output}, {1, 1, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle9, {Wx, 1, 1}},
+                   Bindings{read(a), readWrite(output)}, {1, 1, 1}, Params{N});
   showResult<N>(ctx, op, output);
 }
 
@@ -322,8 +320,8 @@ void puzzle9(Context &ctx) {
 // You have 1 thread per position. You only need 2 global reads and 1 global write per thread.
 
 const char *kPuzzle10 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
-@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
+@group(0) @binding(1) var<storage, read> b: array<f32>;
 @group(0) @binding(2) var<storage, read_write> output : array<f32>;
 @group(0) @binding(3) var<uniform> params: Params;
 struct Params {
@@ -341,16 +339,16 @@ void puzzle10(Context &ctx) {
   printf("\n\nPuzzle 10\n\n");
   static constexpr size_t N = 8;
   static constexpr size_t Wx = 8;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
-  Tensor b = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
+  Tensor b = createTensor(ctx, {N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {1}, kf32);
   struct Params {
     uint32_t size = N;
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle10, {Wx, 1, 1}},
-                   Bindings{a, b, output}, {1, 1, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle10, {Wx, 1, 1}},
+                   Bindings{read(a), read(b), readWrite(output)}, {1, 1, 1}, Params{N});
   showResult<1>(ctx, op, output);
 }
 
@@ -359,8 +357,8 @@ void puzzle10(Context &ctx) {
 // You need to handle the general case. You only need 2 global reads and 1 global write per thread.
 
 const char *kPuzzle11 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
-@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
+@group(0) @binding(1) var<storage, read> b: array<f32>;
 @group(0) @binding(2) var<storage, read_write> output : array<f32>;
 @group(0) @binding(3) var<uniform> params: Params;
 struct Params {
@@ -381,8 +379,8 @@ void puzzle11(Context &ctx) {
   static constexpr size_t N = 6;
   static constexpr size_t CONV = 3;
   static constexpr size_t Wx = 8;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
-  Tensor b = createTensor(ctx, {CONV}, kf32, makeData<CONV>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
+  Tensor b = createTensor(ctx, {CONV}, kf32, makeData<CONV>());
   Tensor output = createTensor(ctx, {N}, kf32);
   struct Params {
     uint32_t size = N;
@@ -390,8 +388,8 @@ void puzzle11(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle11, {N, 1, 1}},
-                   Bindings{a, b, output}, {Wx, 1, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle11, {N, 1, 1}},
+                   Bindings{read(a), read(b), readWrite(output)}, {Wx, 1, 1}, Params{N});
   showResult<N>(ctx, op, output);
 }
 
@@ -402,7 +400,7 @@ void puzzle11(Context &ctx) {
 // That is, each step of the algorithm should sum together half the remaining numbers.
 
 const char *kPuzzle12 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output : array<f32>;
 @group(0) @binding(2) var<uniform> params: Params;
 struct Params {
@@ -419,15 +417,15 @@ fn main(
 void puzzle12(Context &ctx) {
   printf("\n\nPuzzle 12\n\n");
   static constexpr size_t N = 8;
-  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>().data());
+  Tensor a = createTensor(ctx, {N}, kf32, makeData<N>());
   Tensor output = createTensor(ctx, {1}, kf32);
   struct Params {
     uint32_t size = N;
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle12, {N, 1, 1}},
-                   Bindings{a, output}, {1, 1, 1}, Params{N});
+      createKernel(ctx, WGSL{kPuzzle12, {N, 1, 1}},
+                   Bindings{read(a), readWrite(output)}, {1, 1, 1}, Params{N});
   showResult<1>(ctx, op, output);
 }
 
@@ -436,7 +434,7 @@ void puzzle12(Context &ctx) {
 // Implement a kernel that computes a sum over each column of a and stores it in out.
 
 const char *kPuzzle13 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
 @group(0) @binding(1) var<storage, read_write> output: array<f32>;
 @group(0) @binding(2) var<uniform> params: Params;
 
@@ -459,7 +457,7 @@ void puzzle13(Context &ctx) {
   static constexpr size_t N = 6;
   static constexpr size_t TPB = 8;
   static constexpr size_t BATCH = 4;
-  Tensor a = createTensor(ctx, {BATCH, N}, kf32, makeData<N * BATCH>().data());
+  Tensor a = createTensor(ctx, {BATCH, N}, kf32, makeData<N * BATCH>());
   Tensor output = createTensor(ctx, {BATCH}, kf32);
   struct Params {
     uint32_t TPB = TPB;
@@ -467,8 +465,8 @@ void puzzle13(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle13, {TPB, 1, 1}},
-                   Bindings{a, output}, {1, BATCH, 1}, Params{TPB, N});
+      createKernel(ctx, WGSL{kPuzzle13, {TPB, 1, 1}},
+                   Bindings{read(a), readWrite(output)}, {1, BATCH, 1}, Params{TPB, N});
   showResult<BATCH>(ctx, op, output);
 }
 
@@ -480,8 +478,8 @@ void puzzle13(Context &ctx) {
 // partial dot-product and iteratively move the part you copied into shared memory. You 
 // should be able to do the hard case in 6 global reads.
 const char *kPuzzle14 = R"(
-@group(0) @binding(0) var<storage, read_write> a: array<f32>;
-@group(0) @binding(1) var<storage, read_write> b: array<f32>;
+@group(0) @binding(0) var<storage, read> a: array<f32>;
+@group(0) @binding(1) var<storage, read> b: array<f32>;
 @group(0) @binding(2) var<storage, read_write> output: array<f32>;
 @group(0) @binding(3) var<uniform> params: Params;
 
@@ -504,8 +502,8 @@ void puzzle14(Context &ctx) {
   printf("\n\nPuzzle 14\n\n");
   static constexpr size_t N = 2;
   static constexpr size_t TPB = 3;
-  Tensor a = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
-  Tensor b = createTensor(ctx, {N, N}, kf32, makeData<N * N>().data());
+  Tensor a = createTensor(ctx, {N, N}, kf32, makeData<N * N>());
+  Tensor b = createTensor(ctx, {N, N}, kf32, makeData<N * N>());
   Tensor output = createTensor(ctx, {N, N}, kf32);
   struct Params {
     uint32_t TPB = TPB;
@@ -513,8 +511,8 @@ void puzzle14(Context &ctx) {
   };
 
   Kernel op =
-      createKernel(ctx, {kPuzzle14, {TPB, TPB, 1}},
-                   Bindings{a, b, output}, {1, 1, 1}, Params{TPB, N});
+      createKernel(ctx, WGSL{kPuzzle14, {TPB, TPB, 1}},
+                   Bindings{read(a), read(b), readWrite(output)}, {1, 1, 1}, Params{TPB, N});
   showResult<N, N, N>(ctx, op, output);
 }
 

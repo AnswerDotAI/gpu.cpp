@@ -4,20 +4,19 @@
 #include <random>
 #include <cstdlib>
 
-#include "gpu.hpp" // createContext, createTensor, createKernel, dispatchKernel,
-                   // wait, resetCommandBuffer, toCPU
+#include "gpu.hpp"
 
 #include "llmc/reference_impls.h"   // for CPU reference implementation
 #include "utils/array_utils.hpp"    // show, isclose, randn, randint
 #include "utils/logging.hpp"        // LOG
-#include "experimental/wgsl.h"      // loopUnrolling
+#include "utils/wgsl.hpp"
 
 using namespace gpu;
 
 // This implements the tranpose kernels in https://developer.nvidia.com/blog/efficient-matrix-transpose-cuda-cc .
 
 static const char *kShaderTranspose1 = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
 @compute @workgroup_size({{workgroupSize}})
 fn main(
@@ -28,7 +27,7 @@ fn main(
 }
 )";
 
-inline KernelCode createTranspose1(const char *shaderTemplate,
+inline WGSL createTranspose1(const char *shaderTemplate,
 				   const size_t M, const size_t N,
                                    const Shape &workgroupSize = {256, 1, 1},
                                    NumType precision = kf32) {
@@ -42,7 +41,7 @@ inline KernelCode createTranspose1(const char *shaderTemplate,
 
 // Shared memory cache-blocking
 static const char *kShaderTranspose2 = R"(
-@group(0) @binding(0) var<storage, read_write> A: array<{{precision}}>;
+@group(0) @binding(0) var<storage, read> A: array<{{precision}}>;
 @group(0) @binding(1) var<storage, read_write> B: array<{{precision}}>;
 var<workgroup> tile: array<{{precision}}, {{BN}} * {{BM}}>;
 @compute @workgroup_size({{workgroupSize}})
@@ -78,7 +77,7 @@ fn main(
 }
 )";
 
-inline KernelCode createTranspose2(const char *shaderTemplate,
+inline WGSL createTranspose2(const char *shaderTemplate,
 				   const size_t M, const size_t N,
 				   const size_t BM, const size_t BN,
                                    const size_t TM, const size_t TN,
@@ -98,8 +97,7 @@ inline KernelCode createTranspose2(const char *shaderTemplate,
                           {"{{TM}}", toString(TM)},
                           {"{{TN}}", toString(TN)}
                           });
-  std::string unrolledCode = codeString ;// loopUnrolling(codeString);
-  return {unrolledCode, workgroupSize};
+  return {codeString, workgroupSize};
 }
 
 void initData(size_t M, size_t N, std::unique_ptr<float[]> &inputPtr) {
@@ -115,10 +113,10 @@ Kernel selectTranspose(Context &ctx, int version,
   if (version == 1) {
     Shape wgSize = {16, 16, 1};
     LOG(kDefLog, kInfo, "wgSize: %s", toString(wgSize).c_str());
-    KernelCode transpose =
+    WGSL transpose =
         createTranspose1(kShaderTranspose1, M, N, /*wgsize*/ wgSize); // The shape of input == M x N
     kernel = createKernel(ctx, transpose, bindings,
-                          /*nWorkgroups*/ cdiv({N, M, 1}, wgSize)); // The shape of output == N x M
+                          /*nWorkgroups*/ ceilDiv({N, M, 1}, wgSize)); // The shape of output == N x M
   } else if (version == 2) {
     static constexpr size_t BM = 64;
     static constexpr size_t BK = 16;
@@ -126,12 +124,12 @@ Kernel selectTranspose(Context &ctx, int version,
     static constexpr size_t TM = BM / BK;
     static constexpr size_t TN = BN / BK;
     Shape wgSize = {(BM / TM) * (BN / TN), 1, 1}; // This is the same as BK * BK.
-    Shape nWorkgroups = {cdiv(N, BN), cdiv(M, BM), 1};
+    Shape nWorkgroups = {ceilDiv(N, BN), ceilDiv(M, BM), 1};
     LOG(kDefLog, kInfo, "M: %d, N: %d", M, N);
     LOG(kDefLog, kInfo, "BM: %d, BK: %d, BN: %d, TM: %d, TN: %d", BM, BK, BN, TM, TN);
     LOG(kDefLog, kInfo, "wgSize: ( %s )", toString(wgSize).c_str());
     LOG(kDefLog, kInfo, "nWorkgroups: ( %s )", toString(nWorkgroups).c_str());
-    KernelCode transpose = createTranspose2(kShaderTranspose2, M, N, BM, BN, TM, TN,
+    WGSL transpose = createTranspose2(kShaderTranspose2, M, N, BM, BN, TM, TN,
 					    /*wgSize*/ wgSize,
 					    kf32);
     kernel = createKernel(ctx, transpose, bindings,
@@ -149,34 +147,28 @@ void runTest(int version, size_t M, size_t N,
   
   // Allocate GPU buffers and copy data
   Context ctx = createContext();
-  Tensor input = createTensor(ctx, Shape{M, N}, kf32, inputPtr.get());
+  Tensor input = createTensor(
+      ctx, Shape{M, N}, kf32,
+      std::span<const float>(inputPtr.get(), M * N));
   Tensor output = createTensor(ctx, Shape{N, M}, kf32);
 
   constexpr size_t nIter = 50;
 
   // Initialize Kernel and bind GPU buffers
   LOG(kDefLog, kInfo, "Creating Kernel");
-  Kernel kernel = selectTranspose(ctx, version, {input, output}, M, N);
+  Kernel kernel = selectTranspose(
+      ctx, version, Bindings{read(input), readWrite(output)}, M, N);
 
   // Dispatch kernel execution
   LOG(kDefLog, kInfo, "Dispatching Kernel version %d, %d iterations ...",
       version, nIter);
 
-  // pre-allocate promises and futures for async dispatch
-  // TODO(avh): implement a pooling mechanism for promises/futures in gpu.h
-  std::array<std::promise<void>, nIter> promises;
-  std::array<std::future<void>, nIter> futures;
-  for (int i = 0; i < nIter; i++) {
-    futures[i] = promises[i].get_future();
-  }
-
   // Dispatch kernel nIter times
   auto start = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < nIter; i++) {
     if (!isCPU) {
-      dispatchKernel(ctx, kernel, promises[i]);
-      wait(ctx, futures[i]);
-      resetCommandBuffer(ctx.device, kernel);
+      auto future = dispatchKernel(ctx, kernel);
+      wait(ctx, future);
     } else {
       transpose(inputPtr.get(), outputPtr.get(), M, N);
     }
@@ -193,7 +185,9 @@ void runTest(int version, size_t M, size_t N,
 
   LOG(kDefLog, kInfo, "Copying result to CPU");
   if (!isCPU) {
-    toCPU(ctx, output, outputPtr.get(), M * N * sizeof(float));
+    auto readback =
+        toCPU(ctx, output, std::span<float>(outputPtr.get(), M * N));
+    wait(ctx, readback);
   }
   LOG(kDefLog, kInfo, "%s",
       show<float>(outputPtr.get(), N, M, "Output").c_str());

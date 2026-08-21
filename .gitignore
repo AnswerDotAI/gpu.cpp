@@ -1,4 +1,6 @@
 build/*
+build-web/
+build-dawn/
 # any build subdirectory in the tree
 **/build/
 examples/hello_gpu/build/*
@@ -8,6 +10,8 @@ source
 .DS_Store
 third_party/lib/*
 third_party/local/*
+third_party/dawn/*
+third_party/emdawnwebgpu/*
 
 # formatter files
 .cmake-format.py
@@ -19,4 +23,3 @@ build
 # clangd files
 .cache
 compile_commands.json
-

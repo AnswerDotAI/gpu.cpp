@@ -1,28 +1,19 @@
 # gpu.cpp examples
 
-This directory contains examples of how to use gpu.cpp. 
+The root CMake project builds every example:
 
-Each example is a standalone project that can be built and run independently by
-running `make` from within the example directory.
+```bash
+./test
+```
 
-Before running any of these examples, make sure you've downloaded the Dawn
-native webgpu installation binary by running `make dawnlib` from the root
-directory of the repository.
+- `hello_world`: minimal WGSL upload, dispatch, and readback
+- `float16`: device feature selection and f16 compute
+- `gpu_puzzles`: exercises and solutions for Sasha Rush's GPU puzzles
+- `matmul`: progressively optimized matrix multiplication kernels
+- `physics`: an interactive double-pendulum simulation
+- `render`: an interactive terminal SDF renderer
+- `shadertui`: live-reloaded WGSL terminal shaders
+- `transpose`: naive and tiled matrix transpose kernels
 
-## Basic Examples
-
-| Example | Description |
-|---------|-------------|
-| [hello_world](hello_world) | Minimal example to get started with gpu.cpp, implements a GELU neural network activation function. |
-| [gpu_puzzles](gpu_puzzles) | Implementation of Sasha Rush's GPU puzzles. |
-| [shadertui](shadertui) | An example of runtime live reloading of WGSL - demonstrated using a terminal shadertoy-like scii rendering. |
-| [render](render) | GPU ascii rendering of a signed distance function for two rotating 3D spheres. |
-| [physics](physics) | Parallel physics simulation of a double pendulum with each thread starting at a different initial condition. |
-
-## Advanced Examples
-
-| Example | Description |
-|---------|-------------|
-| [float16](float16) | Hello World example using the float16 WebGPU extension, instead of the default float32. |
-| [matmul](matmul) | Tiled matrix multiplication. |
-| [transpose](transpose) | Tiled matrix transpose. |
+`make run` runs `hello_world`. The interactive and benchmark examples are built
+but not run by the test suite.

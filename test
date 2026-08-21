@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ${1:-} == --web || ${1:-} == --build-web || \
+      ${1:-} == --rebuild-web ]]; then
+  if [[ ${1:-} == --rebuild-web || \
+        ! -f third_party/emdawnwebgpu/emdawnwebgpu.port.py ]]; then
+    tools/build_emdawn.sh
+  fi
+  export EMSDK_QUIET=1
+  source "${GPUCPP_EMSDK_ROOT:-../emsdk}/emsdk_env.sh" >/dev/null
+  if [[ $(uname -s) == Darwin ]]; then
+    if [[ -x /opt/homebrew/opt/openjdk/bin/java ]]; then
+      export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+    fi
+    if ! java -version >/dev/null 2>&1; then
+      echo "Closure requires Java on macOS; install it with brew install openjdk" >&2
+      exit 1
+    fi
+  fi
+  emcmake cmake -S . -B build-web -G Ninja -DCMAKE_BUILD_TYPE=Release
+  cmake --build build-web --target gpu_cpp_web web_binding_test
+  if [[ ${1:-} != --build-web ]]; then
+    emrun --browser chrome --timeout 60 build-web/web_binding_test.html
+  fi
+  exit
+elif [[ ${1:-} == --rebuild-dawn ]]; then
+  tools/build_dawn.sh
+elif [[ $# -ne 0 ]]; then
+  echo "usage: ./test [--rebuild-dawn|--web|--build-web|--rebuild-web]" >&2
+  exit 2
+elif [[ ! -f third_party/dawn/include/dawn/webgpu_cpp.h &&
+        ! -f third_party/local/dawn/build-latest/gen/include/dawn/webgpu_cpp.h ]]; then
+  tools/build_dawn.sh
+fi
+
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure
