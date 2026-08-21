@@ -11,8 +11,7 @@ The same file pins the emsdk revision and Emscripten version recorded in
 Dawn's DEPS. `tools/build_emdawn.sh` builds `emdawnwebgpu_pkg` from that exact
 Dawn source and stages its local Emscripten port under
 `third_party/emdawnwebgpu/`. The sibling `../emsdk` clone and staged package are
-not committed. Closure is required by Emdawn release links and uses OpenJDK on
-macOS ARM.
+not committed.
 
 The top-level build fetches the tagged pybind11 release declared in
 `CMakeLists.txt`; consumers using only the C++ target do not fetch or build it.
@@ -69,9 +68,9 @@ local release path.
 `./test --web` cross-compiles the same public core and Embind API against
 Emdawnwebgpu, opens the result with `emrun`, and checks rejected invalid WGSL,
 context reuse, typed-array upload, dispatch, and readback in Chrome. The
-release build uses Closure, Wasm exceptions, and JSPI. CI uses
-`./test --build-web` to compile the same artifacts without requiring a browser
-GPU; the complete story remains the local runtime contract.
+release build uses Wasm exceptions and JSPI. CI uses `./test --build-web` to
+compile the same artifacts without requiring a browser GPU; the complete story
+remains the local runtime contract.
 
 ## Architecture
 

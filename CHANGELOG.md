@@ -35,3 +35,4 @@ browser target.
 - The legacy raw WebGPU C API implementation, manual resource pools, custom
   half implementation, Haskell binding, obsolete build files, and abandoned
   experimental targets.
+- The Closure compiler and Java dependency from browser builds.
